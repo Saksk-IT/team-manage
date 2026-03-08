@@ -127,8 +127,16 @@ class TeamService:
         """
         team.error_count = 0
         if team.status == "error":
-            logger.info(f"Team {team.id} ({team.email}) 请求成功, 将状态从 error 恢复为 active")
-            team.status = "active"
+            # 恢复时也要校验是否满员或到期
+            if team.current_members >= team.max_members:
+                logger.info(f"Team {team.id} ({team.email}) 请求成功, 将状态从 error 恢复为 full")
+                team.status = "full"
+            elif team.expires_at and team.expires_at < datetime.now():
+                logger.info(f"Team {team.id} ({team.email}) 请求成功, 将状态从 error 恢复为 expired")
+                team.status = "expired"
+            else:
+                logger.info(f"Team {team.id} ({team.email}) 请求成功, 将状态从 error 恢复为 active")
+                team.status = "active"
         await db_session.commit()
 
     async def ensure_access_token(self, team: Team, db_session: AsyncSession, force_refresh: bool = False) -> Optional[str]:
@@ -417,9 +425,9 @@ class TeamService:
                     except Exception as e:
                         logger.warning(f"解析过期时间失败: {e}")
 
-                # 确定状态
+                # 确定状态和最大成员数 (默认 6)
+                max_members = 6
                 status = "active"
-                max_members = team.max_members if 'team' in locals() and team else 6
                 if current_members >= max_members:
                     status = "full"
                 elif expires_at and expires_at < datetime.now():
@@ -590,10 +598,12 @@ class TeamService:
             if status:
                 team.status = status
             
-            # 自动维护 active/full 状态 (仅当当前处于这两者之一或刚更新了 max_members/status)
-            if team.status in ["active", "full"]:
+            # 自动维护 active/full/expired 状态 (仅当当前处于这三者之一或刚更新了 max_members/status)
+            if team.status in ["active", "full", "expired"]:
                 if team.current_members >= team.max_members:
                     team.status = "full"
+                elif team.expires_at and team.expires_at < datetime.now():
+                    team.status = "expired"
                 else:
                     team.status = "active"
 
