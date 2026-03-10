@@ -187,25 +187,33 @@ class RedeemFlowService:
                         team_id_final = select_res["team_id"]
                         current_target_team_id = team_id_final
                     
-                    # 使用 Team 锁序列化对该账户的操作，防止并发冲突 (ChatGPT 账号通常只允许单进程邀请)
+                    # 使用 Team 锁序列化对该账户的操作，防止并发冲突
                     async with _team_locks[team_id_final]:
-                        logger.info(f"锁定 Team {team_id_final} 执行兑换流程")
+                        logger.info(f"锁定 Team {team_id_final} 执行兑换流程 (尝试 {attempt+1})")
                         
-                        # 0. 确保 session 状态干净
+                        # 重置 Session 状态，确保没有残留事务（应对上一轮迭代可能的失败）
                         if db_session.in_transaction():
                             await db_session.rollback()
+                        elif db_session.is_active:
+                            # 即使不在事务中，也强制清除可能存在的延迟加载缓存
+                            await db_session.rollback()
 
-                        # 1. 前置同步：拉人前确保人数状态绝对实时 (耗时操作，不开启事务)
+                        # 1. 前置同步：拉人前确保人数状态绝对实时 (耗时操作)
+                        # 注意：sync_team_info 内部会自动处理自己的事务提交
                         sync_res = await self.team_service.sync_team_info(team_id_final, db_session)
                         
                         # 2. 核心校验 (开启短事务)
-                        async with db_session.begin():
+                        if not db_session.in_transaction():
+                            await db_session.begin()
+                        
+                        try:
                             # 1. 验证和锁定码
                             stmt = select(RedemptionCode).where(RedemptionCode.code == code).with_for_update()
                             res = await db_session.execute(stmt)
                             rc = res.scalar_one_or_none()
 
                             if not rc:
+                                await db_session.rollback()
                                 return {"success": False, "error": "兑换码不存在"}
                             
                             if rc.status not in ["unused", "warranty_active"]:
@@ -214,8 +222,10 @@ class RedeemFlowService:
                                         db_session, code, email
                                     )
                                     if not warranty_check.get("can_reuse"):
+                                        await db_session.rollback()
                                         return {"success": False, "error": warranty_check.get("reason") or "兑换码已使用"}
                                 else:
+                                    await db_session.rollback()
                                     return {"success": False, "error": f"兑换码状态无效: {rc.status}"}
 
                             # 2. 锁定并校验 Team
@@ -230,22 +240,36 @@ class RedeemFlowService:
                                 target_team.status = "full"
                                 raise Exception("该 Team 已满, 请选择其他 Team 尝试")
 
-                            # 提交以此锁定状态（虽然接下来会执行 API，但由于有 _team_locks 保护，其他进程进不来）
+                            # 提取必要信息后立即提交，释放 DB 锁以进行耗时的 API 调用
+                            account_id_to_use = target_team.account_id
+                            team_email_to_use = target_team.email
+                            await db_session.commit()
+                        except Exception as e:
+                            if db_session.in_transaction():
+                                await db_session.rollback()
+                            raise e
                         
-                        # 3. 执行 API 邀请 (耗时操作，放事务外，通过 _team_locks 保持原子性)
-                        # 再次获取 token
+                        # 3. 执行 API 邀请 (耗时操作，放事务外)
+                        # 先确保 Token 有效 (此方法内部会处理自己的 commit)
+                        # 必须重新加载 target_team，因为之前的提交已经将其从 session 移除或标记为过期
+                        res = await db_session.execute(select(Team).where(Team.id == team_id_final))
+                        target_team = res.scalar_one_or_none()
+                        
                         access_token = await self.team_service.ensure_access_token(target_team, db_session)
                         if not access_token:
                             raise Exception("获取 Team 访问权限失败，账户状态异常")
 
                         invite_res = await self.chatgpt_service.send_invite(
-                            access_token, target_team.account_id, email, db_session,
-                            identifier=target_team.email
+                            access_token, account_id_to_use, email, db_session,
+                            identifier=team_email_to_use
                         )
                         
                         # 4. 后置处理与状态持久化 (第二次短事务)
-                        async with db_session.begin():
-                            # 重新载入以防止 session 过期
+                        if not db_session.in_transaction():
+                            await db_session.begin()
+                        
+                        try:
+                            # 重新载入，确保状态最新
                             res = await db_session.execute(select(RedemptionCode).where(RedemptionCode.code == code).with_for_update())
                             rc = res.scalar_one_or_none()
                             res = await db_session.execute(select(Team).where(Team.id == team_id_final).with_for_update())
@@ -259,7 +283,9 @@ class RedeemFlowService:
                                 else:
                                     if any(kw in err_str for kw in ["maximum number of seats", "full", "no seats"]):
                                         target_team.status = "full"
+                                        await db_session.commit()
                                         raise Exception(f"该 Team 席位已满 (API Error: {err})")
+                                    await db_session.rollback()
                                     raise Exception(err)
 
                             # 成功逻辑
@@ -282,6 +308,12 @@ class RedeemFlowService:
                             target_team.current_members += 1
                             if target_team.current_members >= target_team.max_members:
                                 target_team.status = "full"
+                            
+                            await db_session.commit()
+                        except Exception as e:
+                            if db_session.in_transaction():
+                                await db_session.rollback()
+                            raise e
 
                     # 事务完成提交
                     logger.info(f"兑换核心步骤执行成功: {email} -> Team {team_id_final}")
