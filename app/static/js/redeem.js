@@ -85,17 +85,83 @@ document.getElementById('verifyForm').addEventListener('submit', async (e) => {
     currentEmail = email;
     currentCode = code;
 
-    // 禁用按钮
     verifyBtn.disabled = true;
-    setVerifyButtonContent('正在兑换...');
 
-    // 直接调用兑换接口 (team_id = null 表示自动选择)
-    await confirmRedeem(null);
+    try {
+        setVerifyButtonContent('正在校验...');
 
-    // 恢复按钮状态 (如果 confirmRedeem 失败并显示了错误也没关系，因为用户可以点返回重试)
-    verifyBtn.disabled = false;
-    setVerifyButtonContent('立即兑换');
+        const verifyResult = await verifyCodeBeforeRedeem();
+        if (!verifyResult.success) {
+            showErrorResult(verifyResult.error || '兑换码校验失败');
+            return;
+        }
+
+        if (!verifyResult.valid) {
+            showErrorResult(verifyResult.reason || '兑换码不可用');
+            return;
+        }
+
+        setVerifyButtonContent('正在兑换...');
+        await confirmRedeem(null);
+    } finally {
+        verifyBtn.disabled = false;
+        setVerifyButtonContent('立即兑换');
+    }
 });
+
+// 兑换前先校验兑换码状态
+async function verifyCodeBeforeRedeem() {
+    try {
+        const response = await fetch('/redeem/verify', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                code: currentCode
+            })
+        });
+
+        let data;
+        const text = await response.text();
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            console.error('Failed to parse verify response JSON:', text);
+            throw new Error('服务器响应格式错误');
+        }
+
+        if (!response.ok) {
+            let errorMessage = '兑换码校验失败';
+            if (data.detail) {
+                errorMessage = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+            } else if (data.error) {
+                errorMessage = data.error;
+            }
+            return {
+                success: false,
+                valid: false,
+                reason: null,
+                error: errorMessage
+            };
+        }
+
+        return {
+            success: !!data.success,
+            valid: !!data.valid,
+            reason: data.reason || null,
+            error: data.error || null
+        };
+    } catch (error) {
+        console.error('Verify code failed:', error);
+        return {
+            success: false,
+            valid: false,
+            reason: null,
+            error: error.message || '网络错误,请稍后重试'
+        };
+    }
+}
 
 // 渲染Team列表
 function renderTeamsList() {

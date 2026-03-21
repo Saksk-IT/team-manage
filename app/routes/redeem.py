@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.services.redeem_flow import redeem_flow_service
+from app.services.redemption import redemption_service
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,24 @@ async def confirm_redeem(
     """
     try:
         logger.info(f"兑换请求: {request.email} -> Team {request.team_id} (兑换码: {request.code})")
+
+        # 前置校验：已使用/已过期/不存在的兑换码直接拦截，避免进入兑换主流程
+        validate_result = await redemption_service.validate_code(request.code, db)
+        if not validate_result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=validate_result["error"] or "兑换码校验失败"
+            )
+        if not validate_result["valid"]:
+            if validate_result.get("reason") == "兑换码已过期 (超过首次兑换截止时间)":
+                try:
+                    await db.commit()
+                except Exception:
+                    pass
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=validate_result.get("reason") or "兑换码不可用"
+            )
 
         result = await redeem_flow_service.redeem_and_join_team(
             request.email,

@@ -316,6 +316,7 @@ class RedemptionService:
                     "id": redemption_code.id,
                     "code": redemption_code.code,
                     "status": redemption_code.status,
+                    "bound_team_id": redemption_code.bound_team_id,
                     "expires_at": redemption_code.expires_at.isoformat() if redemption_code.expires_at else None,
                     "created_at": redemption_code.created_at.isoformat() if redemption_code.created_at else None
                 },

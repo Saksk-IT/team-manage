@@ -77,9 +77,9 @@ class RedeemFlowService:
                 }
 
             # 2. 获取可用 Team 列表
-            redemption_code = validate_result.get("redemption_code")
-            bound_team_id = getattr(redemption_code, "bound_team_id", None)
-            is_unused_bound_code = getattr(redemption_code, "status", None) == "unused" and bound_team_id
+            redemption_code = validate_result.get("redemption_code") or {}
+            bound_team_id = redemption_code.get("bound_team_id")
+            is_unused_bound_code = redemption_code.get("status") == "unused" and bound_team_id
 
             if is_unused_bound_code:
                 stmt = select(Team).where(Team.id == bound_team_id)
