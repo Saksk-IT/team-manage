@@ -47,13 +47,40 @@ class RedemptionService:
 
         return code
 
+    async def _ensure_unique_code(
+        self,
+        db_session: AsyncSession,
+        reserved_codes: Optional[set] = None
+    ) -> Optional[str]:
+        """
+        生成一个唯一兑换码
+        """
+        reserved_codes = reserved_codes or set()
+        max_attempts = 10
+
+        for _ in range(max_attempts):
+            code = self._generate_random_code()
+            if code in reserved_codes:
+                continue
+
+            stmt = select(RedemptionCode).where(RedemptionCode.code == code)
+            result = await db_session.execute(stmt)
+            existing = result.scalar_one_or_none()
+
+            if not existing:
+                return code
+
+        return None
+
     async def generate_code_single(
         self,
         db_session: AsyncSession,
         code: Optional[str] = None,
         expires_days: Optional[int] = None,
         has_warranty: bool = False,
-        warranty_days: int = 30
+        warranty_days: int = 30,
+        bound_team_id: Optional[int] = None,
+        commit: bool = True
     ) -> Dict[str, Any]:
         """
         生成单个兑换码
@@ -70,19 +97,8 @@ class RedemptionService:
         try:
             # 1. 生成或使用自定义兑换码
             if not code:
-                # 生成随机码,确保唯一性
-                max_attempts = 10
-                for _ in range(max_attempts):
-                    code = self._generate_random_code()
-
-                    # 检查是否已存在
-                    stmt = select(RedemptionCode).where(RedemptionCode.code == code)
-                    result = await db_session.execute(stmt)
-                    existing = result.scalar_one_or_none()
-
-                    if not existing:
-                        break
-                else:
+                code = await self._ensure_unique_code(db_session)
+                if not code:
                     return {
                         "success": False,
                         "code": None,
@@ -113,18 +129,23 @@ class RedemptionService:
                 code=code,
                 status="unused",
                 expires_at=expires_at,
+                bound_team_id=bound_team_id,
                 has_warranty=has_warranty,
                 warranty_days=warranty_days
             )
 
             db_session.add(redemption_code)
-            await db_session.commit()
+            if commit:
+                await db_session.commit()
+            else:
+                await db_session.flush()
 
             logger.info(f"生成兑换码成功: {code}")
 
             return {
                 "success": True,
                 "code": code,
+                "bound_team_id": bound_team_id,
                 "message": f"兑换码生成成功: {code}",
                 "error": None
             }
@@ -145,7 +166,9 @@ class RedemptionService:
         count: int,
         expires_days: Optional[int] = None,
         has_warranty: bool = False,
-        warranty_days: int = 30
+        warranty_days: int = 30,
+        bound_team_id: Optional[int] = None,
+        commit: bool = True
     ) -> Dict[str, Any]:
         """
         批量生成兑换码
@@ -177,23 +200,11 @@ class RedemptionService:
             # 批量生成兑换码
             codes = []
             for i in range(count):
-                # 生成唯一兑换码
-                max_attempts = 10
-                for _ in range(max_attempts):
-                    code = self._generate_random_code()
-
-                    # 检查是否已存在 (包括本次批量生成的)
-                    if code not in codes:
-                        stmt = select(RedemptionCode).where(RedemptionCode.code == code)
-                        result = await db_session.execute(stmt)
-                        existing = result.scalar_one_or_none()
-
-                        if not existing:
-                            codes.append(code)
-                            break
-                else:
+                code = await self._ensure_unique_code(db_session, reserved_codes=set(codes))
+                if not code:
                     logger.warning(f"生成第 {i+1} 个兑换码失败")
                     continue
+                codes.append(code)
 
             # 批量插入数据库
             for code in codes:
@@ -201,12 +212,16 @@ class RedemptionService:
                     code=code,
                     status="unused",
                     expires_at=expires_at,
+                    bound_team_id=bound_team_id,
                     has_warranty=has_warranty,
                     warranty_days=warranty_days
                 )
                 db_session.add(redemption_code)
 
-            await db_session.commit()
+            if commit:
+                await db_session.commit()
+            else:
+                await db_session.flush()
 
             logger.info(f"批量生成兑换码成功: {len(codes)} 个")
 
@@ -214,6 +229,7 @@ class RedemptionService:
                 "success": True,
                 "codes": codes,
                 "total": len(codes),
+                "bound_team_id": bound_team_id,
                 "message": f"成功生成 {len(codes)} 个兑换码",
                 "error": None
             }
@@ -457,15 +473,27 @@ class RedemptionService:
             result = await db_session.execute(stmt)
             codes = result.scalars().all()
 
+            bound_team_ids = {code.bound_team_id for code in codes if code.bound_team_id}
+            team_map = {}
+            if bound_team_ids:
+                team_stmt = select(Team).where(Team.id.in_(bound_team_ids))
+                team_result = await db_session.execute(team_stmt)
+                team_map = {team.id: team for team in team_result.scalars().all()}
+
             # 构建返回数据
             code_list = []
             for code in codes:
+                bound_team = team_map.get(code.bound_team_id)
                 code_list.append({
                     "id": code.id,
                     "code": code.code,
                     "status": code.status,
                     "created_at": code.created_at.isoformat() if code.created_at else None,
                     "expires_at": code.expires_at.isoformat() if code.expires_at else None,
+                    "bound_team_id": code.bound_team_id,
+                    "bound_team_name": bound_team.team_name if bound_team else None,
+                    "bound_team_email": bound_team.email if bound_team else None,
+                    "bound_account_id": bound_team.account_id if bound_team else None,
                     "used_by_email": code.used_by_email,
                     "used_team_id": code.used_team_id,
                     "used_at": code.used_at.isoformat() if code.used_at else None,
@@ -542,6 +570,7 @@ class RedemptionService:
                 "status": redemption_code.status,
                 "created_at": redemption_code.created_at.isoformat() if redemption_code.created_at else None,
                 "expires_at": redemption_code.expires_at.isoformat() if redemption_code.expires_at else None,
+                "bound_team_id": redemption_code.bound_team_id,
                 "used_by_email": redemption_code.used_by_email,
                 "used_team_id": redemption_code.used_team_id,
                 "used_at": redemption_code.used_at.isoformat() if redemption_code.used_at else None
@@ -590,7 +619,8 @@ class RedemptionService:
                     "code": code.code,
                     "status": code.status,
                     "created_at": code.created_at.isoformat() if code.created_at else None,
-                    "expires_at": code.expires_at.isoformat() if code.expires_at else None
+                    "expires_at": code.expires_at.isoformat() if code.expires_at else None,
+                    "bound_team_id": code.bound_team_id
                 })
 
             return {

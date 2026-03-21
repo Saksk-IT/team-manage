@@ -47,6 +47,11 @@
     --border-color: var(--border-base);
     --danger-color: var(--danger);
     --success-color: var(--success);
+
+    /* Layout */
+    --layout-gutter: clamp(16px, 1.8vw, 28px);
+    --content-padding-y: clamp(16px, 1.5vw, 24px);
+    --content-padding-x: clamp(16px, 1.8vw, 28px);
 }
 
 /* Base Styles */
@@ -111,6 +116,12 @@ body {
     letter-spacing: -0.025em;
 }
 
+.navbar-menu {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
 .main-container {
     display: flex;
     max-width: 1440px;
@@ -170,6 +181,45 @@ body {
     padding: 2rem 3rem;
     background-color: var(--bg-main);
     min-height: calc(100vh - 64px);
+}
+
+.admin-shell .navbar-container,
+.admin-shell .main-container {
+    width: 100%;
+    max-width: none;
+}
+
+.admin-shell .navbar-container {
+    padding-left: var(--layout-gutter);
+    padding-right: var(--layout-gutter);
+}
+
+.admin-shell .main-content {
+    padding: var(--content-padding-y) var(--content-padding-x) calc(var(--content-padding-y) * 1.35);
+}
+
+.admin-shell .content-section {
+    padding: clamp(14px, 1.2vw, 20px);
+    margin-bottom: 1.5rem;
+}
+
+.admin-shell .table-container {
+    margin: 1rem 0 0;
+    max-height: calc(100vh - 230px);
+}
+
+.page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.page-header h2 {
+    font-size: clamp(1.5rem, 1.6vw, 1.875rem);
+    line-height: 1.2;
+    letter-spacing: -0.03em;
 }
 
 .footer {
@@ -391,6 +441,17 @@ body {
     /* Ensure dropdowns in header stay above table */
 }
 
+.sticky-toolbar-section .section-header {
+    position: sticky;
+    top: calc(64px + 10px);
+    z-index: 35;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(10px);
+    padding: 0.25rem 0 1rem;
+    margin: -0.25rem 0 1rem;
+    border-bottom: 1px solid var(--border-base);
+}
+
 .header-group {
     display: flex;
     align-items: center;
@@ -459,6 +520,51 @@ body {
     /* Adjust based on valid screen real estate */
     position: relative;
     background-color: var(--bg-surface);
+}
+
+.table-sticky-edges {
+    position: relative;
+    isolation: isolate;
+}
+
+.table-sticky-edges .data-table th:first-child,
+.table-sticky-edges .data-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 14;
+}
+
+.table-sticky-edges .data-table th:last-child,
+.table-sticky-edges .data-table td:last-child {
+    position: sticky;
+    right: 0;
+    z-index: 14;
+}
+
+.table-sticky-edges .data-table thead th:first-child,
+.table-sticky-edges .data-table thead th:last-child {
+    z-index: 16;
+    background-color: var(--bg-surface);
+}
+
+.table-sticky-edges .data-table tbody td:first-child,
+.table-sticky-edges .data-table tbody td:last-child {
+    background-color: var(--bg-surface);
+}
+
+.table-sticky-edges .data-table tbody tr:hover td:first-child,
+.table-sticky-edges .data-table tbody tr:hover td:last-child {
+    background-color: var(--bg-main);
+}
+
+.table-sticky-edges .data-table th:first-child,
+.table-sticky-edges .data-table td:first-child {
+    box-shadow: 1px 0 0 var(--border-base);
+}
+
+.table-sticky-edges .data-table th:last-child,
+.table-sticky-edges .data-table td:last-child {
+    box-shadow: -1px 0 0 var(--border-base);
 }
 
 .dropdown-wrapper {
@@ -695,6 +801,60 @@ body {
 
 .data-table tbody tr:hover td {
     background-color: var(--bg-main);
+}
+
+.admin-shell.compact-mode .stats-container {
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.admin-shell.compact-mode .stat-card {
+    padding: 1rem 1.125rem;
+    gap: 0.875rem;
+}
+
+.admin-shell.compact-mode .stat-icon {
+    width: 40px;
+    height: 40px;
+}
+
+.admin-shell.compact-mode .stat-value {
+    font-size: 1.25rem;
+}
+
+.admin-shell.compact-mode .content-section {
+    padding: 0.875rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.admin-shell.compact-mode .section-header {
+    margin-bottom: 0.875rem;
+}
+
+.admin-shell.compact-mode .table-container {
+    margin-top: 0.75rem;
+}
+
+.admin-shell.compact-mode .data-table th {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.6875rem;
+}
+
+.admin-shell.compact-mode .data-table td {
+    padding: 0.75rem;
+}
+
+.admin-shell.compact-mode .btn {
+    min-height: 36px;
+}
+
+.admin-shell.compact-mode .btn-sm,
+.admin-shell.compact-mode .btn-xs {
+    min-height: 32px;
+}
+
+.admin-shell.compact-mode .page-header {
+    margin-bottom: 1rem;
 }
 
 /* Status Badges */
@@ -1124,6 +1284,10 @@ body {
     .main-content {
         padding: 1.5rem 2rem;
     }
+
+    .admin-shell .main-content {
+        padding: 1.25rem 1.5rem 2rem;
+    }
 }
 
 @media (max-width: 768px) {
@@ -1195,6 +1359,26 @@ body {
 
     .main-content {
         padding: 1rem;
+    }
+
+    .admin-shell .main-container {
+        max-width: 100%;
+    }
+
+    .sticky-toolbar-section .section-header {
+        position: static;
+        backdrop-filter: none;
+        margin: 0 0 1rem;
+        padding: 0;
+        border-bottom: none;
+    }
+
+    .table-sticky-edges .data-table th:first-child,
+    .table-sticky-edges .data-table td:first-child,
+    .table-sticky-edges .data-table th:last-child,
+    .table-sticky-edges .data-table td:last-child {
+        position: static;
+        box-shadow: none;
     }
 
     .section-header {

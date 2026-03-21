@@ -247,12 +247,9 @@ function showSuccessResult(data) {
 
             <div style="margin-bottom: 2rem; border-top: 1px solid var(--border-base); padding-top: 1.5rem;">
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
-                    <strong>没收到邀请邮件？</strong><br>
-                    如果您在 1-5 分钟后仍未收到邮件（或被拦截），请前往“质保查询”进行自助修复。
+                    <strong>质保说明</strong><br>
+                    质保期间如果您使用兑换码加入的 Team 被封号，可以在质保期内（一个月）联系客服，再次获取兑换码。
                 </p>
-                <button onclick="goToWarrantyFromSuccess()" class="btn btn-secondary" style="width: 100%; border-style: dashed;">
-                    <i data-lucide="shield"></i> 前往质保查询 / 自助修复
-                </button>
             </div>
 
             <button onclick="location.reload()" class="btn btn-primary" style="width: 100%;">
@@ -309,55 +306,7 @@ function formatDate(dateString) {
 
 // 查询质保状态
 async function checkWarranty() {
-    const input = document.getElementById('warrantyInput').value.trim();
-
-    // 验证输入
-    if (!input) {
-        showToast('请输入原兑换码或邮箱进行查询', 'error');
-        return;
-    }
-
-    let email = null;
-    let code = null;
-
-    // 简单判断是邮箱还是兑换码
-    if (input.includes('@')) {
-        email = input;
-    } else {
-        code = input;
-    }
-
-    const checkBtn = document.getElementById('checkWarrantyBtn');
-    checkBtn.disabled = true;
-    checkBtn.innerHTML = '<i data-lucide="loader" class="spinning"></i> 查询中...';
-    if (window.lucide) lucide.createIcons();
-
-    try {
-        const response = await fetch('/warranty/check', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                email: email || null,
-                code: code || null
-            })
-        });
-
-        const data = await response.json();
-
-        if (response.ok && data.success) {
-            showWarrantyResult(data);
-        } else {
-            showToast(data.error || data.detail || '查询失败', 'error');
-        }
-    } catch (error) {
-        showToast('网络错误，请稍后重试', 'error');
-    } finally {
-        checkBtn.disabled = false;
-        checkBtn.innerHTML = '<i data-lucide="search"></i> 查询质保状态';
-        if (window.lucide) lucide.createIcons();
-    }
+    showToast('前台质保查询暂时停用，请联系客服再次获取兑换码', 'info');
 }
 
 // 显示质保查询结果
@@ -643,21 +592,5 @@ async function enableUserDeviceAuth(teamId, code, email) {
 
 // 从成功页面跳转到质保查询
 function goToWarrantyFromSuccess() {
-    const warrantyInput = document.getElementById('warrantyInput');
-    // 优先填入邮箱，因为邮箱查询更全面
-    warrantyInput.value = currentEmail || currentCode || '';
-
-    // 切换视图
-    document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-    document.getElementById('step1').classList.add('active');
-    document.getElementById('step3').style.display = 'none';
-
-    // 滚动到质保区域
-    const warrantySection = document.querySelector('.warranty-section');
-    if (warrantySection) {
-        warrantySection.scrollIntoView({ behavior: 'smooth' });
-    }
-
-    // 自动触发查询
-    checkWarranty();
+    showToast('前台质保查询暂时停用，请联系客服再次获取兑换码', 'info');
 }

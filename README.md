@@ -22,6 +22,7 @@ git pull && docker compose down && docker compose up -d --build
 ### 管理员功能
 - **Team 账号管理**
   - 单个/批量导入 Team 账号（支持任意格式的 AT Token）
+  - 导入后按默认 5 席位自动生成剩余席位数的绑定兑换码
   - 智能识别和提取 AT Token、邮箱、Account ID
   - 自动同步 Team 信息（名称、订阅计划、到期时间、成员数）
   - Team 成员管理（查看、添加、删除成员）

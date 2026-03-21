@@ -13,11 +13,14 @@ from sqlalchemy.orm import selectinload
 from app.models import Team, TeamAccount, RedemptionCode
 from app.services.chatgpt import ChatGPTService
 from app.services.encryption import encryption_service
+from app.services.redemption import RedemptionService
 from app.utils.token_parser import TokenParser
 from app.utils.jwt_parser import JWTParser
 from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_TEAM_MAX_MEMBERS = 5
 
 
 class TeamService:
@@ -29,6 +32,7 @@ class TeamService:
         self.chatgpt_service = chatgpt_service
         self.token_parser = TokenParser()
         self.jwt_parser = JWTParser()
+        self.redemption_service = RedemptionService()
 
     async def _handle_api_error(self, result: Dict[str, Any], team: Team, db_session: AsyncSession) -> bool:
         """
@@ -406,6 +410,7 @@ class TeamService:
 
             # 4. 循环处理这些账户
             imported_ids = []
+            imported_team_details = []
             skipped_ids = []
             
             for selected_account in accounts_to_import:
@@ -462,8 +467,8 @@ class TeamService:
                     beta_settings = settings_result["data"].get("beta_settings", {})
                     device_code_auth_enabled = beta_settings.get("codex_device_code_auth", False)
 
-                # 确定状态和最大成员数 (默认 6)
-                max_members = 6
+                # 确定状态和最大成员数 (默认 5)
+                max_members = DEFAULT_TEAM_MAX_MEMBERS
                 status = "active"
                 if current_members >= max_members:
                     status = "full"
@@ -508,8 +513,33 @@ class TeamService:
                         is_primary=(acc["account_id"] == selected_account["account_id"])
                     )
                     db_session.add(team_account)
-                
+
+                remaining_seats = max(max_members - current_members, 0)
+                generated_codes = []
+                if remaining_seats > 0:
+                    generate_result = await self.redemption_service.generate_code_batch(
+                        db_session=db_session,
+                        count=remaining_seats,
+                        bound_team_id=team.id,
+                        commit=False
+                    )
+                    if not generate_result["success"]:
+                        raise Exception(
+                            f"为 Team {team.team_name or team.id} 自动生成兑换码失败: {generate_result['error']}"
+                        )
+                    generated_codes = generate_result.get("codes", [])
+
                 imported_ids.append(team.id)
+                imported_team_details.append({
+                    "team_id": team.id,
+                    "account_id": team.account_id,
+                    "team_name": team.team_name,
+                    "current_members": current_members,
+                    "max_members": max_members,
+                    "remaining_seats": remaining_seats,
+                    "generated_codes": generated_codes,
+                    "generated_code_count": len(generated_codes)
+                })
 
             # 5. 返回结果总结
             if not imported_ids and skipped_ids:
@@ -532,7 +562,9 @@ class TeamService:
 
             await db_session.commit()
 
-            message = f"成功导入 {len(imported_ids)} 个 Team 账号"
+            total_generated_codes = sum(item["generated_code_count"] for item in imported_team_details)
+
+            message = f"成功导入 {len(imported_ids)} 个 Team 账号，并自动生成 {total_generated_codes} 个绑定兑换码"
             if skipped_ids:
                 message += f" (另有 {len(skipped_ids)} 个已存在)"
 
@@ -541,7 +573,11 @@ class TeamService:
             return {
                 "success": True,
                 "team_id": imported_ids[0],
+                "team_ids": imported_ids,
                 "email": email,
+                "imported_teams": imported_team_details,
+                "generated_codes": [code for item in imported_team_details for code in item["generated_codes"]],
+                "generated_code_count": total_generated_codes,
                 "message": message,
                 "error": None
             }
@@ -782,6 +818,10 @@ class TeamService:
                         "account_id": data.get("account_id", "未指定"),
                         "success": result["success"],
                         "team_id": result["team_id"],
+                        "team_ids": result.get("team_ids", []),
+                        "imported_teams": result.get("imported_teams", []),
+                        "generated_codes": result.get("generated_codes", []),
+                        "generated_code_count": result.get("generated_code_count", 0),
                         "message": result["message"],
                         "error": result["error"]
                     }
@@ -1869,9 +1909,26 @@ class TeamService:
             result = await db_session.execute(final_stmt)
             teams = result.scalars().all()
 
+            team_ids = [team.id for team in teams]
+            bound_codes_map = {}
+            if team_ids:
+                codes_stmt = select(RedemptionCode).where(RedemptionCode.bound_team_id.in_(team_ids)).order_by(
+                    RedemptionCode.created_at.desc()
+                )
+                codes_result = await db_session.execute(codes_stmt)
+                bound_codes = codes_result.scalars().all()
+
+                for code in bound_codes:
+                    bound_codes_map.setdefault(code.bound_team_id, []).append({
+                        "code": code.code,
+                        "status": code.status,
+                        "used_by_email": code.used_by_email
+                    })
+
             # 构建返回数据
             team_list = []
             for team in teams:
+                bound_codes_for_team = bound_codes_map.get(team.id, [])
                 team_list.append({
                     "id": team.id,
                     "email": team.email,
@@ -1882,6 +1939,8 @@ class TeamService:
                     "expires_at": team.expires_at.isoformat() if team.expires_at else None,
                     "current_members": team.current_members,
                     "max_members": team.max_members,
+                    "bound_code_count": len(bound_codes_for_team),
+                    "bound_codes": bound_codes_for_team,
                     "status": team.status,
                     "device_code_auth_enabled": getattr(team, 'device_code_auth_enabled', False),
                     "last_sync": team.last_sync.isoformat() if team.last_sync else None,
@@ -1983,6 +2042,8 @@ class TeamService:
             # 1.5 处理 RedemptionCode 关联 (置空)
             update_stmt = update(RedemptionCode).where(RedemptionCode.used_team_id == team_id).values(used_team_id=None)
             await db_session.execute(update_stmt)
+            bound_update_stmt = update(RedemptionCode).where(RedemptionCode.bound_team_id == team_id).values(bound_team_id=None)
+            await db_session.execute(bound_update_stmt)
 
             # 2. 删除 Team (级联删除 team_accounts 和 redemption_records)
             await db_session.delete(team)

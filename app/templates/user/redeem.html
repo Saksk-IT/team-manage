@@ -44,36 +44,20 @@
                     </button>
                 </form>
 
-                <!-- 质保查询区域 -->
+                <!-- 质保说明区域 -->
                 <div class="warranty-section"
                     style="margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--border-base);">
                     <h3 style="font-size: 1.1rem; margin-bottom: 15px; color: var(--text-primary);">
                         <i data-lucide="shield" style="width: 18px; height: 18px; vertical-align: middle;"></i>
-                        质保查询
+                        质保说明
                     </h3>
-                    <p class="form-help" style="margin-bottom: 15px;">
-                        如果您使用质保兑换码加入的 Team 被封号，可以在质保期内（一个月）重复使用原兑换码
-                    </p>
-                    <div class="form-group" style="margin-bottom: 15px;">
-                        <input type="text" id="warrantyInput" placeholder="请输入原兑换码或邮箱进行查询" class="form-input">
+                    <div
+                        style="padding: 16px 18px; border-radius: 12px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.18); color: var(--text-primary); line-height: 1.7;">
+                        <div style="font-weight: 600; margin-bottom: 8px;">前台质保查询已暂时停用</div>
+                        <div style="font-size: 0.95rem; color: var(--text-secondary);">
+                            质保期间如果您使用兑换码加入的 Team 被封号，可以在质保期内（一个月）联系客服，再次获取兑换码。
+                        </div>
                     </div>
-                    <button type="button" class="btn btn-secondary" id="checkWarrantyBtn" onclick="checkWarranty()"
-                        style="width: 100%;">
-                        <i data-lucide="search"></i> 查询质保状态
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 质保查询结果 -->
-        <div id="warrantyResult" class="step" style="display: none;">
-            <div class="card">
-                <h2>质保查询结果</h2>
-                <div id="warrantyContent">
-                    <!-- 质保结果将通过JavaScript动态生成 -->
-                </div>
-                <div class="actions" style="margin-top: 20px;">
-                    <button onclick="backToStep1()" class="btn btn-secondary">返回</button>
                 </div>
             </div>
         </div>

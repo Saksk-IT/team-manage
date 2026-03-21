@@ -40,7 +40,7 @@
 </div>
 
 <!-- Team 列表 -->
-<div class="content-section">
+<div class="content-section sticky-toolbar-section">
     <div class="section-header">
         <h3>Team 列表</h3>
         <div class="header-group">
@@ -130,7 +130,7 @@
 </div>
 
 {% if teams %}
-<div class="table-container">
+<div class="table-container table-sticky-edges">
     <table class="data-table">
         <thead>
             <tr>
@@ -155,10 +155,22 @@
                 </td>
                 <td><span class="text-muted">{{ team.id }}</span></td>
                 <td>
-                    {{ team.email }}
-                    {% if team.account_role and team.account_role != 'account-owner' %}
-                    <span class="role-hint" title="账号角色: {{ team.account_role }}">已降级</span>
-                    {% endif %}
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-width: 260px;">
+                        <div style="min-width: 0;">
+                            <div>{{ team.email }}</div>
+                            {% if team.account_role and team.account_role != 'account-owner' %}
+                            <span class="role-hint" title="账号角色: {{ team.account_role }}">已降级</span>
+                            {% endif %}
+                        </div>
+                        {% if team.bound_codes %}
+                        <button type="button"
+                            class="btn btn-sm btn-secondary btn-show-bound-codes"
+                            data-email="{{ team.email }}"
+                            data-codes='{{ team.bound_codes | tojson | e }}'>
+                            兑换码 {{ team.bound_code_count }}
+                        </button>
+                        {% endif %}
+                    </div>
                 </td>
                 <td><span class="text-muted small">{{ team.account_id or '-' }}</span></td>
                 <td>{{ team.team_name or '-' }}</td>
@@ -324,6 +336,20 @@
 {% endif %}
 </div>
 
+<!-- 查看绑定兑换码模态框 -->
+<div id="boundCodesModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>绑定兑换码</h3>
+            <button class="modal-close" onclick="hideModal('boundCodesModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="boundCodesTargetEmail" class="text-muted" style="margin-bottom: 0.75rem;"></div>
+            <textarea id="boundCodesContent" class="form-control" rows="10" readonly></textarea>
+        </div>
+    </div>
+</div>
+
 <!-- 编辑 Team 模态框 -->
 <div id="editTeamModal" class="modal-overlay">
     <div class="modal">
@@ -448,7 +474,28 @@
                 enableDeviceAuth(id);
             });
         });
+
+        // 绑定查看兑换码按钮
+        document.querySelectorAll('.btn-show-bound-codes').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const email = btn.getAttribute('data-email') || '';
+                const codes = JSON.parse(btn.getAttribute('data-codes') || '[]');
+                showBoundCodes(email, codes);
+            });
+        });
     });
+
+    function showBoundCodes(email, codes) {
+        const emailEl = document.getElementById('boundCodesTargetEmail');
+        const contentEl = document.getElementById('boundCodesContent');
+        if (!emailEl || !contentEl) return;
+
+        const lines = (codes || []).map(item => item.code);
+
+        emailEl.textContent = `${email} · 共 ${lines.length} 个兑换码`;
+        contentEl.value = lines.join('\n');
+        showModal('boundCodesModal');
+    }
 
     async function enableDeviceAuth(teamId) {
         if (!confirm('确定要为该 Team 开启设备代码身份验证吗?')) {
@@ -578,7 +625,7 @@
                 document.getElementById('edit-team-session-token').value = team.session_token || '';
                 document.getElementById('edit-team-client-id').value = team.client_id || '';
                 document.getElementById('edit-team-account-id').value = team.account_id || '';
-                document.getElementById('edit-team-max-members').value = team.max_members || 6;
+                document.getElementById('edit-team-max-members').value = team.max_members || 5;
                 document.getElementById('edit-team-name').value = team.team_name || '';
                 document.getElementById('edit-team-status').value = team.status || 'active';
                 document.getElementById('edit-team-role').value = team.account_role || '未知';

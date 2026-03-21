@@ -77,6 +77,48 @@ class RedeemFlowService:
                 }
 
             # 2. 获取可用 Team 列表
+            redemption_code = validate_result.get("redemption_code")
+            bound_team_id = getattr(redemption_code, "bound_team_id", None)
+            is_unused_bound_code = getattr(redemption_code, "status", None) == "unused" and bound_team_id
+
+            if is_unused_bound_code:
+                stmt = select(Team).where(Team.id == bound_team_id)
+                result = await db_session.execute(stmt)
+                bound_team = result.scalar_one_or_none()
+
+                if not bound_team:
+                    return {
+                        "success": True,
+                        "valid": False,
+                        "reason": "该兑换码绑定的 Team 不存在，请联系管理员处理",
+                        "teams": [],
+                        "error": None
+                    }
+
+                if bound_team.status != "active" or bound_team.current_members >= bound_team.max_members:
+                    return {
+                        "success": True,
+                        "valid": False,
+                        "reason": "该兑换码绑定的 Team 当前不可用，请联系管理员处理",
+                        "teams": [],
+                        "error": None
+                    }
+
+                return {
+                    "success": True,
+                    "valid": True,
+                    "reason": "兑换码有效",
+                    "teams": [{
+                        "id": bound_team.id,
+                        "team_name": bound_team.team_name,
+                        "current_members": bound_team.current_members,
+                        "max_members": bound_team.max_members,
+                        "expires_at": bound_team.expires_at.isoformat() if bound_team.expires_at else None,
+                        "subscription_plan": bound_team.subscription_plan
+                    }],
+                    "error": None
+                }
+
             teams_result = await self.team_service.get_available_teams(db_session)
 
             if not teams_result["success"]:
@@ -175,6 +217,7 @@ class RedeemFlowService:
         core_success = False
         success_result = None
         team_id_final = None
+        bound_team_locked = False
 
         # 针对 code 加锁，防止同一个码并发进入兑换
         async with _code_locks[code]:
@@ -182,6 +225,20 @@ class RedeemFlowService:
                 logger.info(f"兑换尝试 {attempt + 1}/{max_retries} (Code: {code}, Email: {email})")
                 
                 try:
+                    code_result = await db_session.execute(
+                        select(RedemptionCode).where(RedemptionCode.code == code)
+                    )
+                    redemption_code = code_result.scalar_one_or_none()
+                    if not redemption_code:
+                        return {"success": False, "error": "兑换码不存在"}
+
+                    bound_team_id = redemption_code.bound_team_id if redemption_code.status == "unused" else None
+                    bound_team_locked = bool(bound_team_id)
+                    if bound_team_locked:
+                        if team_id and team_id != bound_team_id:
+                            return {"success": False, "error": "该兑换码已绑定固定 Team，不支持切换其他 Team"}
+                        current_target_team_id = bound_team_id
+
                     # 确定目标 Team (初选)
                     team_id_final = current_target_team_id
                     if not team_id_final:
@@ -235,11 +292,20 @@ class RedeemFlowService:
                             res = await db_session.execute(stmt)
                             target_team = res.scalar_one_or_none()
                             
-                            if not target_team or target_team.status != "active":
-                                raise Exception(f"目标 Team {team_id_final} 不可用 ({target_team.status if target_team else 'None'})")
+                            if not target_team:
+                                if bound_team_locked:
+                                    raise Exception("该兑换码绑定的 Team 不存在，请联系管理员处理")
+                                raise Exception(f"目标 Team {team_id_final} 不存在")
+                            
+                            if target_team.status != "active":
+                                if bound_team_locked:
+                                    raise Exception("该兑换码绑定的 Team 当前不可用，请联系管理员处理")
+                                raise Exception(f"目标 Team {team_id_final} 不可用 ({target_team.status})")
                             
                             if target_team.current_members >= target_team.max_members:
                                 target_team.status = "full"
+                                if bound_team_locked:
+                                    raise Exception("该兑换码绑定的 Team 已满，请联系管理员处理")
                                 raise Exception("该 Team 已满, 请选择其他 Team 尝试")
 
                             # 提取必要信息后立即提交，释放 DB 锁以进行耗时的 API 调用
@@ -285,6 +351,8 @@ class RedeemFlowService:
                                     if any(kw in err_str for kw in ["maximum number of seats", "full", "no seats"]):
                                         target_team.status = "full"
                                         await db_session.commit()
+                                        if bound_team_locked:
+                                            raise Exception("该兑换码绑定的 Team 已满，请联系管理员处理")
                                         raise Exception(f"该 Team 席位已满 (API Error: {err})")
                                     await db_session.rollback()
                                     raise Exception(err)
@@ -349,21 +417,23 @@ class RedeemFlowService:
                         pass
                     
                     # 判读是否中断重试
-                    if any(kw in last_error for kw in ["不存在", "已使用", "已有正在使用", "质保已过期"]):
+                    if any(kw in last_error for kw in ["不存在", "已使用", "已有正在使用", "质保已过期", "绑定的 Team"]):
                         return {"success": False, "error": last_error}
 
                     # 判定是否需要永久标记为“满员”
                     if any(kw in last_error.lower() for kw in ["已满", "seats", "full"]):
                         try:
-                            if not team_id:
-                                from sqlalchemy import update as sqlalchemy_update
-                                await db_session.execute(
-                                    sqlalchemy_update(Team).where(Team.id == team_id_final).values(status="full")
-                                )
-                                await db_session.commit()
-                            current_target_team_id = None
+                            from sqlalchemy import update as sqlalchemy_update
+                            await db_session.execute(
+                                sqlalchemy_update(Team).where(Team.id == team_id_final).values(status="full")
+                            )
+                            await db_session.commit()
                         except:
                             pass
+                        if bound_team_locked:
+                            return {"success": False, "error": last_error}
+                        if not team_id:
+                            current_target_team_id = None
                     
                     if attempt < max_retries - 1:
                         await asyncio.sleep(1.5 * (attempt + 1))

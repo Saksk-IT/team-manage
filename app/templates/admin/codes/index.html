@@ -40,7 +40,7 @@
 </div>
 
 <!-- 操作栏 -->
-<div class="content-section">
+<div class="content-section sticky-toolbar-section">
     <div class="section-header">
         <div class="header-group">
             <div class="filter-tabs">
@@ -92,7 +92,7 @@
 <!-- 兑换码列表 -->
 <div class="content-section">
     {% if codes %}
-    <div class="table-container">
+    <div class="table-container table-sticky-edges">
         <table class="data-table">
             <thead>
                 <tr>
@@ -101,6 +101,7 @@
                             style="width: auto; margin: 0;">
                     </th>
                     <th>兑换码</th>
+                    <th>绑定账号</th>
                     <th>状态</th>
                     <th>创建时间</th>
                     <th>过期时间</th>
@@ -123,6 +124,13 @@
                             <i data-lucide="ticket" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
                             <code>{{ code.code }}</code>
                         </div>
+                    </td>
+                    <td>
+                        {% if code.bound_team_id %}
+                        <span>{{ code.bound_team_email or '-' }}</span>
+                        {% else %}
+                        <span class="text-muted">未绑定</span>
+                        {% endif %}
                     </td>
                     <td>
                         {% if code.status == 'unused' %}

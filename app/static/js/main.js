@@ -37,6 +37,64 @@ function formatDateTime(dateString) {
     return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
+function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) {
+        return '';
+    }
+
+    return String(unsafe)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function renderImportedTeamsSummary(importedTeams = []) {
+    if (!importedTeams.length) {
+        return '<div class="text-muted">本次未生成绑定兑换码。</div>';
+    }
+
+    return importedTeams.map(team => `
+        <div style="padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <div style="font-weight: 600; margin-bottom: 0.25rem;">
+                ${escapeHtml(team.team_name || `Team ${team.team_id}`)} <span style="color: var(--text-muted);">#${team.team_id}</span>
+            </div>
+            <div style="font-size: 0.875rem; color: var(--text-muted); line-height: 1.6;">
+                当前成员 ${team.current_members}/${team.max_members}，剩余席位 ${team.remaining_seats}，自动生成 ${team.generated_code_count} 个绑定兑换码
+            </div>
+        </div>
+    `).join('');
+}
+
+function collectImportedCodes(importedTeams = []) {
+    return importedTeams.flatMap(team => Array.isArray(team.generated_codes) ? team.generated_codes : []);
+}
+
+function showSingleImportResult(importedTeams = []) {
+    const resultBox = document.getElementById('singleImportResult');
+    const summaryBox = document.getElementById('singleImportSummary');
+    const codesBox = document.getElementById('singleImportCodes');
+
+    if (!resultBox || !summaryBox || !codesBox) {
+        return;
+    }
+
+    summaryBox.innerHTML = renderImportedTeamsSummary(importedTeams);
+    codesBox.value = collectImportedCodes(importedTeams).join('\n');
+    resultBox.style.display = 'block';
+}
+
+async function copySingleImportCodes() {
+    const codesBox = document.getElementById('singleImportCodes');
+    if (!codesBox || !codesBox.value.trim()) {
+        showToast('暂无可复制的兑换码', 'error');
+        return;
+    }
+
+    await copyToClipboard(codesBox.value.trim());
+}
+
 // 登出函数
 async function logout() {
     if (!confirm('确定要登出吗?')) {
@@ -91,10 +149,42 @@ function confirmAction(message) {
     return confirm(message);
 }
 
+function applyDensityMode(mode) {
+    const isCompact = mode === 'compact';
+    document.body.classList.toggle('compact-mode', isCompact);
+
+    const btn = document.getElementById('densityToggleBtn');
+    if (btn) {
+        btn.innerHTML = isCompact
+            ? '<i data-lucide="panel-top-close" style="width: 14px; height: 14px;"></i> 舒展模式'
+            : '<i data-lucide="panel-top-open" style="width: 14px; height: 14px;"></i> 紧凑模式';
+    }
+
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+}
+
+function initDensityMode() {
+    if (!document.body.classList.contains('admin-shell')) {
+        return;
+    }
+
+    const savedMode = localStorage.getItem('admin_density_mode') || 'comfortable';
+    applyDensityMode(savedMode);
+}
+
+function toggleDensityMode() {
+    const nextMode = document.body.classList.contains('compact-mode') ? 'comfortable' : 'compact';
+    localStorage.setItem('admin_density_mode', nextMode);
+    applyDensityMode(nextMode);
+}
+
 // 页面加载完成后执行
 document.addEventListener('DOMContentLoaded', function () {
     // 检查认证状态
     checkAuthStatus();
+    initDensityMode();
 });
 
 // 检查认证状态
@@ -201,9 +291,11 @@ async function handleSingleImport(event) {
         });
 
         if (result.success) {
-            showToast('Team 导入成功！', 'success');
+            const importedTeams = result.data.imported_teams || [];
+            const generatedCodeCount = result.data.generated_code_count || 0;
+            showSingleImportResult(importedTeams);
+            showToast(`Team 导入成功，已自动生成 ${generatedCodeCount} 个绑定兑换码`, 'success');
             form.reset();
-            setTimeout(() => location.reload(), 1500);
         } else {
             showToast(result.error || '导入失败', 'error');
         }
@@ -296,11 +388,33 @@ async function handleBatchImport(event) {
                             const res = data.last_result;
                             const statusClass = res.success ? 'text-success' : 'text-danger';
                             const statusText = res.success ? '成功' : '失败';
+                            const detailsHtml = res.success && Array.isArray(res.imported_teams) && res.imported_teams.length
+                                ? `
+                                    <div style="margin-top: 0.5rem; font-size: 0.875rem; line-height: 1.6;">
+                                        ${res.imported_teams.map(team => `
+                                            <div style="margin-bottom: 0.5rem;">
+                                                <strong>${escapeHtml(team.team_name || `Team ${team.team_id}`)}</strong>
+                                                <span style="color: var(--text-muted);">#${team.team_id}</span>
+                                                ：剩余 ${team.remaining_seats} 席，已生成 ${team.generated_code_count} 个绑定码
+                                                ${team.generated_codes && team.generated_codes.length ? `
+                                                    <div style="margin-top: 0.25rem; word-break: break-all;">
+                                                        <code>${escapeHtml(team.generated_codes.join(', '))}</code>
+                                                    </div>
+                                                ` : ''}
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                `
+                                : '';
+
                             const row = document.createElement('tr');
                             row.innerHTML = `
-                                <td>${res.email}</td>
+                                <td>${escapeHtml(res.email)}</td>
                                 <td class="${statusClass}">${statusText}</td>
-                                <td>${res.success ? (res.message || '导入成功') : res.error}</td>
+                                <td>
+                                    <div>${escapeHtml(res.success ? (res.message || '导入成功') : (res.error || '导入失败'))}</div>
+                                    ${detailsHtml}
+                                </td>
                             `;
                             // 插入到最前面，方便看到最新的
                             resultsBody.insertBefore(row, resultsBody.firstChild);
@@ -312,14 +426,9 @@ async function handleBatchImport(event) {
                         finalSummaryEl.textContent = `总数: ${data.total} | 成功: ${data.success_count} | 失败: ${data.failed_count}`;
 
                         if (data.failed_count === 0) {
-                            showToast('全部导入成功！', 'success');
+                            showToast('全部导入成功，自动生成的绑定兑换码已显示在明细中', 'success');
                         } else {
                             showToast(`导入完成，成功 ${data.success_count} 条，失败 ${data.failed_count} 条`, 'warning');
-                        }
-
-                        // 刷新页面以显示新数据
-                        if (data.success_count > 0) {
-                            setTimeout(() => location.reload(), 3000);
                         }
                     } else if (data.type === 'error') {
                         showToast(data.error, 'error');

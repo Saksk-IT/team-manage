@@ -12,7 +12,7 @@
     {% block extra_css %}{% endblock %}
 </head>
 
-<body class="bg-gray-50 text-slate-900">
+<body class="{% if user %}admin-shell {% endif %}bg-gray-50 text-slate-900">
     {% if user %}
     <!-- 导航栏 -->
     <nav class="navbar">
@@ -27,6 +27,9 @@
             </div>
             <div class="navbar-menu">
                 <span class="navbar-user">管理员</span>
+                <button id="densityToggleBtn" type="button" class="btn btn-secondary btn-sm" onclick="toggleDensityMode()">
+                    紧凑模式
+                </button>
                 <button onclick="logout()" class="btn btn-secondary">登出</button>
             </div>
         </div>
@@ -143,8 +146,21 @@
                                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
                             <small class="form-text">可选，如果不填写将从 API 自动获取</small>
                         </div>
+                        <div class="form-group">
+                            <small class="form-text">
+                                导入后会按每个 Team 默认总席位 5 人，自动根据实际剩余席位生成同数量的绑定兑换码。
+                            </small>
+                        </div>
                         <button type="submit" class="btn btn-primary">导入</button>
                     </form>
+                    <div id="singleImportResult" style="display: none; margin-top: 1rem; padding: 1rem; border: 1px solid var(--border-base); border-radius: 12px; background: rgba(255,255,255,0.03);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem;">
+                            <h4 style="margin: 0;">自动生成的绑定兑换码</h4>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="copySingleImportCodes()">复制全部</button>
+                        </div>
+                        <div id="singleImportSummary" style="margin-bottom: 0.75rem;"></div>
+                        <textarea id="singleImportCodes" class="form-control" rows="8" readonly placeholder="导入成功后会显示自动生成的兑换码"></textarea>
+                    </div>
                 </div>
 
                 <div id="batchImport" class="import-panel" style="display: none;">

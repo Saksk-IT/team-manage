@@ -8,7 +8,6 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.services.warranty import warranty_service
 
 router = APIRouter(
     prefix="/warranty",
@@ -58,51 +57,12 @@ async def check_warranty(
     db_session: AsyncSession = Depends(get_db)
 ):
     """
-    检查质保状态
-    
-    用户可以通过邮箱或兑换码查询质保状态
+    前台质保查询暂时停用
     """
-    try:
-        # 验证至少提供一个参数
-        if not request.email and not request.code:
-            raise HTTPException(
-                status_code=400,
-                detail="必须提供邮箱或兑换码"
-            )
-        
-        # 调用质保服务
-        result = await warranty_service.check_warranty_status(
-            db_session,
-            email=request.email,
-            code=request.code
-        )
-        
-        if not result["success"]:
-            raise HTTPException(
-                status_code=500,
-                detail=result.get("error", "查询失败")
-            )
-        
-        return WarrantyCheckResponse(
-            success=True,
-            has_warranty=result.get("has_warranty", False),
-            warranty_valid=result.get("warranty_valid", False),
-            warranty_expires_at=result.get("warranty_expires_at"),
-            banned_teams=result.get("banned_teams", []),
-            can_reuse=result.get("can_reuse", False),
-            original_code=result.get("original_code"),
-            records=result.get("records", []),
-            message=result.get("message"),
-            error=None
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"查询质保状态失败: {str(e)}"
-        )
+    raise HTTPException(
+        status_code=503,
+        detail="前台质保查询暂时停用。质保期间如果您使用兑换码加入的 Team 被封号，请在质保期内（一个月）联系客服，再次获取兑换码。"
+    )
 
 
 class EnableDeviceAuthRequest(BaseModel):
