@@ -276,13 +276,13 @@ class RedemptionService:
                 }
 
             # 2. 检查状态
-            allowed_statuses = ["unused", "warranty_active"]
-            if redemption_code.has_warranty:
-                allowed_statuses.append("used")
-
-            if redemption_code.status not in allowed_statuses:
-                status_text = "已过期" if redemption_code.status == "expired" else redemption_code.status
-                reason = "兑换码已被使用" if redemption_code.status == "used" else f"兑换码{status_text}"
+            if redemption_code.status != "unused":
+                if redemption_code.status in ["used", "warranty_active"]:
+                    reason = "兑换码已被使用，不可用"
+                elif redemption_code.status == "expired":
+                    reason = "兑换码已过期"
+                else:
+                    reason = f"兑换码状态无效: {redemption_code.status}"
                 return {
                     "success": True,
                     "valid": False,

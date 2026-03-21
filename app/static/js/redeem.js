@@ -19,6 +19,15 @@ let currentCode = '';
 let availableTeams = [];
 let selectedTeamId = null;
 
+function setVerifyButtonContent(text) {
+    const verifyBtn = document.getElementById('verifyBtn');
+    if (!verifyBtn) return;
+    verifyBtn.innerHTML = `<i data-lucide="shield-check"></i> ${escapeHtml(text)}`;
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+}
+
 // Toast提示函数
 function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');
@@ -58,7 +67,7 @@ function backToStep1() {
     selectedTeamId = null;
 }
 
-// 步骤1: 验证兑换码并直接兑换
+// 步骤1: 立即兑换
 document.getElementById('verifyForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -78,14 +87,14 @@ document.getElementById('verifyForm').addEventListener('submit', async (e) => {
 
     // 禁用按钮
     verifyBtn.disabled = true;
-    verifyBtn.textContent = '正在兑换...';
+    setVerifyButtonContent('正在兑换...');
 
     // 直接调用兑换接口 (team_id = null 表示自动选择)
     await confirmRedeem(null);
 
     // 恢复按钮状态 (如果 confirmRedeem 失败并显示了错误也没关系，因为用户可以点返回重试)
     verifyBtn.disabled = false;
-    verifyBtn.textContent = '验证兑换码';
+    setVerifyButtonContent('立即兑换');
 });
 
 // 渲染Team列表

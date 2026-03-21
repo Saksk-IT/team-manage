@@ -275,17 +275,13 @@ class RedeemFlowService:
                                 await db_session.rollback()
                                 return {"success": False, "error": "兑换码不存在"}
                             
-                            if rc.status not in ["unused", "warranty_active"]:
-                                if rc.status == "used":
-                                    warranty_check = await self.warranty_service.validate_warranty_reuse(
-                                        db_session, code, email
-                                    )
-                                    if not warranty_check.get("can_reuse"):
-                                        await db_session.rollback()
-                                        return {"success": False, "error": warranty_check.get("reason") or "兑换码已使用"}
-                                else:
-                                    await db_session.rollback()
-                                    return {"success": False, "error": f"兑换码状态无效: {rc.status}"}
+                            if rc.status != "unused":
+                                await db_session.rollback()
+                                if rc.status in ["used", "warranty_active"]:
+                                    return {"success": False, "error": "兑换码已被使用，不可用"}
+                                if rc.status == "expired":
+                                    return {"success": False, "error": "兑换码已过期"}
+                                return {"success": False, "error": f"兑换码状态无效: {rc.status}"}
 
                             # 2. 锁定并校验 Team
                             stmt = select(Team).where(Team.id == team_id_final).with_for_update()
