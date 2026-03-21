@@ -53,6 +53,7 @@ nul
 # Temporary files
 *.tmp
 *.bak
+.codex-admin-*.png
 
 # Environment variables
 .env
