@@ -40,6 +40,7 @@ class AdminCodeExportTests(unittest.IsolatedAsyncioTestCase):
             search=None,
             status=None,
             selected_codes=["CODE-001", "CODE-002"],
+            bound_team_id=None,
         )
 
     async def test_excel_export_returns_excel_media_type(self):
@@ -74,6 +75,35 @@ class AdminCodeExportTests(unittest.IsolatedAsyncioTestCase):
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         self.assertTrue(response.body.startswith(b"PK"))
+
+    async def test_team_export_scope_passes_bound_team_id(self):
+        db_session = object()
+        mocked_result = {
+            "success": True,
+            "codes": [
+                {"code": "TEAM-CODE-001", "status": "unused"},
+            ],
+        }
+
+        with patch(
+            "app.routes.admin.redemption_service.get_all_codes",
+            new=AsyncMock(return_value=mocked_result)
+        ) as mocked_get_all_codes:
+            response = await _build_codes_export_response(
+                CodeExportRequest(team_id=7, export_format="text"),
+                db=db_session,
+            )
+
+        self.assertEqual(response.body.decode("utf-8"), "TEAM-CODE-001")
+        mocked_get_all_codes.assert_awaited_once_with(
+            db_session,
+            page=1,
+            per_page=100000,
+            search=None,
+            status=None,
+            selected_codes=None,
+            bound_team_id=7,
+        )
 
     async def test_invalid_export_format_raises_bad_request(self):
         with self.assertRaises(HTTPException) as context:

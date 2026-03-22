@@ -7,11 +7,13 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 import json
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
 from app.database import get_db
 from app.dependencies.auth import require_admin
+from app.models import Team, RedemptionCode
 from app.services.team import TeamService
 from app.services.redemption import RedemptionService
 from app.utils.time_utils import get_now
@@ -89,6 +91,7 @@ class CodeExportRequest(BaseModel):
     codes: List[str] = Field(default_factory=list, description="勾选的兑换码列表")
     search: Optional[str] = Field(None, description="搜索关键词")
     status_filter: Optional[str] = Field(None, description="状态筛选")
+    team_id: Optional[int] = Field(None, description="绑定的 Team ID")
     export_format: str = Field("excel", description="导出格式: excel 或 text")
 
 
@@ -708,6 +711,7 @@ async def codes_list_page(
     per_page: int = 50,
     search: Optional[str] = None,
     status_filter: Optional[str] = None,
+    team_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
@@ -729,12 +733,41 @@ async def codes_list_page(
     try:
         from app.main import templates
 
-        logger.info(f"管理员访问兑换码列表页面, search={search}, status={status_filter}, per_page={per_page}")
+        logger.info(
+            f"管理员访问兑换码列表页面, search={search}, status={status_filter}, team_id={team_id}, per_page={per_page}"
+        )
+
+        team_options_stmt = (
+            select(
+                Team.id,
+                Team.email,
+                Team.team_name,
+                func.count(RedemptionCode.id).label("code_count")
+            )
+            .join(RedemptionCode, RedemptionCode.bound_team_id == Team.id)
+            .group_by(Team.id, Team.email, Team.team_name)
+            .order_by(Team.created_at.desc())
+        )
+        team_options_result = await db.execute(team_options_stmt)
+        team_options = [
+            {
+                "id": row.id,
+                "email": row.email,
+                "team_name": row.team_name,
+                "code_count": row.code_count
+            }
+            for row in team_options_result
+        ]
 
         # 获取兑换码 (分页)
         # per_page = 50 (Removed hardcoded value)
         codes_result = await redemption_service.get_all_codes(
-            db, page=page, per_page=per_page, search=search, status=status_filter
+            db,
+            page=page,
+            per_page=per_page,
+            search=search,
+            status=status_filter,
+            bound_team_id=team_id
         )
         codes = codes_result.get("codes", [])
         total_codes = codes_result.get("total", 0)
@@ -769,6 +802,8 @@ async def codes_list_page(
                 "stats": stats,
                 "search": search,
                 "status_filter": status_filter,
+                "team_options": team_options,
+                "selected_team_id": team_id,
                 "pagination": {
                     "current_page": current_page,
                     "total_pages": total_pages,
@@ -918,6 +953,7 @@ async def delete_code(
 async def export_codes(
     search: Optional[str] = None,
     status_filter: Optional[str] = None,
+    team_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
@@ -934,7 +970,12 @@ async def export_codes(
     """
     try:
         logger.info("管理员导出兑换码为Excel")
-        export_data = CodeExportRequest(search=search, status_filter=status_filter, export_format="excel")
+        export_data = CodeExportRequest(
+            search=search,
+            status_filter=status_filter,
+            team_id=team_id,
+            export_format="excel"
+        )
         return await _build_codes_export_response(export_data, db)
 
     except Exception as e:
@@ -982,10 +1023,12 @@ async def _build_codes_export_response(
 
     search = export_data.search
     status_filter = export_data.status_filter
+    team_id = export_data.team_id
     selected_codes = export_data.codes or None
     if selected_codes:
         search = None
         status_filter = None
+        team_id = None
 
     codes_result = await redemption_service.get_all_codes(
         db,
@@ -993,7 +1036,8 @@ async def _build_codes_export_response(
         per_page=max(len(selected_codes or []), 100000),
         search=search,
         status=status_filter,
-        selected_codes=selected_codes
+        selected_codes=selected_codes,
+        bound_team_id=team_id
     )
 
     if not codes_result.get("success"):

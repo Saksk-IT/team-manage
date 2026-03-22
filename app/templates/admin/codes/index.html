@@ -56,13 +56,44 @@
                     id="filter-expired">已过期</button>
             </div>
 
+            <div class="input-group-clean">
+                <i data-lucide="building-2" style="width: 14px; height: 14px;"></i>
+                <select id="teamFilter" class="form-control team-filter-select" onchange="filterByTeam(this.value)">
+                    <option value="">全部 Team</option>
+                    {% for team in team_options %}
+                    <option value="{{ team.id }}" {% if selected_team_id == team.id %}selected{% endif %}>
+                        {{ team.team_name or '未命名 Team' }}（{{ team.email }}，{{ team.code_count }} 个兑换码）
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
             <form action="/admin/codes" method="get" class="search-form">
+                {% if status_filter %}
+                <input type="hidden" name="status_filter" value="{{ status_filter }}">
+                {% endif %}
+                {% if selected_team_id %}
+                <input type="hidden" name="team_id" value="{{ selected_team_id }}">
+                {% endif %}
+                {% if pagination and pagination.per_page %}
+                <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+                {% endif %}
                 <div class="input-group-clean">
                     <i data-lucide="search" style="width: 14px; height: 14px;"></i>
                     <input type="text" name="search" value="{{ search or '' }}" placeholder="搜索兑换码..."
                         style="width: 180px;">
                     {% if search %}
-                    <a href="/admin/codes" title="清除搜索">
+                    {% set clear_search_query = [] %}
+                    {% if status_filter %}
+                    {% set _ = clear_search_query.append('status_filter=' + status_filter|urlencode) %}
+                    {% endif %}
+                    {% if selected_team_id %}
+                    {% set _ = clear_search_query.append('team_id=' + selected_team_id|string) %}
+                    {% endif %}
+                    {% if pagination and pagination.per_page %}
+                    {% set _ = clear_search_query.append('per_page=' + pagination.per_page|string) %}
+                    {% endif %}
+                    <a href="/admin/codes{% if clear_search_query %}?{{ clear_search_query|join('&') }}{% endif %}" title="清除搜索">
                         <i data-lucide="x-circle" style="width: 14px; height: 14px;"></i>
                     </a>
                     {% endif %}
@@ -218,8 +249,9 @@
         {% if pagination.total_pages > 1 %}
         {% set search_param = '&search=' + search|urlencode if search else '' %}
         {% set status_param = '&status_filter=' + status_filter|urlencode if status_filter else '' %}
+        {% set team_param = '&team_id=' + selected_team_id|string if selected_team_id else '' %}
         {% set per_page_param = '&per_page=' + pagination.per_page|string if pagination.per_page != 50 else '' %}
-        {% set base_query = search_param + status_param + per_page_param %}
+        {% set base_query = search_param + status_param + team_param + per_page_param %}
 
         <div class="pagination-controls">
             <!-- 首页 -->
@@ -457,6 +489,13 @@
         cursor: pointer;
         margin-top: 0.75rem;
     }
+
+    .team-filter-select {
+        min-width: 260px;
+        border: none;
+        background: transparent;
+        padding: 0;
+    }
 </style>
 {% endblock %}
 
@@ -544,8 +583,30 @@
         window.location.href = url.toString();
     }
 
+    function filterByTeam(teamId) {
+        const url = new URL(window.location.href);
+        if (teamId) {
+            url.searchParams.set('team_id', teamId);
+        } else {
+            url.searchParams.delete('team_id');
+        }
+        url.searchParams.set('page', 1);
+        window.location.href = url.toString();
+    }
+
     function getSelectedCodes() {
         return Array.from(document.querySelectorAll('.code-checkbox:checked')).map(cb => cb.value);
+    }
+
+    function getSelectedTeamId() {
+        const teamFilter = document.getElementById('teamFilter');
+        return teamFilter && teamFilter.value ? Number(teamFilter.value) : null;
+    }
+
+    function getSelectedTeamLabel() {
+        const teamFilter = document.getElementById('teamFilter');
+        if (!teamFilter || !teamFilter.value) return '';
+        return teamFilter.options[teamFilter.selectedIndex]?.text?.trim() || '';
     }
 
     // 全选/取消全选
@@ -592,6 +653,14 @@
         if (selectedCount > 0) {
             scopeText.innerText = `将导出已勾选的 ${selectedCount} 个兑换码。`;
             scopeSubtext.innerText = '不会导出未勾选的兑换码。';
+            showModal('exportCodesModal');
+            return;
+        }
+
+        const selectedTeamLabel = getSelectedTeamLabel();
+        if (selectedTeamLabel) {
+            scopeText.innerText = `将导出 ${selectedTeamLabel}下的全部兑换码。`;
+            scopeSubtext.innerText = '无需逐个勾选，会按当前所选 Team 整组导出。';
         } else {
             scopeText.innerText = '将导出当前筛选结果。';
             scopeSubtext.innerText = '如果未勾选兑换码，则按当前搜索和状态筛选导出。';
@@ -698,6 +767,7 @@
                     codes: selectedCodes,
                     search: selectedCodes.length > 0 ? null : (urlParams.get('search') || null),
                     status_filter: selectedCodes.length > 0 ? null : (urlParams.get('status_filter') || null),
+                    team_id: selectedCodes.length > 0 ? null : getSelectedTeamId(),
                     export_format: exportFormat
                 })
             });
