@@ -653,6 +653,7 @@ async def batch_enable_device_auth(
         
         success_count = 0
         failed_count = 0
+        failed_items = []
         
         for team_id in action_data.ids:
             try:
@@ -661,15 +662,26 @@ async def batch_enable_device_auth(
                     success_count += 1
                 else:
                     failed_count += 1
+                    failed_items.append({
+                        "team_id": result.get("team_id", team_id),
+                        "email": result.get("email"),
+                        "error": result.get("error", "未知错误")
+                    })
             except Exception as ex:
                 logger.error(f"批量开启 Team {team_id} 设备验证时出错: {ex}")
                 failed_count += 1
+                failed_items.append({
+                    "team_id": team_id,
+                    "email": None,
+                    "error": str(ex)
+                })
         
         return JSONResponse(content={
             "success": True,
             "message": f"批量处理完成: 成功 {success_count}, 失败 {failed_count}",
             "success_count": success_count,
-            "failed_count": failed_count
+            "failed_count": failed_count,
+            "failed_items": failed_items
         })
     except Exception as e:
         logger.error(f"批量处理失败: {e}")

@@ -422,6 +422,24 @@
         </div>
     </div>
 </div>
+
+<div id="batchActionResultModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="batchActionResultTitle">批量操作结果</h3>
+            <button class="modal-close" onclick="hideModal('batchActionResultModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="batchActionResultSummary" class="form-text" style="margin-bottom: 0.75rem;"></div>
+            <textarea id="batchActionResultDetails" class="form-control" rows="12" readonly
+                placeholder="失败详情会显示在这里"></textarea>
+            <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1rem;">
+                <button type="button" class="btn btn-secondary" onclick="copyBatchActionResultDetails()">复制详情</button>
+                <button type="button" class="btn btn-primary" onclick="hideModal('batchActionResultModal')">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_css %}
@@ -789,6 +807,54 @@
         }
     }
 
+    function buildBatchFailedItemsText(actionName, failedItems = []) {
+        const lines = [`${actionName}失败详情（共 ${failedItems.length} 项）`, ''];
+
+        failedItems.forEach((item, index) => {
+            const labelParts = [];
+
+            if (item.email) {
+                labelParts.push(item.email);
+            }
+
+            if (item.team_id !== undefined && item.team_id !== null) {
+                labelParts.push(`#${item.team_id}`);
+            }
+
+            const targetLabel = labelParts.length ? labelParts.join(' ') : `第 ${index + 1} 项`;
+            lines.push(`${index + 1}. ${targetLabel}`);
+            lines.push(`原因: ${item.error || '未知错误'}`);
+            lines.push('');
+        });
+
+        return lines.join('\n').trim();
+    }
+
+    function showBatchActionResultModal(actionName, summary, failedItems = []) {
+        const titleEl = document.getElementById('batchActionResultTitle');
+        const summaryEl = document.getElementById('batchActionResultSummary');
+        const detailsEl = document.getElementById('batchActionResultDetails');
+
+        if (!titleEl || !summaryEl || !detailsEl) {
+            return;
+        }
+
+        titleEl.textContent = `${actionName}结果`;
+        summaryEl.textContent = `${summary}。以下是失败项明细：`;
+        detailsEl.value = buildBatchFailedItemsText(actionName, failedItems);
+        showModal('batchActionResultModal');
+    }
+
+    async function copyBatchActionResultDetails() {
+        const detailsEl = document.getElementById('batchActionResultDetails');
+        if (!detailsEl || !detailsEl.value.trim()) {
+            showToast('暂无可复制的失败详情', 'error');
+            return;
+        }
+
+        await copyToClipboard(detailsEl.value.trim());
+    }
+
     async function handleBatchAction(endpoint, actionName) {
         const selectedIds = Array.from(document.querySelectorAll('.team-checkbox:checked'))
             .map(cb => parseInt(cb.value));
@@ -813,10 +879,16 @@
             });
 
             const result = await response.json();
+            const failedItems = Array.isArray(result.failed_items) ? result.failed_items : [];
 
             if (response.ok && result.success) {
-                showToast(result.message || `${actionName}成功`, 'success');
-                setTimeout(() => location.reload(), 1500);
+                if (failedItems.length > 0) {
+                    showToast(result.message || `${actionName}完成，但有失败项`, 'error');
+                    showBatchActionResultModal(actionName, result.message || `${actionName}完成`, failedItems);
+                } else {
+                    showToast(result.message || `${actionName}成功`, 'success');
+                    setTimeout(() => location.reload(), 1500);
+                }
             } else {
                 showToast(result.error || `${actionName}失败`, 'error');
             }
