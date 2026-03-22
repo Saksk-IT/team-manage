@@ -416,7 +416,8 @@ class RedemptionService:
         page: int = 1,
         per_page: int = 50,
         search: Optional[str] = None,
-        status: Optional[str] = None
+        status: Optional[str] = None,
+        selected_codes: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
         获取所有兑换码
@@ -427,6 +428,7 @@ class RedemptionService:
             per_page: 每页数量
             search: 搜索关键词 (兑换码或邮箱)
             status: 状态筛选
+            selected_codes: 指定导出的兑换码列表
 
         Returns:
             结果字典,包含 success, codes, total, total_pages, current_page, error
@@ -443,7 +445,10 @@ class RedemptionService:
                     RedemptionCode.code.ilike(f"%{search}%"),
                     RedemptionCode.used_by_email.ilike(f"%{search}%")
                 ))
-            
+
+            if selected_codes:
+                filters.append(RedemptionCode.code.in_(selected_codes))
+
             if status:
                 if status == 'used':
                     # "已使用" 在查询中通常指窄义的 used, 但如果要包含质保中, 逻辑如下

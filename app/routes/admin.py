@@ -84,6 +84,14 @@ class BulkCodeUpdateRequest(BaseModel):
     warranty_days: Optional[int] = Field(None, description="质保天数")
 
 
+class CodeExportRequest(BaseModel):
+    """兑换码导出请求"""
+    codes: List[str] = Field(default_factory=list, description="勾选的兑换码列表")
+    search: Optional[str] = Field(None, description="搜索关键词")
+    status_filter: Optional[str] = Field(None, description="状态筛选")
+    export_format: str = Field("excel", description="导出格式: excel 或 text")
+
+
 class BulkActionRequest(BaseModel):
     """批量操作请求"""
     ids: List[int] = Field(..., description="Team ID 列表")
@@ -909,6 +917,7 @@ async def delete_code(
 @router.get("/codes/export")
 async def export_codes(
     search: Optional[str] = None,
+    status_filter: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
@@ -924,89 +933,9 @@ async def export_codes(
         兑换码Excel文件
     """
     try:
-        from fastapi.responses import Response
-        from datetime import datetime
-        import xlsxwriter
-        from io import BytesIO
-
         logger.info("管理员导出兑换码为Excel")
-
-        # 获取所有兑换码 (导出不分页，传入大数量)
-        codes_result = await redemption_service.get_all_codes(db, page=1, per_page=100000, search=search)
-        all_codes = codes_result.get("codes", [])
-        
-        # 结果可能带统计信息，我们只取 codes
-
-        # 创建Excel文件到内存
-        output = BytesIO()
-        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
-        worksheet = workbook.add_worksheet('兑换码列表')
-
-        # 定义格式
-        header_format = workbook.add_format({
-            'bold': True,
-            'fg_color': '#4F46E5',
-            'font_color': 'white',
-            'align': 'center',
-            'valign': 'vcenter',
-            'border': 1
-        })
-
-        cell_format = workbook.add_format({
-            'align': 'left',
-            'valign': 'vcenter',
-            'border': 1
-        })
-
-        # 设置列宽
-        worksheet.set_column('A:A', 25)  # 兑换码
-        worksheet.set_column('B:B', 12)  # 状态
-        worksheet.set_column('C:C', 18)  # 创建时间
-        worksheet.set_column('D:D', 18)  # 过期时间
-        worksheet.set_column('E:E', 30)  # 使用者邮箱
-        worksheet.set_column('F:F', 18)  # 使用时间
-        worksheet.set_column('G:G', 12)  # 质保时长
-
-        # 写入表头
-        headers = ['兑换码', '状态', '创建时间', '过期时间', '使用者邮箱', '使用时间', '质保时长(天)']
-        for col, header in enumerate(headers):
-            worksheet.write(0, col, header, header_format)
-
-        # 写入数据
-        for row, code in enumerate(all_codes, start=1):
-            status_text = {
-                'unused': '未使用',
-                'used': '已使用',
-                'warranty_active': '质保中',
-                'expired': '已过期'
-            }.get(code['status'], code['status'])
-
-            worksheet.write(row, 0, code['code'], cell_format)
-            worksheet.write(row, 1, status_text, cell_format)
-            worksheet.write(row, 2, code.get('created_at', '-'), cell_format)
-            worksheet.write(row, 3, code.get('expires_at', '永久有效'), cell_format)
-            worksheet.write(row, 4, code.get('used_by_email', '-'), cell_format)
-            worksheet.write(row, 5, code.get('used_at', '-'), cell_format)
-            worksheet.write(row, 6, code.get('warranty_days', '-') if code.get('has_warranty') else '-', cell_format)
-
-        # 关闭workbook
-        workbook.close()
-
-        # 获取Excel数据
-        excel_data = output.getvalue()
-        output.close()
-
-        # 生成文件名
-        filename = f"redemption_codes_{get_now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-
-        # 返回Excel文件
-        return Response(
-            content=excel_data,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                "Content-Disposition": f"attachment; filename={filename}"
-            }
-        )
+        export_data = CodeExportRequest(search=search, status_filter=status_filter, export_format="excel")
+        return await _build_codes_export_response(export_data, db)
 
     except Exception as e:
         logger.error(f"导出兑换码失败: {e}")
@@ -1014,6 +943,143 @@ async def export_codes(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"导出失败: {str(e)}"
         )
+
+
+@router.post("/codes/export")
+async def export_codes_with_selection(
+    export_data: CodeExportRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """按勾选项或筛选条件导出兑换码"""
+    try:
+        return await _build_codes_export_response(export_data, db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"导出兑换码失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"导出失败: {str(e)}"
+        )
+
+
+async def _build_codes_export_response(
+    export_data: CodeExportRequest,
+    db: AsyncSession
+):
+    """根据导出请求生成响应"""
+    from fastapi.responses import Response
+    from io import BytesIO
+    import xlsxwriter
+
+    export_format = (export_data.export_format or "excel").lower().strip()
+    if export_format not in {"excel", "text"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不支持的导出格式"
+        )
+
+    search = export_data.search
+    status_filter = export_data.status_filter
+    selected_codes = export_data.codes or None
+    if selected_codes:
+        search = None
+        status_filter = None
+
+    codes_result = await redemption_service.get_all_codes(
+        db,
+        page=1,
+        per_page=max(len(selected_codes or []), 100000),
+        search=search,
+        status=status_filter,
+        selected_codes=selected_codes
+    )
+
+    if not codes_result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=codes_result.get("error") or "获取兑换码失败"
+        )
+
+    all_codes = codes_result.get("codes", [])
+    logger.info(
+        "管理员导出兑换码: format=%s, selected=%s, total=%s",
+        export_format,
+        len(selected_codes or []),
+        len(all_codes)
+    )
+
+    if export_format == "text":
+        text_content = "\n".join(code["code"] for code in all_codes)
+        filename = f"redemption_codes_{get_now().strftime('%Y%m%d_%H%M%S')}.txt"
+        return Response(
+            content=text_content,
+            media_type="text/plain; charset=utf-8",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+
+    output = BytesIO()
+    workbook = xlsxwriter.Workbook(output, {"in_memory": True})
+    worksheet = workbook.add_worksheet("兑换码列表")
+
+    header_format = workbook.add_format({
+        "bold": True,
+        "fg_color": "#4F46E5",
+        "font_color": "white",
+        "align": "center",
+        "valign": "vcenter",
+        "border": 1
+    })
+
+    cell_format = workbook.add_format({
+        "align": "left",
+        "valign": "vcenter",
+        "border": 1
+    })
+
+    worksheet.set_column("A:A", 25)
+    worksheet.set_column("B:B", 12)
+    worksheet.set_column("C:C", 18)
+    worksheet.set_column("D:D", 18)
+    worksheet.set_column("E:E", 30)
+    worksheet.set_column("F:F", 18)
+    worksheet.set_column("G:G", 12)
+
+    headers = ["兑换码", "状态", "创建时间", "过期时间", "使用者邮箱", "使用时间", "质保时长(天)"]
+    for col, header in enumerate(headers):
+        worksheet.write(0, col, header, header_format)
+
+    status_text_map = {
+        "unused": "未使用",
+        "used": "已使用",
+        "warranty_active": "质保中",
+        "expired": "已过期"
+    }
+
+    for row, code in enumerate(all_codes, start=1):
+        worksheet.write(row, 0, code["code"], cell_format)
+        worksheet.write(row, 1, status_text_map.get(code["status"], code["status"]), cell_format)
+        worksheet.write(row, 2, code.get("created_at", "-"), cell_format)
+        worksheet.write(row, 3, code.get("expires_at", "永久有效"), cell_format)
+        worksheet.write(row, 4, code.get("used_by_email", "-"), cell_format)
+        worksheet.write(row, 5, code.get("used_at", "-"), cell_format)
+        worksheet.write(row, 6, code.get("warranty_days", "-") if code.get("has_warranty") else "-", cell_format)
+
+    workbook.close()
+    excel_data = output.getvalue()
+    output.close()
+
+    filename = f"redemption_codes_{get_now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return Response(
+        content=excel_data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+    )
 
 
 @router.post("/codes/{code}/update")

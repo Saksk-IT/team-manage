@@ -82,7 +82,7 @@
             <button onclick="showModal('generateCodeModal')" class="btn btn-primary">
                 <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 生成兑换码
             </button>
-            <button onclick="exportCodes()" class="btn btn-secondary">
+            <button onclick="showExportModal()" class="btn btn-secondary">
                 <i data-lucide="download" style="width: 16px; height: 16px;"></i> 导出
             </button>
         </div>
@@ -192,6 +192,9 @@
             已选择 <span id="selectedCount">0</span> 个兑换码
         </div>
         <div class="bulk-actions">
+            <button onclick="showExportModal()" class="btn btn-secondary">
+                <i data-lucide="download" style="width: 16px; height: 16px;"></i> 批量导出
+            </button>
             <button onclick="showBulkEditModal()" class="btn btn-primary">
                 <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i> 批量修改质保
             </button>
@@ -361,6 +364,42 @@
         </div>
     </div>
 </div>
+
+<!-- 导出兑换码模态框 -->
+<div id="exportCodesModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>导出兑换码</h3>
+            <button class="modal-close" onclick="hideModal('exportCodesModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="alert alert-info export-hint">
+                <div id="exportScopeText">将导出当前筛选结果。</div>
+                <small id="exportScopeSubtext" class="text-muted">如果已勾选兑换码，则优先导出勾选项。</small>
+            </div>
+            <form id="exportCodesForm" onsubmit="handleExportCodes(event)">
+                <div class="form-group">
+                    <label>导出格式</label>
+                    <label class="export-option">
+                        <input type="radio" name="exportFormat" value="excel" checked style="width: auto; margin: 0;">
+                        <div>
+                            <strong>Excel 下载</strong>
+                            <div class="text-muted">导出完整表格信息</div>
+                        </div>
+                    </label>
+                    <label class="export-option">
+                        <input type="radio" name="exportFormat" value="text" style="width: auto; margin: 0;">
+                        <div>
+                            <strong>复制兑换码</strong>
+                            <div class="text-muted">仅复制兑换码，一行一个</div>
+                        </div>
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">确认导出</button>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_css %}
@@ -402,6 +441,21 @@
     .bulk-actions {
         display: flex;
         gap: 0.5rem;
+    }
+
+    .export-hint {
+        margin-bottom: 1rem;
+    }
+
+    .export-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 0.875rem 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        cursor: pointer;
+        margin-top: 0.75rem;
     }
 </style>
 {% endblock %}
@@ -490,6 +544,10 @@
         window.location.href = url.toString();
     }
 
+    function getSelectedCodes() {
+        return Array.from(document.querySelectorAll('.code-checkbox:checked')).map(cb => cb.value);
+    }
+
     // 全选/取消全选
     function toggleSelectAll(checkbox) {
         const checkboxes = document.querySelectorAll('.code-checkbox');
@@ -510,8 +568,7 @@
 
     // 更新选择计数
     function updateSelectionCount() {
-        const selected = document.querySelectorAll('.code-checkbox:checked');
-        const count = selected.length;
+        const count = getSelectedCodes().length;
         document.getElementById('selectedCount').innerText = count;
 
         const actionBar = document.getElementById('bulkActionBar');
@@ -524,16 +581,28 @@
 
     // 显示批量编辑弹窗
     function showBulkEditModal() {
-        const selected = document.querySelectorAll('.code-checkbox:checked');
-        document.getElementById('bulk-selected-count-display').innerText = selected.length;
+        document.getElementById('bulk-selected-count-display').innerText = getSelectedCodes().length;
         showModal('bulkEditCodeModal');
+    }
+
+    function showExportModal() {
+        const selectedCount = getSelectedCodes().length;
+        const scopeText = document.getElementById('exportScopeText');
+        const scopeSubtext = document.getElementById('exportScopeSubtext');
+        if (selectedCount > 0) {
+            scopeText.innerText = `将导出已勾选的 ${selectedCount} 个兑换码。`;
+            scopeSubtext.innerText = '不会导出未勾选的兑换码。';
+        } else {
+            scopeText.innerText = '将导出当前筛选结果。';
+            scopeSubtext.innerText = '如果未勾选兑换码，则按当前搜索和状态筛选导出。';
+        }
+        showModal('exportCodesModal');
     }
 
     // 处理批量编辑
     async function handleBulkEditCode(event) {
         event.preventDefault();
-        const selected = document.querySelectorAll('.code-checkbox:checked');
-        const codes = Array.from(selected).map(cb => cb.value);
+        const codes = getSelectedCodes();
 
         const has_warranty = document.getElementById('bulk-edit-has-warranty').checked;
         const warranty_days = parseInt(document.getElementById('bulk-edit-warranty-days').value) || 30;
@@ -613,13 +682,43 @@
 
 
     // 导出兑换码
-    async function exportCodes() {
-        try {
-            const urlParams = new URLSearchParams(window.location.search);
-            const search = urlParams.get('search') || '';
-            const exportUrl = `/admin/codes/export${search ? '?search=' + encodeURIComponent(search) : ''}`;
+    async function handleExportCodes(event) {
+        event.preventDefault();
 
-            const response = await fetch(exportUrl);
+        try {
+            const selectedCodes = getSelectedCodes();
+            const urlParams = new URLSearchParams(window.location.search);
+            const exportFormat = document.querySelector('input[name="exportFormat"]:checked')?.value || 'excel';
+            const response = await fetch('/admin/codes/export', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    codes: selectedCodes,
+                    search: selectedCodes.length > 0 ? null : (urlParams.get('search') || null),
+                    status_filter: selectedCodes.length > 0 ? null : (urlParams.get('status_filter') || null),
+                    export_format: exportFormat
+                })
+            });
+
+            if (!response.ok) {
+                showToast('导出失败', 'error');
+                return;
+            }
+
+            if (exportFormat === 'text') {
+                const text = await response.text();
+                if (!text.trim()) {
+                    showToast('没有可复制的兑换码', 'error');
+                    return;
+                }
+                const copied = await copyToClipboard(text);
+                if (copied) {
+                    hideModal('exportCodesModal');
+                }
+                return;
+            }
 
             if (response.ok) {
                 const blob = await response.blob();
@@ -631,6 +730,7 @@
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
+                hideModal('exportCodesModal');
                 showToast('导出成功', 'success');
             } else {
                 showToast('导出失败', 'error');
