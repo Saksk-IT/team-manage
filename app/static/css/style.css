@@ -70,6 +70,11 @@ body {
     min-height: 100vh;
 }
 
+body.admin-shell {
+    height: 100vh;
+    overflow: hidden;
+}
+
 /* Animations */
 @keyframes fadeInUp {
     from {
@@ -189,13 +194,29 @@ body {
     max-width: none;
 }
 
+.admin-shell .main-container {
+    height: calc(100vh - 64px);
+    min-height: 0;
+    overflow: hidden;
+}
+
+.admin-shell .sidebar {
+    top: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
 .admin-shell .navbar-container {
     padding-left: var(--layout-gutter);
     padding-right: var(--layout-gutter);
 }
 
 .admin-shell .main-content {
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
     padding: var(--content-padding-y) var(--content-padding-x) calc(var(--content-padding-y) * 1.35);
+    overscroll-behavior: contain;
 }
 
 .admin-shell .content-section {
@@ -229,6 +250,10 @@ body {
     font-size: 0.875rem;
     border-top: 1px solid var(--border-base);
     background-color: var(--bg-surface);
+}
+
+.admin-shell .footer {
+    display: none;
 }
 
 .footer-link {
