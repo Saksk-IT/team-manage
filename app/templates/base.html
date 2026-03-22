@@ -194,6 +194,20 @@
                                 <h4 style="margin: 0;">导入详情</h4>
                                 <small id="batchFinalSummary" class="text-muted"></small>
                             </div>
+                            <div id="batchImportCodesSection"
+                                style="display: none; margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-base); border-radius: 12px; background: rgba(255,255,255,0.03);">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+                                    <div>
+                                        <h5 style="margin: 0;">自动生成的绑定兑换码</h5>
+                                        <small id="batchImportCodesSummary" class="text-muted">导入成功后会自动汇总</small>
+                                    </div>
+                                    <button type="button" class="btn btn-secondary btn-sm"
+                                        onclick="copyBatchImportCodes()">复制全部</button>
+                                </div>
+                                <textarea id="batchImportCodes" class="form-control" rows="6" readonly
+                                    placeholder="批量导入成功后会汇总显示自动生成的兑换码"></textarea>
+                            </div>
                             <div id="batchResults"></div>
                         </div>
                         <button type="submit" class="btn btn-primary">批量导入</button>

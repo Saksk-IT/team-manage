@@ -95,6 +95,37 @@ async function copySingleImportCodes() {
     await copyToClipboard(codesBox.value.trim());
 }
 
+function updateBatchImportCodes(codes = []) {
+    const codesSection = document.getElementById('batchImportCodesSection');
+    const codesSummary = document.getElementById('batchImportCodesSummary');
+    const codesBox = document.getElementById('batchImportCodes');
+
+    if (!codesSection || !codesSummary || !codesBox) {
+        return;
+    }
+
+    const normalizedCodes = Array.from(new Set((codes || []).filter(Boolean)));
+    codesBox.value = normalizedCodes.join('\n');
+
+    if (normalizedCodes.length > 0) {
+        codesSection.style.display = 'block';
+        codesSummary.textContent = `已自动汇总 ${normalizedCodes.length} 个绑定兑换码`;
+    } else {
+        codesSection.style.display = 'none';
+        codesSummary.textContent = '导入成功后会自动汇总';
+    }
+}
+
+async function copyBatchImportCodes() {
+    const codesBox = document.getElementById('batchImportCodes');
+    if (!codesBox || !codesBox.value.trim()) {
+        showToast('暂无可复制的兑换码', 'error');
+        return;
+    }
+
+    await copyToClipboard(codesBox.value.trim());
+}
+
 // 登出函数
 async function logout() {
     if (!confirm('确定要登出吗?')) {
@@ -312,6 +343,7 @@ async function handleBatchImport(event) {
     const form = event.target;
     const batchContent = form.batchContent.value.trim();
     const submitButton = form.querySelector('button[type="submit"]');
+    const importedCodes = [];
 
     // UI 元素
     const progressContainer = document.getElementById('batchProgressContainer');
@@ -333,6 +365,7 @@ async function handleBatchImport(event) {
     successCountEl.textContent = '0';
     failedCountEl.textContent = '0';
     resultsDiv.innerHTML = '<table class="data-table"><thead><tr><th>邮箱</th><th>状态</th><th>消息</th></tr></thead><tbody id="batchResultsBody"></tbody></table>';
+    updateBatchImportCodes([]);
     const resultsBody = document.getElementById('batchResultsBody');
 
     submitButton.disabled = true;
@@ -388,6 +421,11 @@ async function handleBatchImport(event) {
                             const res = data.last_result;
                             const statusClass = res.success ? 'text-success' : 'text-danger';
                             const statusText = res.success ? '成功' : '失败';
+                            const latestImportedCodes = res.success ? collectImportedCodes(res.imported_teams || []) : [];
+                            if (latestImportedCodes.length) {
+                                importedCodes.push(...latestImportedCodes);
+                                updateBatchImportCodes(importedCodes);
+                            }
                             const detailsHtml = res.success && Array.isArray(res.imported_teams) && res.imported_teams.length
                                 ? `
                                     <div style="margin-top: 0.5rem; font-size: 0.875rem; line-height: 1.6;">
