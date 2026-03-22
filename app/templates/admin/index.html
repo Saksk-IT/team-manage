@@ -344,8 +344,34 @@
             <button class="modal-close" onclick="hideModal('boundCodesModal')">&times;</button>
         </div>
         <div class="modal-body">
-            <div id="boundCodesTargetEmail" class="text-muted" style="margin-bottom: 0.75rem;"></div>
-            <textarea id="boundCodesContent" class="form-control" rows="10" readonly></textarea>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+                <div id="boundCodesTargetEmail" class="text-muted"></div>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="copyBoundCodes()">
+                    复制全部兑换码
+                </button>
+            </div>
+            <div id="boundCodesUsageSummary" class="text-muted small" style="margin-bottom: 0.75rem;"></div>
+            <div class="table-container" style="max-height: 420px; overflow-y: auto; margin: 0;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>兑换码</th>
+                            <th style="width: 110px;">状态</th>
+                            <th style="min-width: 240px;">最近使用</th>
+                            <th style="min-width: 240px;">使用历史</th>
+                            <th style="width: 100px; text-align: right;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="boundCodesTableBody">
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">
+                                暂无兑换码数据
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <textarea id="boundCodesContent" class="form-control" rows="10" readonly style="display: none;"></textarea>
         </div>
     </div>
 </div>
@@ -505,14 +531,135 @@
 
     function showBoundCodes(email, codes) {
         const emailEl = document.getElementById('boundCodesTargetEmail');
+        const summaryEl = document.getElementById('boundCodesUsageSummary');
+        const tableBodyEl = document.getElementById('boundCodesTableBody');
         const contentEl = document.getElementById('boundCodesContent');
-        if (!emailEl || !contentEl) return;
+        if (!emailEl || !summaryEl || !tableBodyEl || !contentEl) return;
 
         const lines = (codes || []).map(item => item.code);
+        const usedCount = (codes || []).filter(item => item.redemption_count > 0 || item.used_by_email).length;
 
         emailEl.textContent = `${email} · 共 ${lines.length} 个兑换码`;
+        summaryEl.textContent = usedCount > 0
+            ? `其中 ${usedCount} 个已有使用记录，可直接查看最近使用人与历史使用记录。`
+            : '当前这些兑换码都还没有使用记录。';
         contentEl.value = lines.join('\n');
+        tableBodyEl.innerHTML = renderBoundCodesRows(codes || []);
         showModal('boundCodesModal');
+
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+    }
+
+    function copyBoundCodes() {
+        const contentEl = document.getElementById('boundCodesContent');
+        if (!contentEl || !contentEl.value.trim()) {
+            showToast('暂无可复制的兑换码', 'error');
+            return;
+        }
+
+        copyToClipboard(contentEl.value.trim());
+    }
+
+    function renderBoundCodesRows(codes) {
+        if (!codes.length) {
+            return `
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">
+                        暂无兑换码数据
+                    </td>
+                </tr>
+            `;
+        }
+
+        return codes.map(item => {
+            const history = Array.isArray(item.redemption_records) ? item.redemption_records : [];
+            const latest = item.latest_redemption || history[0] || null;
+            const latestUsageHtml = renderLatestUsage(latest, item);
+            const historyHtml = renderUsageHistory(history);
+
+            return `
+                <tr>
+                    <td>
+                        <div style="font-weight: 600; margin-bottom: 0.25rem;">${escapeHtml(item.code)}</div>
+                        <div class="text-muted small">
+                            ${item.redemption_count > 0 ? `累计使用 ${item.redemption_count} 次` : '尚未使用'}
+                        </div>
+                    </td>
+                    <td>${renderCodeStatusBadge(item.status)}</td>
+                    <td>${latestUsageHtml}</td>
+                    <td>${historyHtml}</td>
+                    <td style="text-align: right;">
+                        <a class="btn btn-sm btn-secondary" href="/admin/records?code=${encodeURIComponent(item.code)}" target="_blank" rel="noopener">
+                            记录
+                        </a>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function renderCodeStatusBadge(status) {
+        const statusConfig = {
+            unused: { className: 'status-active', label: '未使用' },
+            used: { className: 'status-full', label: '已使用' },
+            warranty_active: { className: 'status-info', label: '质保中' },
+            expired: { className: 'status-error', label: '已过期' }
+        };
+
+        const config = statusConfig[status] || { className: '', label: status || '未知' };
+        return `<span class="status-badge ${config.className}">${escapeHtml(config.label)}</span>`;
+    }
+
+    function renderLatestUsage(latest, item) {
+        if (!latest && !item.used_by_email) {
+            return '<span class="text-muted">未使用</span>';
+        }
+
+        const email = latest?.email || item.used_by_email || '-';
+        const redeemedAt = latest?.redeemed_at || item.used_at;
+        const teamName = latest?.team_name;
+        const teamId = latest?.team_id || item.used_team_id;
+        const teamText = teamName
+            ? `加入 ${teamName}`
+            : (teamId ? `加入 Team #${teamId}` : '未记录使用 Team');
+
+        return `
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                <strong>${escapeHtml(email)}</strong>
+                <span class="text-muted small">${escapeHtml(teamText)}</span>
+                <span class="text-muted small">${formatDateTime(redeemedAt)}</span>
+            </div>
+        `;
+    }
+
+    function renderUsageHistory(history) {
+        if (!history.length) {
+            return '<span class="text-muted">暂无</span>';
+        }
+
+        const historyItems = history.map(record => {
+            const teamText = record.team_name
+                ? escapeHtml(record.team_name)
+                : (record.team_id ? `Team #${record.team_id}` : '未知 Team');
+
+            return `
+                <div style="padding: 0.5rem 0; border-top: 1px solid rgba(255,255,255,0.06);">
+                    <div style="font-weight: 500;">${escapeHtml(record.email || '-')}</div>
+                    <div class="text-muted small">${teamText} · ${formatDateTime(record.redeemed_at)}</div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <details>
+                <summary style="cursor: pointer; color: var(--primary);">查看 ${history.length} 条记录</summary>
+                <div style="margin-top: 0.5rem;">
+                    ${historyItems}
+                </div>
+            </details>
+        `;
     }
 
     async function enableDeviceAuth(teamId) {

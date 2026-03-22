@@ -10,7 +10,7 @@ from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Team, TeamAccount, RedemptionCode
+from app.models import Team, TeamAccount, RedemptionCode, RedemptionRecord
 from app.services.chatgpt import ChatGPTService
 from app.services.encryption import encryption_service
 from app.services.redemption import RedemptionService
@@ -1944,11 +1944,49 @@ class TeamService:
                 codes_result = await db_session.execute(codes_stmt)
                 bound_codes = codes_result.scalars().all()
 
+                code_values = [code.code for code in bound_codes]
+                redemption_records_map = {}
+                redemption_team_map = {}
+
+                if code_values:
+                    records_stmt = (
+                        select(RedemptionRecord)
+                        .where(RedemptionRecord.code.in_(code_values))
+                        .order_by(RedemptionRecord.redeemed_at.desc())
+                    )
+                    records_result = await db_session.execute(records_stmt)
+                    redemption_records = records_result.scalars().all()
+
+                    redemption_team_ids = {record.team_id for record in redemption_records if record.team_id}
+                    if redemption_team_ids:
+                        redemption_team_stmt = select(Team).where(Team.id.in_(redemption_team_ids))
+                        redemption_team_result = await db_session.execute(redemption_team_stmt)
+                        redemption_team_map = {
+                            team.id: team for team in redemption_team_result.scalars().all()
+                        }
+
+                    for record in redemption_records:
+                        record_team = redemption_team_map.get(record.team_id)
+                        redemption_records_map.setdefault(record.code, []).append({
+                            "id": record.id,
+                            "email": record.email,
+                            "team_id": record.team_id,
+                            "team_name": record_team.team_name if record_team else None,
+                            "redeemed_at": record.redeemed_at.isoformat() if record.redeemed_at else None,
+                            "is_warranty_redemption": record.is_warranty_redemption
+                        })
+
                 for code in bound_codes:
+                    redemption_records_for_code = redemption_records_map.get(code.code, [])
                     bound_codes_map.setdefault(code.bound_team_id, []).append({
                         "code": code.code,
                         "status": code.status,
-                        "used_by_email": code.used_by_email
+                        "used_by_email": code.used_by_email,
+                        "used_at": code.used_at.isoformat() if code.used_at else None,
+                        "used_team_id": code.used_team_id,
+                        "redemption_count": len(redemption_records_for_code),
+                        "latest_redemption": redemption_records_for_code[0] if redemption_records_for_code else None,
+                        "redemption_records": redemption_records_for_code
                     })
 
             # 构建返回数据
