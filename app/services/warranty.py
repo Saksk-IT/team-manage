@@ -25,8 +25,6 @@ _query_rate_limit = {}
 class WarrantyService:
     """质保服务类"""
 
-    CLAIM_GENERIC_ERROR = "校验失败或当前无法提供质保服务"
-
     def __init__(self):
         """初始化质保服务"""
         from app.services.team import TeamService
@@ -51,6 +49,38 @@ class WarrantyService:
             )
         )
         await db_session.commit()
+
+    def _build_usage_limit_info(
+        self,
+        max_uses: int,
+        used_uses: int
+    ) -> Dict[str, Any]:
+        remaining_uses = max(max_uses - used_uses, 0)
+        return {
+            "type": settings_service.WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT,
+            "type_label": "次数限制超级兑换码",
+            "max_uses": max_uses,
+            "used_uses": used_uses,
+            "remaining_uses": remaining_uses
+        }
+
+    def _build_time_limit_info(
+        self,
+        first_use_at: datetime,
+        limit_days: int
+    ) -> Dict[str, Any]:
+        expires_at = first_use_at + timedelta(days=limit_days)
+        remaining_seconds = max(int((expires_at - get_now()).total_seconds()), 0)
+        remaining_days = round(remaining_seconds / 86400, 2)
+        return {
+            "type": settings_service.WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT,
+            "type_label": "时间限制超级兑换码",
+            "limit_days": limit_days,
+            "first_use_at": first_use_at.isoformat() if first_use_at else None,
+            "expires_at": expires_at.isoformat(),
+            "remaining_seconds": remaining_seconds,
+            "remaining_days": remaining_days
+        }
 
     async def _resolve_matched_email(
         self,
@@ -174,22 +204,39 @@ class WarrantyService:
             matched_super_code = await settings_service.match_warranty_super_code(db_session, super_code)
             if not matched_super_code:
                 logger.warning("质保申请失败: 超级兑换码校验未通过")
-                return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
+                return {"success": False, "error": "超级兑换码错误或未启用"}
 
             code_stmt = select(RedemptionCode).where(RedemptionCode.code == ordinary_code)
             code_result = await db_session.execute(code_stmt)
             redemption_code = code_result.scalar_one_or_none()
             if not redemption_code:
                 logger.warning("质保申请失败: 普通兑换码不存在 code=%s", ordinary_code)
-                return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
+                return {"success": False, "error": "普通兑换码不存在"}
 
             matched_email = await self._resolve_matched_email(db_session, ordinary_code, redemption_code)
             if not matched_email or matched_email != normalized_email:
                 logger.warning("质保申请失败: 邮箱与普通兑换码不匹配 code=%s", ordinary_code)
-                return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
+                return {"success": False, "error": "邮箱与普通兑换码不匹配"}
 
             existing_team = await self._find_existing_warranty_team_for_email(db_session, email)
             if existing_team:
+                usage_info = None
+                time_info = None
+                if matched_super_code["type"] == settings_service.WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT:
+                    max_uses = matched_super_code.get("max_uses") or 0
+                    usage_count = await self._count_usage_limit_successes(db_session, ordinary_code, email)
+                    usage_info = self._build_usage_limit_info(max_uses, usage_count)
+                else:
+                    time_limit_days = matched_super_code.get("days") or 0
+                    first_use_at = await self._get_first_ordinary_use_time(db_session, ordinary_code, redemption_code)
+                    if not first_use_at:
+                        logger.warning("质保申请失败: 普通兑换码暂无首次使用时间 code=%s", ordinary_code)
+                        return {"success": False, "error": "普通兑换码暂无首次使用时间，无法计算时间限制"}
+                    time_info = self._build_time_limit_info(first_use_at, time_limit_days)
+                    if time_info["remaining_seconds"] <= 0:
+                        logger.warning("质保申请失败: 时间限制已过期 code=%s email=%s", ordinary_code, normalized_email)
+                        return {"success": False, "error": f"该普通兑换码已超过时间限制（首次使用后 {time_limit_days} 天内有效）"}
+
                 return {
                     "success": True,
                     "message": "质保邀请已存在，请直接查收邮箱中的邀请邮件。",
@@ -198,14 +245,17 @@ class WarrantyService:
                         "team_name": existing_team.team_name,
                         "email": existing_team.email,
                         "expires_at": existing_team.expires_at.isoformat() if existing_team.expires_at else None
-                    }
+                    },
+                    "super_code_info": usage_info or time_info
                 }
 
             warranty_teams = await self._get_available_warranty_teams(db_session)
             if not warranty_teams:
                 logger.warning("质保申请失败: 没有可用的质保 Team")
-                return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
+                return {"success": False, "error": "当前没有可用的质保 Team，请稍后再试"}
 
+            usage_info = None
+            time_info = None
             if matched_super_code["type"] == settings_service.WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT:
                 max_uses = matched_super_code.get("max_uses") or 0
                 usage_count = await self._count_usage_limit_successes(db_session, ordinary_code, email)
@@ -217,15 +267,17 @@ class WarrantyService:
                         usage_count,
                         max_uses
                     )
-                    return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
+                    return {"success": False, "error": f"该普通兑换码与邮箱的质保次数已用尽（已用 {usage_count}/{max_uses} 次）"}
+                usage_info = self._build_usage_limit_info(max_uses, usage_count + 1)
             else:
                 time_limit_days = matched_super_code.get("days") or 0
                 first_use_at = await self._get_first_ordinary_use_time(db_session, ordinary_code, redemption_code)
                 if not first_use_at:
                     logger.warning("质保申请失败: 无法判定普通兑换码首次使用时间 code=%s", ordinary_code)
-                    return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
+                    return {"success": False, "error": "普通兑换码暂无首次使用时间，无法计算时间限制"}
 
-                if get_now() > first_use_at + timedelta(days=time_limit_days):
+                time_info = self._build_time_limit_info(first_use_at, time_limit_days)
+                if time_info["remaining_seconds"] <= 0:
                     logger.warning(
                         "质保申请失败: 时间限制已过期 code=%s email=%s first_use_at=%s days=%s",
                         ordinary_code,
@@ -233,8 +285,9 @@ class WarrantyService:
                         first_use_at,
                         time_limit_days
                     )
-                    return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
+                    return {"success": False, "error": f"该普通兑换码已超过时间限制（首次使用后 {time_limit_days} 天内有效）"}
 
+            last_error = None
             for team in warranty_teams:
                 add_result = await self.team_service.add_team_member(team.id, email, db_session)
                 if add_result.get("success"):
@@ -253,20 +306,22 @@ class WarrantyService:
                             "team_name": team.team_name,
                             "email": team.email,
                             "expires_at": team.expires_at.isoformat() if team.expires_at else None
-                        }
+                        },
+                        "super_code_info": usage_info or time_info
                     }
 
+                last_error = add_result.get("error")
                 logger.warning(
                     "质保 Team 邀请失败，尝试下一个 team_id=%s error=%s",
                     team.id,
-                    add_result.get("error")
+                    last_error
                 )
 
-            return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
+            return {"success": False, "error": last_error or "当前质保 Team 邀请失败，请稍后再试"}
 
         except Exception as e:
             logger.error(f"质保邀请申请失败: {e}")
-            return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
+            return {"success": False, "error": f"质保申请失败: {str(e)}"}
 
     async def check_warranty_status(
         self,

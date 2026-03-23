@@ -42,6 +42,20 @@ function setClaimButtonContent(text) {
     }
 }
 
+function formatRemainingDuration(seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+        return '已到期';
+    }
+
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+
+    if (days > 0) return `${days} 天 ${hours} 小时`;
+    if (hours > 0) return `${hours} 小时 ${minutes} 分钟`;
+    return `${Math.max(minutes, 1)} 分钟`;
+}
+
 // Toast提示函数
 function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');
@@ -482,6 +496,38 @@ function showSuccessResult(data) {
 function showWarrantyClaimSuccessResult(data, email, ordinaryCode) {
     const resultContent = document.getElementById('resultContent');
     const teamInfo = data.team_info || {};
+    const superCodeInfo = data.super_code_info || {};
+
+    let superCodeInfoHtml = '';
+    if (superCodeInfo.type === 'usage_limit') {
+        superCodeInfoHtml = `
+            <div class="result-detail-item">
+                <span class="result-detail-label">超级兑换码类型</span>
+                <span class="result-detail-value">${escapeHtml(superCodeInfo.type_label || '次数限制超级兑换码')}</span>
+            </div>
+            <div class="result-detail-item">
+                <span class="result-detail-label">剩余次数</span>
+                <span class="result-detail-value">${escapeHtml(String(superCodeInfo.remaining_uses ?? '-'))} / ${escapeHtml(String(superCodeInfo.max_uses ?? '-'))}</span>
+            </div>
+        `;
+    } else if (superCodeInfo.type === 'time_limit') {
+        superCodeInfoHtml = `
+            <div class="result-detail-item">
+                <span class="result-detail-label">超级兑换码类型</span>
+                <span class="result-detail-value">${escapeHtml(superCodeInfo.type_label || '时间限制超级兑换码')}</span>
+            </div>
+            <div class="result-detail-item">
+                <span class="result-detail-label">剩余时间</span>
+                <span class="result-detail-value">${escapeHtml(formatRemainingDuration(superCodeInfo.remaining_seconds || 0))}</span>
+            </div>
+            ${superCodeInfo.expires_at ? `
+            <div class="result-detail-item">
+                <span class="result-detail-label">失效时间</span>
+                <span class="result-detail-value">${formatDate(superCodeInfo.expires_at)}</span>
+            </div>
+            ` : ''}
+        `;
+    }
 
     resultContent.innerHTML = `
         <div class="result-success">
@@ -502,6 +548,7 @@ function showWarrantyClaimSuccessResult(data, email, ordinaryCode) {
                     <span class="result-detail-label">质保 Team</span>
                     <span class="result-detail-value">${escapeHtml(teamInfo.team_name || '-')}</span>
                 </div>
+                ${superCodeInfoHtml}
                 ${teamInfo.expires_at ? `
                 <div class="result-detail-item">
                     <span class="result-detail-label">到期时间</span>

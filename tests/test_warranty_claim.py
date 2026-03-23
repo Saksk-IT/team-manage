@@ -111,6 +111,8 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual(record.warranty_super_code_type, settings_service.WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT)
+        self.assertEqual(result["super_code_info"]["remaining_uses"], 1)
+        self.assertEqual(result["super_code_info"]["max_uses"], 2)
 
     async def test_usage_limit_super_code_respects_max_uses(self):
         async with self.Session() as session:
@@ -160,7 +162,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertFalse(result["success"])
-        self.assertEqual(result["error"], service.CLAIM_GENERIC_ERROR)
+        self.assertEqual(result["error"], "该普通兑换码与邮箱的质保次数已用尽（已用 2/2 次）")
         service.team_service.add_team_member.assert_not_awaited()
 
     async def test_time_limit_super_code_uses_first_used_at(self):
@@ -204,6 +206,8 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual(record.warranty_super_code_type, settings_service.WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT)
+        self.assertGreater(result["super_code_info"]["remaining_seconds"], 0)
+        self.assertEqual(result["super_code_info"]["limit_days"], 15)
 
     async def test_time_limit_super_code_falls_back_to_first_non_warranty_record(self):
         now = datetime.now()
@@ -280,7 +284,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertFalse(result["success"])
-        self.assertEqual(result["error"], service.CLAIM_GENERIC_ERROR)
+        self.assertEqual(result["error"], "该普通兑换码已超过时间限制（首次使用后 15 天内有效）")
         service.team_service.add_team_member.assert_not_awaited()
 
     async def test_time_limit_super_code_fails_without_any_first_use_timestamp(self):
@@ -314,7 +318,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertFalse(result["success"])
-        self.assertEqual(result["error"], service.CLAIM_GENERIC_ERROR)
+        self.assertEqual(result["error"], "普通兑换码暂无首次使用时间，无法计算时间限制")
 
     async def test_claim_warranty_wrong_super_code_returns_generic_error(self):
         async with self.Session() as session:
@@ -346,7 +350,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertFalse(result["success"])
-        self.assertEqual(result["error"], service.CLAIM_GENERIC_ERROR)
+        self.assertEqual(result["error"], "超级兑换码错误或未启用")
         service.team_service.add_team_member.assert_not_awaited()
 
     async def test_claim_warranty_is_idempotent_when_member_already_exists_and_does_not_count(self):
@@ -390,6 +394,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["success"])
         self.assertEqual(record_count_result.scalar(), 0)
         service.team_service.add_team_member.assert_not_awaited()
+        self.assertEqual(result["super_code_info"]["remaining_uses"], 2)
 
 
 if __name__ == "__main__":
