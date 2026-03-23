@@ -103,6 +103,7 @@ class RedemptionRecord(Base):
     account_id = Column(String(100), nullable=False, comment="Account ID")
     redeemed_at = Column(DateTime, default=get_now, comment="兑换时间")
     is_warranty_redemption = Column(Boolean, default=False, comment="是否为质保兑换")
+    warranty_super_code_type = Column(String(20), comment="触发质保的超级兑换码类型: usage_limit/time_limit")
 
     # 关系
     team = relationship("Team", back_populates="redemption_records")

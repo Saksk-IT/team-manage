@@ -16,7 +16,12 @@ logger = logging.getLogger(__name__)
 class SettingsService:
     """系统设置服务类"""
 
-    WARRANTY_SUPER_CODE_KEY = "warranty_super_code"
+    WARRANTY_USAGE_LIMIT_SUPER_CODE_KEY = "warranty_usage_limit_super_code"
+    WARRANTY_USAGE_LIMIT_MAX_USES_KEY = "warranty_usage_limit_max_uses"
+    WARRANTY_TIME_LIMIT_SUPER_CODE_KEY = "warranty_time_limit_super_code"
+    WARRANTY_TIME_LIMIT_DAYS_KEY = "warranty_time_limit_days"
+    WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT = "usage_limit"
+    WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT = "time_limit"
 
     def __init__(self):
         self._cache: Dict[str, str] = {}
@@ -225,15 +230,165 @@ class SettingsService:
         raw = ''.join(secrets.choice(alphabet) for _ in range(length))
         return '-'.join(raw[i:i + 4] for i in range(0, len(raw), 4))
 
-    async def get_warranty_super_code(self, session: AsyncSession) -> str:
-        return await self.get_setting(session, self.WARRANTY_SUPER_CODE_KEY, "") or ""
+    def _normalize_super_code(self, code: str) -> str:
+        return (code or "").strip().upper()
 
-    async def regenerate_warranty_super_code(self, session: AsyncSession) -> str:
-        code = self._generate_warranty_super_code()
-        success = await self.update_setting(session, self.WARRANTY_SUPER_CODE_KEY, code)
+    def _get_warranty_super_code_meta(self, code_type: str) -> Dict[str, str]:
+        if code_type == self.WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT:
+            return {
+                "code_key": self.WARRANTY_USAGE_LIMIT_SUPER_CODE_KEY,
+                "limit_key": self.WARRANTY_USAGE_LIMIT_MAX_USES_KEY,
+                "limit_name": "max_uses",
+                "default_limit": 2
+            }
+        if code_type == self.WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT:
+            return {
+                "code_key": self.WARRANTY_TIME_LIMIT_SUPER_CODE_KEY,
+                "limit_key": self.WARRANTY_TIME_LIMIT_DAYS_KEY,
+                "limit_name": "days",
+                "default_limit": 15
+            }
+        raise ValueError("无效的超级兑换码类型")
+
+    async def get_warranty_super_code_configs(self, session: AsyncSession) -> Dict[str, Dict[str, Optional[str]]]:
+        usage_code = self._normalize_super_code(
+            await self.get_setting(session, self.WARRANTY_USAGE_LIMIT_SUPER_CODE_KEY, "") or ""
+        )
+        usage_limit_raw = await self.get_setting(session, self.WARRANTY_USAGE_LIMIT_MAX_USES_KEY, "")
+        time_code = self._normalize_super_code(
+            await self.get_setting(session, self.WARRANTY_TIME_LIMIT_SUPER_CODE_KEY, "") or ""
+        )
+        time_limit_raw = await self.get_setting(session, self.WARRANTY_TIME_LIMIT_DAYS_KEY, "")
+
+        usage_limit_str = str(usage_limit_raw).strip()
+        time_limit_str = str(time_limit_raw).strip()
+        usage_limit = int(usage_limit_str) if usage_limit_str.isdigit() else None
+        time_limit = int(time_limit_str) if time_limit_str.isdigit() else None
+
+        return {
+            self.WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT: {
+                "code": usage_code,
+                "max_uses": usage_limit,
+                "enabled": bool(usage_code)
+            },
+            self.WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT: {
+                "code": time_code,
+                "days": time_limit,
+                "enabled": bool(time_code)
+            }
+        }
+
+    async def save_warranty_super_code_config(
+        self,
+        session: AsyncSession,
+        code_type: str,
+        code: str,
+        limit_value: int
+    ) -> Dict[str, Optional[str]]:
+        meta = self._get_warranty_super_code_meta(code_type)
+        normalized_code = self._normalize_super_code(code)
+        if not normalized_code:
+            raise ValueError("超级兑换码不能为空")
+
+        try:
+            limit_int = int(limit_value)
+        except (TypeError, ValueError):
+            raise ValueError("限制值必须为正整数")
+
+        if limit_int <= 0:
+            raise ValueError("限制值必须大于 0")
+
+        configs = await self.get_warranty_super_code_configs(session)
+        other_type = (
+            self.WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT
+            if code_type == self.WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT
+            else self.WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT
+        )
+        other_code = configs[other_type]["code"]
+        if other_code and other_code == normalized_code:
+            raise ValueError("两类超级兑换码不能配置为相同值")
+
+        success = await self.update_settings(
+            session,
+            {
+                meta["code_key"]: normalized_code,
+                meta["limit_key"]: str(limit_int)
+            }
+        )
         if not success:
             raise RuntimeError("保存超级兑换码失败")
-        return code
+
+        return {
+            "code": normalized_code,
+            meta["limit_name"]: limit_int,
+            "enabled": True
+        }
+
+    async def disable_warranty_super_code_config(self, session: AsyncSession, code_type: str) -> None:
+        meta = self._get_warranty_super_code_meta(code_type)
+        success = await self.update_settings(
+            session,
+            {
+                meta["code_key"]: "",
+                meta["limit_key"]: ""
+            }
+        )
+        if not success:
+            raise RuntimeError("停用超级兑换码失败")
+
+    async def regenerate_warranty_super_code(
+        self,
+        session: AsyncSession,
+        code_type: str,
+        limit_value: Optional[int] = None
+    ) -> Dict[str, Optional[str]]:
+        meta = self._get_warranty_super_code_meta(code_type)
+        configs = await self.get_warranty_super_code_configs(session)
+        current_limit = configs[code_type].get(meta["limit_name"])
+        final_limit = limit_value if limit_value is not None else current_limit or meta["default_limit"]
+
+        other_type = (
+            self.WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT
+            if code_type == self.WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT
+            else self.WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT
+        )
+        other_code = configs[other_type]["code"]
+
+        for _ in range(10):
+            generated_code = self._generate_warranty_super_code()
+            if other_code and generated_code == other_code:
+                continue
+            return await self.save_warranty_super_code_config(session, code_type, generated_code, final_limit)
+
+        raise RuntimeError("生成唯一超级兑换码失败")
+
+    async def match_warranty_super_code(
+        self,
+        session: AsyncSession,
+        code: str
+    ) -> Optional[Dict[str, Optional[str]]]:
+        normalized_code = self._normalize_super_code(code)
+        if not normalized_code:
+            return None
+
+        configs = await self.get_warranty_super_code_configs(session)
+        usage_config = configs[self.WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT]
+        if usage_config["enabled"] and usage_config["code"] == normalized_code:
+            return {
+                "type": self.WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT,
+                "code": usage_config["code"],
+                "max_uses": usage_config["max_uses"]
+            }
+
+        time_config = configs[self.WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT]
+        if time_config["enabled"] and time_config["code"] == normalized_code:
+            return {
+                "type": self.WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT,
+                "code": time_config["code"],
+                "days": time_config["days"]
+            }
+
+        return None
 
 
 # 创建全局实例

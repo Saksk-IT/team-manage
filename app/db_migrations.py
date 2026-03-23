@@ -84,6 +84,14 @@ def run_auto_migration():
             """)
             migrations_applied.append("redemption_records.is_warranty_redemption")
 
+        if not column_exists(cursor, "redemption_records", "warranty_super_code_type"):
+            logger.info("添加 redemption_records.warranty_super_code_type 字段")
+            cursor.execute("""
+                ALTER TABLE redemption_records
+                ADD COLUMN warranty_super_code_type VARCHAR(20)
+            """)
+            migrations_applied.append("redemption_records.warranty_super_code_type")
+
         # 检查并添加 Token 刷新相关字段
         if not column_exists(cursor, "teams", "refresh_token_encrypted"):
             logger.info("添加 teams.refresh_token_encrypted 字段")

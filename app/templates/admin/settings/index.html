@@ -119,25 +119,6 @@
     </form>
 </div>
 
-<!-- 质保服务设置 -->
-<div class="content-section">
-    <div class="section-header">
-        <h3>质保服务设置</h3>
-    </div>
-
-    <div class="settings-form">
-        <div class="form-group">
-            <label for="warrantySuperCode">当前超级兑换码</label>
-            <div class="input-group-btn">
-                <input type="text" id="warrantySuperCode" value="{{ warranty_super_code or '' }}" class="form-control"
-                    readonly placeholder="尚未生成超级兑换码">
-                <button type="button" class="btn btn-secondary" onclick="copyWarrantySuperCode()">复制</button>
-                <button type="button" class="btn btn-primary" onclick="regenerateWarrantySuperCode()">重置</button>
-            </div>
-            <p class="form-help">前台质保服务会校验该超级兑换码；重置后旧码立即失效。</p>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block extra_css %}
@@ -300,46 +281,5 @@
             showToast('网络错误', 'error');
         }
     });
-
-    async function copyWarrantySuperCode() {
-        const input = document.getElementById('warrantySuperCode');
-        const value = input?.value?.trim();
-        if (!value) {
-            showToast('当前还没有超级兑换码，请先重置生成', 'error');
-            return;
-        }
-
-        try {
-            await navigator.clipboard.writeText(value);
-            showToast('超级兑换码已复制', 'success');
-        } catch (error) {
-            showToast('复制失败', 'error');
-        }
-    }
-
-    async function regenerateWarrantySuperCode() {
-        if (!confirm('确定要重置超级兑换码吗？重置后旧码会立即失效。')) {
-            return;
-        }
-
-        try {
-            const response = await fetch('/admin/settings/warranty-super-code/regenerate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            const data = await response.json();
-            if (response.ok && data.success) {
-                document.getElementById('warrantySuperCode').value = data.code || '';
-                showToast('超级兑换码已重置', 'success');
-            } else {
-                showToast(data.error || '重置失败', 'error');
-            }
-        } catch (error) {
-            showToast('网络错误', 'error');
-        }
-    }
 </script>
 {% endblock %}

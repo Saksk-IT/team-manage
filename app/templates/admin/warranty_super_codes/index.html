@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}超级兑换码管理 - GPT Team 管理系统{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>超级兑换码管理</h2>
+</div>
+
+<div class="content-section">
+    <div class="section-header">
+        <h3>次数限制超级兑换码</h3>
+    </div>
+    <div class="settings-form">
+        <div class="form-group">
+            <label for="usage-limit-code">超级兑换码</label>
+            <div class="input-group-btn">
+                <input type="text" id="usage-limit-code" class="form-control"
+                    value="{{ configs.usage_limit.code or '' }}" placeholder="未配置则留空后点重置生成">
+                <button type="button" class="btn btn-secondary" onclick="copyWarrantySuperCodeConfig('usage_limit')">复制</button>
+                <button type="button" class="btn btn-primary" onclick="regenerateWarrantySuperCodeConfig('usage_limit')">重置</button>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="usage-limit-limit">每个“普通兑换码 + 邮箱”最多可成功质保次数</label>
+            <input type="number" id="usage-limit-limit" class="form-control"
+                value="{{ configs.usage_limit.max_uses or 2 }}" min="1">
+            <p class="form-help">只有真正新发出的质保邀请才算 1 次；已存在成员/邀请的幂等成功不扣次数。</p>
+        </div>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary" onclick="saveWarrantySuperCodeConfig('usage_limit')">保存</button>
+            <button type="button" class="btn btn-danger" onclick="disableWarrantySuperCodeConfig('usage_limit')">停用</button>
+        </div>
+    </div>
+</div>
+
+<div class="content-section">
+    <div class="section-header">
+        <h3>时间限制超级兑换码</h3>
+    </div>
+    <div class="settings-form">
+        <div class="form-group">
+            <label for="time-limit-code">超级兑换码</label>
+            <div class="input-group-btn">
+                <input type="text" id="time-limit-code" class="form-control"
+                    value="{{ configs.time_limit.code or '' }}" placeholder="未配置则留空后点重置生成">
+                <button type="button" class="btn btn-secondary" onclick="copyWarrantySuperCodeConfig('time_limit')">复制</button>
+                <button type="button" class="btn btn-primary" onclick="regenerateWarrantySuperCodeConfig('time_limit')">重置</button>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="time-limit-limit">自普通兑换码首次使用起 N 天内有效</label>
+            <input type="number" id="time-limit-limit" class="form-control"
+                value="{{ configs.time_limit.days or 15 }}" min="1">
+            <p class="form-help">系统会优先读取普通兑换码的首次使用时间，超过该天数后此超级兑换码失效。</p>
+        </div>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary" onclick="saveWarrantySuperCodeConfig('time_limit')">保存</button>
+            <button type="button" class="btn btn-danger" onclick="disableWarrantySuperCodeConfig('time_limit')">停用</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function getWarrantySuperCodeConfigState(codeType) {
+        const prefix = codeType === 'usage_limit' ? 'usage-limit' : 'time-limit';
+        const code = document.getElementById(`${prefix}-code`)?.value?.trim() || '';
+        const limitValue = parseInt(document.getElementById(`${prefix}-limit`)?.value || '0', 10);
+        return { prefix, code, limitValue };
+    }
+
+    function validateWarrantySuperCodeLimit(limitValue) {
+        if (!Number.isInteger(limitValue) || limitValue <= 0) {
+            showToast('限制值必须是大于 0 的整数', 'error');
+            return false;
+        }
+        return true;
+    }
+
+    function applyWarrantySuperCodeConfig(codeType, config) {
+        const prefix = codeType === 'usage_limit' ? 'usage-limit' : 'time-limit';
+        const codeInput = document.getElementById(`${prefix}-code`);
+        const limitInput = document.getElementById(`${prefix}-limit`);
+        if (codeInput) codeInput.value = config?.code || '';
+        if (limitInput) {
+            const limitValue = codeType === 'usage_limit' ? config?.max_uses : config?.days;
+            if (limitValue) limitInput.value = limitValue;
+        }
+    }
+
+    async function copyWarrantySuperCodeConfig(codeType) {
+        const { code } = getWarrantySuperCodeConfigState(codeType);
+        if (!code) {
+            showToast('当前未配置超级兑换码', 'error');
+            return;
+        }
+        await copyToClipboard(code);
+    }
+
+    async function saveWarrantySuperCodeConfig(codeType) {
+        const { code, limitValue } = getWarrantySuperCodeConfigState(codeType);
+        if (!validateWarrantySuperCodeLimit(limitValue)) return;
+        try {
+            const response = await fetch(`/admin/warranty-super-codes/${codeType}/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code, limit_value: limitValue })
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                applyWarrantySuperCodeConfig(codeType, data.config || {});
+                showToast('超级兑换码已保存', 'success');
+            } else {
+                showToast(data.error || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    async function regenerateWarrantySuperCodeConfig(codeType) {
+        const { limitValue } = getWarrantySuperCodeConfigState(codeType);
+        if (!validateWarrantySuperCodeLimit(limitValue)) return;
+        try {
+            const response = await fetch(`/admin/warranty-super-codes/${codeType}/regenerate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: '', limit_value: limitValue })
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                applyWarrantySuperCodeConfig(codeType, data.config || {});
+                showToast('超级兑换码已重置', 'success');
+            } else {
+                showToast(data.error || '重置失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    async function disableWarrantySuperCodeConfig(codeType) {
+        if (!confirm('确定要停用这类超级兑换码吗？')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/admin/warranty-super-codes/${codeType}/disable`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                applyWarrantySuperCodeConfig(codeType, {});
+                showToast('超级兑换码已停用', 'success');
+            } else {
+                showToast(data.error || '停用失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    }
+</script>
+{% endblock %}
