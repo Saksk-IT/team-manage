@@ -2,8 +2,9 @@
 Token 正则匹配工具
 用于从文本中提取 AT Token、邮箱、Account ID 等信息
 """
+import json
 import re
-from typing import List, Optional, Dict
+from typing import Any, Dict, List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,138 @@ class TokenParser:
 
     # Client ID 正则 (严格匹配 app_ 开头)
     CLIENT_ID_PATTERN = r'app_[A-Za-z0-9]+'
+
+    ACCESS_TOKEN_KEYS = ("accessToken", "access_token")
+    REFRESH_TOKEN_KEYS = ("refreshToken", "refresh_token")
+    SESSION_TOKEN_KEYS = ("sessionToken", "session_token")
+    CLIENT_ID_KEYS = ("clientId", "client_id")
+
+    def _entry_signature(self, entry: Dict[str, Optional[str]]) -> tuple:
+        return (
+            entry.get("token"),
+            entry.get("email"),
+            entry.get("account_id"),
+            entry.get("refresh_token"),
+            entry.get("session_token"),
+            entry.get("client_id")
+        )
+
+    def _get_string_value(self, data: Dict[str, Any], keys: tuple[str, ...]) -> Optional[str]:
+        for key in keys:
+            value = data.get(key)
+            if isinstance(value, str):
+                value = value.strip()
+                if value:
+                    return value
+        return None
+
+    def _extract_json_segments(self, text: str) -> List[tuple[Any, int, int]]:
+        decoder = json.JSONDecoder()
+        segments = []
+        index = 0
+        text_length = len(text)
+
+        while index < text_length:
+            while index < text_length and text[index].isspace():
+                index += 1
+
+            if index >= text_length:
+                break
+
+            if text[index] not in "{[":
+                index += 1
+                continue
+
+            try:
+                payload, end = decoder.raw_decode(text, index)
+            except json.JSONDecodeError:
+                index += 1
+                continue
+
+            segments.append((payload, index, end))
+            index = end
+
+        return segments
+
+    def _walk_json_candidates(self, payload: Any):
+        if isinstance(payload, dict):
+            yield payload
+            for value in payload.values():
+                yield from self._walk_json_candidates(value)
+        elif isinstance(payload, list):
+            for item in payload:
+                yield from self._walk_json_candidates(item)
+
+    def _extract_team_entry_from_json_object(self, data: Dict[str, Any]) -> Optional[Dict[str, Optional[str]]]:
+        token = self._get_string_value(data, self.ACCESS_TOKEN_KEYS)
+        refresh_token = self._get_string_value(data, self.REFRESH_TOKEN_KEYS)
+        session_token = self._get_string_value(data, self.SESSION_TOKEN_KEYS)
+
+        if token and not re.fullmatch(self.JWT_PATTERN, token):
+            token = None
+        if refresh_token and not re.fullmatch(self.REFRESH_TOKEN_PATTERN, refresh_token):
+            refresh_token = None
+        if session_token and not re.fullmatch(self.SESSION_TOKEN_PATTERN, session_token):
+            session_token = None
+
+        if not any([token, refresh_token, session_token]):
+            return None
+
+        email = self._get_string_value(data, ("email",))
+        if not email and isinstance(data.get("user"), dict):
+            email = self._get_string_value(data["user"], ("email",))
+        if email and not re.fullmatch(self.EMAIL_PATTERN, email):
+            email = None
+
+        account_id = self._get_string_value(data, ("accountId", "account_id"))
+        if not account_id and isinstance(data.get("account"), dict):
+            account_id = self._get_string_value(data["account"], ("id", "accountId", "account_id"))
+        if account_id and not re.fullmatch(self.ACCOUNT_ID_PATTERN, account_id, re.IGNORECASE):
+            account_id = None
+
+        client_id = self._get_string_value(data, self.CLIENT_ID_KEYS)
+        if client_id and not re.fullmatch(self.CLIENT_ID_PATTERN, client_id):
+            client_id = None
+
+        return {
+            "token": token,
+            "email": email,
+            "account_id": account_id,
+            "refresh_token": refresh_token,
+            "session_token": session_token,
+            "client_id": client_id
+        }
+
+    def _extract_team_entries_from_json(self, text: str) -> List[Dict[str, Optional[str]]]:
+        results = []
+        seen = set()
+
+        for payload, _, _ in self._extract_json_segments(text):
+            for candidate in self._walk_json_candidates(payload):
+                if not isinstance(candidate, dict):
+                    continue
+
+                entry = self._extract_team_entry_from_json_object(candidate)
+                if not entry:
+                    continue
+
+                signature = self._entry_signature(entry)
+                if signature in seen:
+                    continue
+
+                seen.add(signature)
+                results.append(entry)
+
+        return results
+
+    def _remove_json_segments(self, text: str) -> str:
+        chars = list(text)
+
+        for _, start, end in self._extract_json_segments(text):
+            for index in range(start, end):
+                chars[index] = '\n' if chars[index] == '\n' else ' '
+
+        return ''.join(chars)
 
     def extract_jwt_tokens(self, text: str) -> List[str]:
         """
@@ -90,10 +223,14 @@ class TokenParser:
         Returns:
             解析结果列表,每个元素包含 token, email, account_id
         """
-        results = []
+        results = self._extract_team_entries_from_json(text)
+        seen_signatures = {self._entry_signature(entry) for entry in results}
+
+        # 对已经识别出的 JSON 片段做空白替换，避免逐行兜底重复命中
+        non_json_text = self._remove_json_segments(text)
 
         # 按行分割文本
-        lines = text.strip().split('\n')
+        lines = non_json_text.strip().split('\n')
 
         for line in lines:
             line = line.strip()
@@ -153,14 +290,18 @@ class TokenParser:
                     client_id = cids[0] if cids else None
 
             if token or session_token or refresh_token:
-                results.append({
+                entry = {
                     "token": token,
                     "email": email,
                     "account_id": account_id,
                     "refresh_token": refresh_token,
                     "session_token": session_token,
                     "client_id": client_id
-                })
+                }
+                signature = self._entry_signature(entry)
+                if signature not in seen_signatures:
+                    seen_signatures.add(signature)
+                    results.append(entry)
 
         logger.info(f"解析完成,共提取 {len(results)} 条 Team 信息")
         return results
