@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}控制台 - GPT Team 管理系统{% endblock %}
+{% block title %}{{ page_title or '控制台' }} - GPT Team 管理系统{% endblock %}
 
 {% block content %}
+{% set is_warranty_mode = team_mode == 'warranty' %}
 <div class="page-header">
-    <h2>控制台</h2>
+    <h2>{{ page_title or '控制台' }}</h2>
 </div>
 
 <!-- 统计卡片 -->
@@ -13,16 +14,32 @@
         <div class="stat-icon"><i data-lucide="users"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.total_teams }}</div>
-            <div class="stat-label">Team 总数</div>
+            <div class="stat-label">{{ '质保 Team 总数' if is_warranty_mode else 'Team 总数' }}</div>
         </div>
     </div>
     <div class="stat-card stat-success">
         <div class="stat-icon"><i data-lucide="check-circle"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.available_teams }}</div>
-            <div class="stat-label">可用 Team</div>
+            <div class="stat-label">{{ '可用质保 Team' if is_warranty_mode else '可用 Team' }}</div>
         </div>
     </div>
+    {% if is_warranty_mode %}
+    <div class="stat-card stat-info">
+        <div class="stat-icon"><i data-lucide="users-round"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.total_seats }}</div>
+            <div class="stat-label">总席位数</div>
+        </div>
+    </div>
+    <div class="stat-card stat-warning">
+        <div class="stat-icon"><i data-lucide="armchair"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.remaining_seats }}</div>
+            <div class="stat-label">剩余席位</div>
+        </div>
+    </div>
+    {% else %}
     <div class="stat-card stat-info">
         <div class="stat-icon"><i data-lucide="ticket"></i></div>
         <div class="stat-info-group">
@@ -37,12 +54,13 @@
             <div class="stat-label">已使用兑换码</div>
         </div>
     </div>
+    {% endif %}
 </div>
 
 <!-- Team 列表 -->
 <div class="content-section sticky-toolbar-section">
     <div class="section-header">
-        <h3>Team 列表</h3>
+        <h3>{{ '质保 Team 列表' if is_warranty_mode else 'Team 列表' }}</h3>
         <div class="header-group">
             <!-- 批量操作 -->
             <div id="batchActions" class="batch-actions-group" style="display: none;">
@@ -122,8 +140,8 @@
                 </div>
             </div>
 
-            <button onclick="showModal('importTeamModal')" class="btn btn-primary">
-                <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 导入 Team
+            <button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">
+                <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> {{ '导入质保 Team' if is_warranty_mode else '导入 Team' }}
             </button>
         </div>
     </div>
@@ -162,7 +180,7 @@
                             <span class="role-hint" title="账号角色: {{ team.account_role }}">已降级</span>
                             {% endif %}
                         </div>
-                        {% if team.bound_codes %}
+                        {% if not is_warranty_mode and team.bound_codes %}
                         <button type="button"
                             class="btn btn-sm btn-secondary btn-show-bound-codes"
                             data-email="{{ team.email }}"
@@ -330,12 +348,13 @@
 {% endif %}
 {% else %}
 <div class="empty-state">
-    <p>暂无 Team 数据</p>
-    <button onclick="showModal('importTeamModal')" class="btn btn-primary">立即导入</button>
+    <p>{{ '暂无质保 Team 数据' if is_warranty_mode else '暂无 Team 数据' }}</p>
+    <button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">{{ '立即导入质保 Team' if is_warranty_mode else '立即导入' }}</button>
 </div>
 {% endif %}
 </div>
 
+{% if not is_warranty_mode %}
 <!-- 查看绑定兑换码模态框 -->
 <div id="boundCodesModal" class="modal-overlay">
     <div class="modal">
@@ -375,6 +394,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 <!-- 编辑 Team 模态框 -->
 <div id="editTeamModal" class="modal-overlay">

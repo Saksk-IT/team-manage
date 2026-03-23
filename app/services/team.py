@@ -21,6 +21,8 @@ from app.utils.time_utils import get_now
 logger = logging.getLogger(__name__)
 
 DEFAULT_TEAM_MAX_MEMBERS = 5
+TEAM_TYPE_STANDARD = "standard"
+TEAM_TYPE_WARRANTY = "warranty"
 
 
 class TeamService:
@@ -257,7 +259,8 @@ class TeamService:
         account_id: Optional[str] = None,
         refresh_token: Optional[str] = None,
         session_token: Optional[str] = None,
-        client_id: Optional[str] = None
+        client_id: Optional[str] = None,
+        team_type: str = TEAM_TYPE_STANDARD
     ) -> Dict[str, Any]:
         """
         单个导入 Team
@@ -489,6 +492,7 @@ class TeamService:
                     client_id=client_id,
                     encryption_key_id="default",
                     account_id=selected_account["account_id"],
+                    team_type=team_type,
                     team_name=selected_account["name"],
                     plan_type=selected_account["plan_type"],
                     subscription_plan=selected_account["subscription_plan"],
@@ -516,7 +520,7 @@ class TeamService:
 
                 remaining_seats = max(max_members - current_members, 0)
                 generated_codes = []
-                if remaining_seats > 0:
+                if team_type == TEAM_TYPE_STANDARD and remaining_seats > 0:
                     generate_result = await self.redemption_service.generate_code_batch(
                         db_session=db_session,
                         count=remaining_seats,
@@ -533,6 +537,7 @@ class TeamService:
                 imported_team_details.append({
                     "team_id": team.id,
                     "account_id": team.account_id,
+                    "team_type": team.team_type,
                     "team_name": team.team_name,
                     "current_members": current_members,
                     "max_members": max_members,
@@ -564,7 +569,10 @@ class TeamService:
 
             total_generated_codes = sum(item["generated_code_count"] for item in imported_team_details)
 
-            message = f"成功导入 {len(imported_ids)} 个 Team 账号，并自动生成 {total_generated_codes} 个绑定兑换码"
+            if team_type == TEAM_TYPE_WARRANTY:
+                message = f"成功导入 {len(imported_ids)} 个质保 Team 账号"
+            else:
+                message = f"成功导入 {len(imported_ids)} 个 Team 账号，并自动生成 {total_generated_codes} 个绑定兑换码"
             if skipped_ids:
                 message += f" (另有 {len(skipped_ids)} 个已存在)"
 
@@ -733,7 +741,8 @@ class TeamService:
     async def import_team_batch(
         self,
         text: str,
-        db_session: AsyncSession
+        db_session: AsyncSession,
+        team_type: str = TEAM_TYPE_STANDARD
     ):
         """
         批量导入 Team (流式返回进度)
@@ -799,7 +808,8 @@ class TeamService:
                     account_id=data.get("account_id"),
                     refresh_token=data.get("refresh_token"),
                     session_token=data.get("session_token"),
-                    client_id=data.get("client_id")
+                    client_id=data.get("client_id"),
+                    team_type=team_type
                 )
 
                 if result["success"]:
@@ -1729,7 +1739,8 @@ class TeamService:
 
     async def get_available_teams(
         self,
-        db_session: AsyncSession
+        db_session: AsyncSession,
+        team_type: str = TEAM_TYPE_STANDARD
     ) -> Dict[str, Any]:
         """
         获取可用的 Team 列表 (用于用户兑换页面)
@@ -1743,6 +1754,7 @@ class TeamService:
         try:
             # 查询 status='active' 且 current_members < max_members 的 Team
             stmt = select(Team).where(
+                Team.team_type == team_type,
                 Team.status == "active",
                 Team.current_members < Team.max_members
             )
@@ -1754,6 +1766,7 @@ class TeamService:
             for team in teams:
                 team_list.append({
                     "id": team.id,
+                    "team_type": team.team_type,
                     "team_name": team.team_name,
                     "current_members": team.current_members,
                     "max_members": team.max_members,
@@ -1879,7 +1892,8 @@ class TeamService:
         page: int = 1,
         per_page: int = 20,
         search: Optional[str] = None,
-        status: Optional[str] = None
+        status: Optional[str] = None,
+        team_type: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         获取所有 Team 列表 (用于管理员页面)
@@ -1914,6 +1928,9 @@ class TeamService:
             # 3. 如果有状态过滤,添加过滤条件
             if status:
                 stmt = stmt.where(Team.status == status)
+
+            if team_type:
+                stmt = stmt.where(Team.team_type == team_type)
 
             # 4. 获取总数
             count_stmt = select(func.count()).select_from(stmt.subquery())
@@ -1997,6 +2014,7 @@ class TeamService:
                     "id": team.id,
                     "email": team.email,
                     "account_id": team.account_id,
+                    "team_type": team.team_type,
                     "team_name": team.team_name,
                     "plan_type": team.plan_type,
                     "subscription_plan": team.subscription_plan,
@@ -2132,7 +2150,8 @@ class TeamService:
 
     async def get_total_available_seats(
         self,
-        db_session: AsyncSession
+        db_session: AsyncSession,
+        team_type: str = TEAM_TYPE_STANDARD
     ) -> int:
         """
         获取所有活跃 Team 的总剩余车位数
@@ -2140,6 +2159,7 @@ class TeamService:
         try:
             # 统计所有状态为 active 的 Team 的剩余位置
             stmt = select(func.sum(Team.max_members - Team.current_members)).where(
+                Team.team_type == team_type,
                 Team.status == "active",
                 Team.current_members < Team.max_members
             )
@@ -2151,12 +2171,15 @@ class TeamService:
 
     async def get_stats(
         self,
-        db_session: AsyncSession
+        db_session: AsyncSession,
+        team_type: Optional[str] = None
     ) -> Dict[str, int]:
         """获取 Team 统计信息"""
         try:
             # 总数
             total_stmt = select(func.count(Team.id))
+            if team_type:
+                total_stmt = total_stmt.where(Team.team_type == team_type)
             total_result = await db_session.execute(total_stmt)
             total = total_result.scalar() or 0
             
@@ -2165,16 +2188,40 @@ class TeamService:
                 Team.status == "active",
                 Team.current_members < Team.max_members
             )
+            if team_type:
+                available_stmt = available_stmt.where(Team.team_type == team_type)
             available_result = await db_session.execute(available_stmt)
             available = available_result.scalar() or 0
+
+            total_seats_stmt = select(func.sum(Team.max_members))
+            if team_type:
+                total_seats_stmt = total_seats_stmt.where(Team.team_type == team_type)
+            total_seats_result = await db_session.execute(total_seats_stmt)
+            total_seats = total_seats_result.scalar() or 0
+
+            remaining_seats_stmt = select(func.sum(Team.max_members - Team.current_members)).where(
+                Team.status == "active",
+                Team.current_members < Team.max_members
+            )
+            if team_type:
+                remaining_seats_stmt = remaining_seats_stmt.where(Team.team_type == team_type)
+            remaining_seats_result = await db_session.execute(remaining_seats_stmt)
+            remaining_seats = remaining_seats_result.scalar() or 0
             
             return {
                 "total": total,
-                "available": available
+                "available": available,
+                "total_seats": total_seats,
+                "remaining_seats": remaining_seats
             }
         except Exception as e:
             logger.error(f"获取 Team 统计信息失败: {e}")
-            return {"total": 0, "available": 0}
+            return {
+                "total": 0,
+                "available": 0,
+                "total_seats": 0,
+                "remaining_seats": 0
+            }
 
 
 # 创建全局 Team 服务实例

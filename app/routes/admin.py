@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from app.database import get_db
 from app.dependencies.auth import require_admin
 from app.models import Team, RedemptionCode
-from app.services.team import TeamService
+from app.services.team import TeamService, TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY
 from app.services.redemption import RedemptionService
 from app.utils.time_utils import get_now
 
@@ -26,8 +26,6 @@ router = APIRouter(
     tags=["admin"]
 )
 
-import json
-
 # 服务实例
 team_service = TeamService()
 redemption_service = RedemptionService()
@@ -37,6 +35,7 @@ redemption_service = RedemptionService()
 class TeamImportRequest(BaseModel):
     """Team 导入请求"""
     import_type: str = Field(..., description="导入类型: single 或 batch")
+    team_type: str = Field(TEAM_TYPE_STANDARD, description="Team 类型: standard 或 warranty")
     access_token: Optional[str] = Field(None, description="AT Token (单个导入)")
     refresh_token: Optional[str] = Field(None, description="Refresh Token (单个导入)")
     session_token: Optional[str] = Field(None, description="Session Token (单个导入)")
@@ -100,6 +99,75 @@ class BulkActionRequest(BaseModel):
     ids: List[int] = Field(..., description="Team ID 列表")
 
 
+def _normalize_team_type(team_type: Optional[str]) -> str:
+    normalized = (team_type or TEAM_TYPE_STANDARD).strip().lower()
+    if normalized not in {TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY}:
+        return TEAM_TYPE_STANDARD
+    return normalized
+
+
+async def _render_team_dashboard_page(
+    request: Request,
+    db: AsyncSession,
+    current_user: dict,
+    page: int,
+    per_page: int,
+    search: Optional[str],
+    status: Optional[str],
+    team_type: str,
+    active_page: str,
+    page_title: str
+):
+    from app.main import templates
+
+    teams_result = await team_service.get_all_teams(
+        db,
+        page=page,
+        per_page=per_page,
+        search=search,
+        status=status,
+        team_type=team_type
+    )
+    team_stats = await team_service.get_stats(db, team_type=team_type)
+
+    if team_type == TEAM_TYPE_STANDARD:
+        code_stats = await redemption_service.get_stats(db)
+        stats = {
+            "total_teams": team_stats["total"],
+            "available_teams": team_stats["available"],
+            "total_codes": code_stats["total"],
+            "used_codes": code_stats["used"]
+        }
+    else:
+        stats = {
+            "total_teams": team_stats["total"],
+            "available_teams": team_stats["available"],
+            "total_seats": team_stats["total_seats"],
+            "remaining_seats": team_stats["remaining_seats"]
+        }
+
+    return templates.TemplateResponse(
+        "admin/index.html",
+        {
+            "request": request,
+            "user": current_user,
+            "active_page": active_page,
+            "page_title": page_title,
+            "team_mode": team_type,
+            "teams": teams_result.get("teams", []),
+            "stats": stats,
+            "search": search,
+            "status_filter": status,
+            "pagination": {
+                "current_page": teams_result.get("current_page", page),
+                "total_pages": teams_result.get("total_pages", 1),
+                "total": teams_result.get("total", 0),
+                "per_page": per_page
+            }
+        }
+    )
+
+
 @router.get("/", response_class=HTMLResponse)
 async def admin_dashboard(
     request: Request,
@@ -114,52 +182,58 @@ async def admin_dashboard(
     管理员面板首页
     """
     try:
-        from app.main import templates
         logger.info(f"管理员访问控制台, search={search}, page={page}, per_page={per_page}")
-
-        # 设置每页数量
-        # per_page = 20 (Removed hardcoded value)
-        
-        # 获取 Team 列表 (分页)
-        teams_result = await team_service.get_all_teams(db, page=page, per_page=per_page, search=search, status=status)
-        
-        # 获取统计信息 (使用专用统计方法优化)
-        team_stats = await team_service.get_stats(db)
-        code_stats = await redemption_service.get_stats(db)
-
-        # 计算统计数据
-        stats = {
-            "total_teams": team_stats["total"],
-            "available_teams": team_stats["available"],
-            "total_codes": code_stats["total"],
-            "used_codes": code_stats["used"]
-        }
-
-        return templates.TemplateResponse(
-            "admin/index.html",
-            {
-                "request": request,
-                "user": current_user,
-                "active_page": "dashboard",
-                "teams": teams_result.get("teams", []),
-                "stats": stats,
-                "search": search,
-                "status_filter": status,
-                "pagination": {
-                    "current_page": teams_result.get("current_page", page),
-                    "total_pages": teams_result.get("total_pages", 1),
-                    "total": teams_result.get("total", 0),
-                    "per_page": per_page
-                }
-            }
+        return await _render_team_dashboard_page(
+            request=request,
+            db=db,
+            current_user=current_user,
+            page=page,
+            per_page=per_page,
+            search=search,
+            status=status,
+            team_type=TEAM_TYPE_STANDARD,
+            active_page="dashboard",
+            page_title="控制台"
         )
     except Exception as e:
         logger.error(f"加载管理员面板失败: {e}")
         import traceback
         logger.error(traceback.format_exc())
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"加载管理员面板失败: {str(e)}"
+        )
+
+
+@router.get("/warranty-teams", response_class=HTMLResponse)
+async def warranty_teams_dashboard(
+    request: Request,
+    page: int = 1,
+    per_page: int = 20,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        logger.info(f"管理员访问质保 Team 页面, search={search}, page={page}, per_page={per_page}")
+        return await _render_team_dashboard_page(
+            request=request,
+            db=db,
+            current_user=current_user,
+            page=page,
+            per_page=per_page,
+            search=search,
+            status=status,
+            team_type=TEAM_TYPE_WARRANTY,
+            active_page="warranty_teams",
+            page_title="质保 Team 管理"
+        )
+    except Exception as e:
+        logger.error(f"加载质保 Team 页面失败: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"加载质保 Team 页面失败: {str(e)}"
         )
 
 
@@ -281,7 +355,8 @@ async def team_import(
         导入结果
     """
     try:
-        logger.info(f"管理员导入 Team: {import_data.import_type}")
+        team_type = _normalize_team_type(import_data.team_type)
+        logger.info(f"管理员导入 Team: import_type={import_data.import_type}, team_type={team_type}")
 
         if import_data.import_type == "single":
             # 单个导入 - 允许通过 AT, RT 或 ST 导入
@@ -301,7 +376,8 @@ async def team_import(
                 account_id=import_data.account_id,
                 refresh_token=import_data.refresh_token,
                 session_token=import_data.session_token,
-                client_id=import_data.client_id
+                client_id=import_data.client_id,
+                team_type=team_type
             )
 
             if not result["success"]:
@@ -317,7 +393,8 @@ async def team_import(
             async def progress_generator():
                 async for status_item in team_service.import_team_batch(
                     text=import_data.content,
-                    db_session=db
+                    db_session=db,
+                    team_type=team_type
                 ):
                     yield json.dumps(status_item, ensure_ascii=False) + "\n"
 
@@ -745,6 +822,7 @@ async def codes_list_page(
                 func.count(RedemptionCode.id).label("code_count")
             )
             .join(RedemptionCode, RedemptionCode.bound_team_id == Team.id)
+            .where(Team.team_type == TEAM_TYPE_STANDARD)
             .group_by(Team.id, Team.email, Team.team_name)
             .order_by(Team.created_at.desc())
         )
@@ -1261,14 +1339,14 @@ async def records_page(
             filtered_records.append(record)
 
         # 获取Team信息并关联到记录
-        teams_result = await team_service.get_all_teams(db)
-        teams = teams_result.get("teams", [])
-        team_map = {team["id"]: team for team in teams}
+        teams_result = await db.execute(select(Team))
+        teams = teams_result.scalars().all()
+        team_map = {team.id: team for team in teams}
 
         # 为记录添加Team名称
         for record in filtered_records:
             team = team_map.get(record["team_id"])
-            record["team_name"] = team["team_name"] if team else None
+            record["team_name"] = team.team_name if team else None
 
         # 计算统计数据
         now = get_now()
@@ -1428,7 +1506,8 @@ async def settings_page(
                 "log_level": log_level,
                 "webhook_url": await settings_service.get_setting(db, "webhook_url", ""),
                 "low_stock_threshold": await settings_service.get_setting(db, "low_stock_threshold", "10"),
-                "api_key": await settings_service.get_setting(db, "api_key", "")
+                "api_key": await settings_service.get_setting(db, "api_key", ""),
+                "warranty_super_code": await settings_service.get_warranty_super_code(db)
             }
         )
 
@@ -1456,6 +1535,31 @@ class WebhookSettingsRequest(BaseModel):
     webhook_url: str = Field("", description="Webhook URL")
     low_stock_threshold: int = Field(10, description="库存阈值")
     api_key: str = Field("", description="API Key")
+
+
+@router.post("/settings/warranty-super-code/regenerate")
+async def regenerate_warranty_super_code(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        from app.services.settings import settings_service
+
+        new_code = await settings_service.regenerate_warranty_super_code(db)
+        logger.info("管理员重置超级兑换码成功")
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": "超级兑换码已重置",
+                "code": new_code
+            }
+        )
+    except Exception as e:
+        logger.error(f"重置超级兑换码失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"重置失败: {str(e)}"}
+        )
 
 
 @router.post("/settings/proxy")

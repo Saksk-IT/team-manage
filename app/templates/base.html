@@ -49,6 +49,12 @@
                         <span class="menu-text">控制台</span>
                     </a>
                 </li>
+                <li class="menu-item {% if active_page == 'warranty_teams' %}active{% endif %}">
+                    <a href="/admin/warranty-teams">
+                        <span class="menu-icon" data-lucide="shield"></span>
+                        <span class="menu-text">质保 Team</span>
+                    </a>
+                </li>
                 <li class="menu-item {% if active_page == 'codes' %}active{% endif %}">
                     <a href="/admin/codes">
                         <span class="menu-icon" data-lucide="ticket"></span>
@@ -101,7 +107,7 @@
     <div id="importTeamModal" class="modal-overlay">
         <div class="modal">
             <div class="modal-header">
-                <h3>导入 Team</h3>
+                <h3 id="importTeamModalTitle">导入 Team</h3>
                 <button class="modal-close" onclick="hideModal('importTeamModal')">&times;</button>
             </div>
             <div class="modal-body">
@@ -114,6 +120,7 @@
 
                 <div id="singleImport" class="import-panel">
                     <form id="singleImportForm" onsubmit="handleSingleImport(event)">
+                        <input type="hidden" id="singleImportTeamType" name="teamType" value="standard">
                         <div class="form-group">
                             <label>Access Token (AT) <span class="required">*</span></label>
                             <input type="text" name="accessToken" class="form-control"
@@ -147,7 +154,7 @@
                             <small class="form-text">可选，如果不填写将从 API 自动获取</small>
                         </div>
                         <div class="form-group">
-                            <small class="form-text">
+                            <small id="singleImportHelperText" class="form-text">
                                 导入后会按每个 Team 默认总席位 5 人，自动根据实际剩余席位生成同数量的绑定兑换码。
                             </small>
                         </div>
@@ -155,8 +162,8 @@
                     </form>
                     <div id="singleImportResult" style="display: none; margin-top: 1rem; padding: 1rem; border: 1px solid var(--border-base); border-radius: 12px; background: rgba(255,255,255,0.03);">
                         <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem;">
-                            <h4 style="margin: 0;">自动生成的绑定兑换码</h4>
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="copySingleImportCodes()">复制全部</button>
+                            <h4 id="singleImportResultTitle" style="margin: 0;">自动生成的绑定兑换码</h4>
+                            <button id="singleImportCopyBtn" type="button" class="btn btn-secondary btn-sm" onclick="copySingleImportCodes()">复制全部</button>
                         </div>
                         <div id="singleImportSummary" style="margin-bottom: 0.75rem;"></div>
                         <textarea id="singleImportCodes" class="form-control" rows="8" readonly placeholder="导入成功后会显示自动生成的兑换码"></textarea>
@@ -165,11 +172,12 @@
 
                 <div id="batchImport" class="import-panel" style="display: none;">
                     <form id="batchImportForm" onsubmit="handleBatchImport(event)">
+                        <input type="hidden" id="batchImportTeamType" name="teamType" value="standard">
                         <div class="form-group">
                             <label>批量导入内容 <span class="required">*</span></label>
                             <textarea name="batchContent" class="form-control" rows="8" placeholder="一行一个 AT Token..."
                                 required></textarea>
-                            <small class="form-text">支持粘贴一行一个 AT Token，也支持直接粘贴完整的多个 Team 账号 JSON，系统会自动提取 Access Token (AT)。</small>
+                            <small id="batchImportHelperText" class="form-text">支持粘贴一行一个 AT Token，也支持直接粘贴完整的多个 Team 账号 JSON，系统会自动提取 Access Token (AT)。</small>
                         </div>
                         <div id="batchProgressContainer" style="display: none; margin-bottom: 1.5rem;">
                             <div class="progress-info"
@@ -200,10 +208,10 @@
                                 <div
                                     style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
                                     <div>
-                                        <h5 style="margin: 0;">自动生成的绑定兑换码</h5>
+                                        <h5 id="batchImportCodesTitle" style="margin: 0;">自动生成的绑定兑换码</h5>
                                         <small id="batchImportCodesSummary" class="text-muted">导入成功后会自动汇总</small>
                                     </div>
-                                    <button type="button" class="btn btn-secondary btn-sm"
+                                    <button id="batchImportCodesCopyBtn" type="button" class="btn btn-secondary btn-sm"
                                         onclick="copyBatchImportCodes()">复制全部</button>
                                 </div>
                                 <textarea id="batchImportCodes" class="form-control" rows="6" readonly

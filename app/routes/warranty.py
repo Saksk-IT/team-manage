@@ -8,6 +8,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.services.warranty import warranty_service
 
 router = APIRouter(
     prefix="/warranty",
@@ -70,6 +71,30 @@ class EnableDeviceAuthRequest(BaseModel):
     code: str
     email: str
     team_id: int
+
+
+class WarrantyClaimRequest(BaseModel):
+    ordinary_code: str
+    email: EmailStr
+    super_code: str
+
+
+@router.post("/claim")
+async def claim_warranty(
+    request: WarrantyClaimRequest,
+    db_session: AsyncSession = Depends(get_db)
+):
+    result = await warranty_service.claim_warranty_invite(
+        db_session=db_session,
+        ordinary_code=request.ordinary_code,
+        email=request.email,
+        super_code=request.super_code
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "校验失败或当前无法提供质保服务")
+
+    return result
 
 
 @router.post("/enable-device-auth")

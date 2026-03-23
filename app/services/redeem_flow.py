@@ -14,7 +14,7 @@ from app.database import AsyncSessionLocal
 
 from app.models import RedemptionCode, RedemptionRecord, Team
 from app.services.redemption import RedemptionService
-from app.services.team import TeamService
+from app.services.team import TeamService, TEAM_TYPE_STANDARD
 from app.services.warranty import warranty_service
 from app.services.notification import notification_service
 from app.utils.time_utils import get_now
@@ -162,6 +162,7 @@ class RedeemFlowService:
         try:
             # 查找所有 active 且未满的 Team
             stmt = select(Team).where(
+                Team.team_type == TEAM_TYPE_STANDARD,
                 Team.status == "active",
                 Team.current_members < Team.max_members
             )

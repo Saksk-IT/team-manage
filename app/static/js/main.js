@@ -3,6 +3,10 @@
  */
 
 // Toast 提示函数
+const TEAM_TYPE_STANDARD = 'standard';
+const TEAM_TYPE_WARRANTY = 'warranty';
+let currentImportTeamType = TEAM_TYPE_STANDARD;
+
 function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');
     if (!toast) return;
@@ -50,9 +54,62 @@ function escapeHtml(unsafe) {
         .replace(/'/g, '&#039;');
 }
 
-function renderImportedTeamsSummary(importedTeams = []) {
+function getImportModeMeta(teamType = TEAM_TYPE_STANDARD) {
+    if (teamType === TEAM_TYPE_WARRANTY) {
+        return {
+            modalTitle: '导入质保 Team',
+            singleHelper: '质保 Team 不会生成兑换码，也不会参与普通兑换或库存统计。',
+            batchHelper: '支持粘贴一行一个 AT Token，也支持直接粘贴完整的多个 Team 账号 JSON。导入后的质保 Team 不会生成兑换码。',
+            singleResultTitle: '导入结果',
+            batchCodesTitle: '质保 Team 不生成兑换码'
+        };
+    }
+
+    return {
+        modalTitle: '导入 Team',
+        singleHelper: '导入后会按每个 Team 默认总席位 5 人，自动根据实际剩余席位生成同数量的绑定兑换码。',
+        batchHelper: '支持粘贴一行一个 AT Token，也支持直接粘贴完整的多个 Team 账号 JSON，系统会自动提取 Access Token (AT)。',
+        singleResultTitle: '自动生成的绑定兑换码',
+        batchCodesTitle: '自动生成的绑定兑换码'
+    };
+}
+
+function showImportTeamModal(teamType = TEAM_TYPE_STANDARD) {
+    currentImportTeamType = teamType === TEAM_TYPE_WARRANTY ? TEAM_TYPE_WARRANTY : TEAM_TYPE_STANDARD;
+    const meta = getImportModeMeta(currentImportTeamType);
+
+    const singleTeamTypeInput = document.getElementById('singleImportTeamType');
+    const batchTeamTypeInput = document.getElementById('batchImportTeamType');
+    const modalTitle = document.getElementById('importTeamModalTitle');
+    const singleHelperText = document.getElementById('singleImportHelperText');
+    const batchHelperText = document.getElementById('batchImportHelperText');
+    const singleResultTitle = document.getElementById('singleImportResultTitle');
+    const batchCodesTitle = document.getElementById('batchImportCodesTitle');
+    const singleResult = document.getElementById('singleImportResult');
+    const batchResultsContainer = document.getElementById('batchResultsContainer');
+    const batchProgressContainer = document.getElementById('batchProgressContainer');
+
+    if (singleTeamTypeInput) singleTeamTypeInput.value = currentImportTeamType;
+    if (batchTeamTypeInput) batchTeamTypeInput.value = currentImportTeamType;
+    if (modalTitle) modalTitle.textContent = meta.modalTitle;
+    if (singleHelperText) singleHelperText.textContent = meta.singleHelper;
+    if (batchHelperText) batchHelperText.textContent = meta.batchHelper;
+    if (singleResultTitle) singleResultTitle.textContent = meta.singleResultTitle;
+    if (batchCodesTitle) batchCodesTitle.textContent = meta.batchCodesTitle;
+    if (singleResult) singleResult.style.display = 'none';
+    if (batchResultsContainer) batchResultsContainer.style.display = 'none';
+    if (batchProgressContainer) batchProgressContainer.style.display = 'none';
+
+    updateBatchImportCodes([], currentImportTeamType);
+    switchModalTab('importTeamModal', 'singleImport');
+    showModal('importTeamModal');
+}
+
+function renderImportedTeamsSummary(importedTeams = [], teamType = TEAM_TYPE_STANDARD) {
     if (!importedTeams.length) {
-        return '<div class="text-muted">本次未生成绑定兑换码。</div>';
+        return teamType === TEAM_TYPE_WARRANTY
+            ? '<div class="text-muted">本次导入的质保 Team 不会生成兑换码。</div>'
+            : '<div class="text-muted">本次未生成绑定兑换码。</div>';
     }
 
     return importedTeams.map(team => `
@@ -61,7 +118,10 @@ function renderImportedTeamsSummary(importedTeams = []) {
                 ${escapeHtml(team.team_name || `Team ${team.team_id}`)} <span style="color: var(--text-muted);">#${team.team_id}</span>
             </div>
             <div style="font-size: 0.875rem; color: var(--text-muted); line-height: 1.6;">
-                当前成员 ${team.current_members}/${team.max_members}，剩余席位 ${team.remaining_seats}，自动生成 ${team.generated_code_count} 个绑定兑换码
+                当前成员 ${team.current_members}/${team.max_members}，剩余席位 ${team.remaining_seats}，
+                ${teamType === TEAM_TYPE_WARRANTY
+            ? '质保 Team 不生成兑换码'
+            : `自动生成 ${team.generated_code_count} 个绑定兑换码`}
             </div>
         </div>
     `).join('');
@@ -71,17 +131,22 @@ function collectImportedCodes(importedTeams = []) {
     return importedTeams.flatMap(team => Array.isArray(team.generated_codes) ? team.generated_codes : []);
 }
 
-function showSingleImportResult(importedTeams = []) {
+function showSingleImportResult(importedTeams = [], teamType = TEAM_TYPE_STANDARD) {
     const resultBox = document.getElementById('singleImportResult');
     const summaryBox = document.getElementById('singleImportSummary');
     const codesBox = document.getElementById('singleImportCodes');
+    const copyBtn = document.getElementById('singleImportCopyBtn');
 
-    if (!resultBox || !summaryBox || !codesBox) {
+    if (!resultBox || !summaryBox || !codesBox || !copyBtn) {
         return;
     }
 
-    summaryBox.innerHTML = renderImportedTeamsSummary(importedTeams);
-    codesBox.value = collectImportedCodes(importedTeams).join('\n');
+    const codes = collectImportedCodes(importedTeams);
+    summaryBox.innerHTML = renderImportedTeamsSummary(importedTeams, teamType);
+    codesBox.value = codes.join('\n');
+    const hasCodes = codes.length > 0;
+    codesBox.style.display = hasCodes ? 'block' : 'none';
+    copyBtn.style.display = hasCodes ? 'inline-flex' : 'none';
     resultBox.style.display = 'block';
 }
 
@@ -95,12 +160,13 @@ async function copySingleImportCodes() {
     await copyToClipboard(codesBox.value.trim());
 }
 
-function updateBatchImportCodes(codes = []) {
+function updateBatchImportCodes(codes = [], teamType = TEAM_TYPE_STANDARD) {
     const codesSection = document.getElementById('batchImportCodesSection');
     const codesSummary = document.getElementById('batchImportCodesSummary');
     const codesBox = document.getElementById('batchImportCodes');
+    const copyBtn = document.getElementById('batchImportCodesCopyBtn');
 
-    if (!codesSection || !codesSummary || !codesBox) {
+    if (!codesSection || !codesSummary || !codesBox || !copyBtn) {
         return;
     }
 
@@ -110,9 +176,11 @@ function updateBatchImportCodes(codes = []) {
     if (normalizedCodes.length > 0) {
         codesSection.style.display = 'block';
         codesSummary.textContent = `已自动汇总 ${normalizedCodes.length} 个绑定兑换码`;
+        copyBtn.style.display = 'inline-flex';
     } else {
         codesSection.style.display = 'none';
-        codesSummary.textContent = '导入成功后会自动汇总';
+        codesSummary.textContent = teamType === TEAM_TYPE_WARRANTY ? '质保 Team 不会生成兑换码' : '导入成功后会自动汇总';
+        copyBtn.style.display = teamType === TEAM_TYPE_WARRANTY ? 'none' : 'inline-flex';
     }
 }
 
@@ -296,6 +364,7 @@ function toggleWarrantyDays(checkbox, targetId) {
 async function handleSingleImport(event) {
     event.preventDefault();
     const form = event.target;
+    const teamType = form.teamType?.value || currentImportTeamType;
     const accessToken = form.accessToken.value.trim();
     const refreshToken = form.refreshToken ? form.refreshToken.value.trim() : null;
     const sessionToken = form.sessionToken ? form.sessionToken.value.trim() : null;
@@ -312,6 +381,7 @@ async function handleSingleImport(event) {
             method: 'POST',
             body: JSON.stringify({
                 import_type: 'single',
+                team_type: teamType,
                 access_token: accessToken,
                 refresh_token: refreshToken || null,
                 session_token: sessionToken || null,
@@ -324,9 +394,14 @@ async function handleSingleImport(event) {
         if (result.success) {
             const importedTeams = result.data.imported_teams || [];
             const generatedCodeCount = result.data.generated_code_count || 0;
-            showSingleImportResult(importedTeams);
-            showToast(`Team 导入成功，已自动生成 ${generatedCodeCount} 个绑定兑换码`, 'success');
+            showSingleImportResult(importedTeams, teamType);
+            if (teamType === TEAM_TYPE_WARRANTY) {
+                showToast('质保 Team 导入成功', 'success');
+            } else {
+                showToast(`Team 导入成功，已自动生成 ${generatedCodeCount} 个绑定兑换码`, 'success');
+            }
             form.reset();
+            if (form.teamType) form.teamType.value = teamType;
         } else {
             showToast(result.error || '导入失败', 'error');
         }
@@ -341,6 +416,7 @@ async function handleSingleImport(event) {
 async function handleBatchImport(event) {
     event.preventDefault();
     const form = event.target;
+    const teamType = form.teamType?.value || currentImportTeamType;
     const batchContent = form.batchContent.value.trim();
     const submitButton = form.querySelector('button[type="submit"]');
     const importedCodes = [];
@@ -365,7 +441,7 @@ async function handleBatchImport(event) {
     successCountEl.textContent = '0';
     failedCountEl.textContent = '0';
     resultsDiv.innerHTML = '<table class="data-table"><thead><tr><th>邮箱</th><th>状态</th><th>消息</th></tr></thead><tbody id="batchResultsBody"></tbody></table>';
-    updateBatchImportCodes([]);
+    updateBatchImportCodes([], teamType);
     const resultsBody = document.getElementById('batchResultsBody');
 
     submitButton.disabled = true;
@@ -379,6 +455,7 @@ async function handleBatchImport(event) {
             },
             body: JSON.stringify({
                 import_type: 'batch',
+                team_type: teamType,
                 content: batchContent
             })
         });
@@ -424,7 +501,7 @@ async function handleBatchImport(event) {
                             const latestImportedCodes = res.success ? collectImportedCodes(res.imported_teams || []) : [];
                             if (latestImportedCodes.length) {
                                 importedCodes.push(...latestImportedCodes);
-                                updateBatchImportCodes(importedCodes);
+                                updateBatchImportCodes(importedCodes, teamType);
                             }
                             const detailsHtml = res.success && Array.isArray(res.imported_teams) && res.imported_teams.length
                                 ? `
@@ -433,7 +510,8 @@ async function handleBatchImport(event) {
                                             <div style="margin-bottom: 0.5rem;">
                                                 <strong>${escapeHtml(team.team_name || `Team ${team.team_id}`)}</strong>
                                                 <span style="color: var(--text-muted);">#${team.team_id}</span>
-                                                ：剩余 ${team.remaining_seats} 席，已生成 ${team.generated_code_count} 个绑定码
+                                                ：剩余 ${team.remaining_seats} 席，
+                                                ${teamType === TEAM_TYPE_WARRANTY ? '质保 Team 不生成兑换码' : `已生成 ${team.generated_code_count} 个绑定码`}
                                                 ${team.generated_codes && team.generated_codes.length ? `
                                                     <div style="margin-top: 0.25rem; word-break: break-all;">
                                                         <code>${escapeHtml(team.generated_codes.join(', '))}</code>
@@ -463,10 +541,13 @@ async function handleBatchImport(event) {
                         progressPercent.textContent = '100%';
                         finalSummaryEl.textContent = `总数: ${data.total} | 成功: ${data.success_count} | 失败: ${data.failed_count}`;
 
-                        if (data.failed_count === 0) {
+                        if (data.failed_count === 0 && teamType === TEAM_TYPE_WARRANTY) {
+                            showToast('质保 Team 全部导入成功', 'success');
+                        } else if (data.failed_count === 0) {
                             showToast('全部导入成功，自动生成的绑定兑换码已显示在明细中', 'success');
                         } else {
-                            showToast(`导入完成，成功 ${data.success_count} 条，失败 ${data.failed_count} 条`, 'warning');
+                            const prefix = teamType === TEAM_TYPE_WARRANTY ? '质保 Team 导入完成' : '导入完成';
+                            showToast(`${prefix}，成功 ${data.success_count} 条，失败 ${data.failed_count} 条`, 'warning');
                         }
                     } else if (data.type === 'error') {
                         showToast(data.error, 'error');

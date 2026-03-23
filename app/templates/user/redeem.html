@@ -27,36 +27,69 @@
         <div id="step1" class="step active">
             <div class="card">
                 <h2>输入兑换信息</h2>
-                <form id="verifyForm">
-                    <div class="form-group">
-                        <label for="email">邮箱地址</label>
-                        <input type="email" id="email" name="email" required placeholder="请输入您的邮箱地址" class="form-input">
-                        <p class="form-help">请填写您要接受邀请的账号的邮箱，邀请将发送到此邮箱</p>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="code">兑换码</label>
-                        <input type="text" id="code" name="code" required placeholder="请输入兑换码" class="form-input">
-                    </div>
-
-                    <button type="submit" class="btn btn-primary" id="verifyBtn">
-                        <i data-lucide="shield-check"></i> 立即兑换
+                <div style="display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+                    <button type="button" id="redeemModeBtn" class="btn btn-primary" style="flex: 1; min-width: 140px;"
+                        onclick="switchServiceMode('redeem')">
+                        <i data-lucide="ticket"></i> 普通兑换
                     </button>
-                </form>
+                    <button type="button" id="warrantyModeBtn" class="btn btn-secondary" style="flex: 1; min-width: 140px;"
+                        onclick="switchServiceMode('warranty')">
+                        <i data-lucide="shield"></i> 质保服务
+                    </button>
+                </div>
 
-                <!-- 质保说明区域 -->
-                <div class="warranty-section"
-                    style="margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--border-base);">
-                    <h3 style="font-size: 1.1rem; margin-bottom: 15px; color: var(--text-primary);">
-                        <i data-lucide="shield" style="width: 18px; height: 18px; vertical-align: middle;"></i>
-                        质保说明
-                    </h3>
-                    <div
-                        style="padding: 16px 18px; border-radius: 12px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.18); color: var(--text-primary); line-height: 1.7;">
-                        <div style="font-size: 0.95rem; color: var(--text-secondary);">
-                            质保期间如果您使用兑换码加入的 Team 被封号，可以在质保期内（一个月）联系客服，再次获取兑换码。
+                <div id="redeemPane">
+                    <form id="verifyForm">
+                        <div class="form-group">
+                            <label for="email">邮箱地址</label>
+                            <input type="email" id="email" name="email" required placeholder="请输入您的邮箱地址" class="form-input">
+                            <p class="form-help">请填写您要接受邀请的账号的邮箱，邀请将发送到此邮箱</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="code">兑换码</label>
+                            <input type="text" id="code" name="code" required placeholder="请输入兑换码" class="form-input">
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" id="verifyBtn">
+                            <i data-lucide="shield-check"></i> 立即兑换
+                        </button>
+                    </form>
+
+                    <div class="warranty-section"
+                        style="margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--border-base);">
+                        <h3 style="font-size: 1.1rem; margin-bottom: 15px; color: var(--text-primary);">
+                            <i data-lucide="shield" style="width: 18px; height: 18px; vertical-align: middle;"></i>
+                            质保说明
+                        </h3>
+                        <div
+                            style="padding: 16px 18px; border-radius: 12px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.18); color: var(--text-primary); line-height: 1.7;">
+                            <div style="font-size: 0.95rem; color: var(--text-secondary);">
+                                如您已购买的普通兑换码对应 Team 因风控等原因无法使用，可切换到“质保服务”提交普通兑换码、邮箱和超级兑换码，系统会尝试为您发送质保 Team 邀请。
+                            </div>
                         </div>
                     </div>
+                </div>
+
+                <div id="warrantyPane" style="display: none;">
+                    <form id="warrantyClaimForm">
+                        <div class="form-group">
+                            <label for="warrantyOrdinaryCode">普通兑换码</label>
+                            <input type="text" id="warrantyOrdinaryCode" name="ordinaryCode" required placeholder="请输入您之前购买或获得的普通兑换码" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label for="warrantyEmail">邮箱地址</label>
+                            <input type="email" id="warrantyEmail" name="email" required placeholder="请输入该普通兑换码对应的邮箱地址" class="form-input">
+                            <p class="form-help">系统会校验您输入的邮箱是否与该普通兑换码的历史绑定邮箱一致。</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="superCode">超级兑换码</label>
+                            <input type="text" id="superCode" name="superCode" required placeholder="请输入超级兑换码" class="form-input">
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="claimBtn">
+                            <i data-lucide="shield"></i> 提交质保
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>

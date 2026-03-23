@@ -18,6 +18,7 @@ let currentEmail = '';
 let currentCode = '';
 let availableTeams = [];
 let selectedTeamId = null;
+let currentServiceMode = 'redeem';
 const emailConfirmModal = document.getElementById('emailConfirmModal');
 const confirmEmailDisplay = document.getElementById('confirmEmailDisplay');
 const cancelConfirmBtn = document.getElementById('cancelConfirmBtn');
@@ -27,6 +28,15 @@ function setVerifyButtonContent(text) {
     const verifyBtn = document.getElementById('verifyBtn');
     if (!verifyBtn) return;
     verifyBtn.innerHTML = `<i data-lucide="shield-check"></i> ${escapeHtml(text)}`;
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+}
+
+function setClaimButtonContent(text) {
+    const claimBtn = document.getElementById('claimBtn');
+    if (!claimBtn) return;
+    claimBtn.innerHTML = `<i data-lucide="shield"></i> ${escapeHtml(text)}`;
     if (window.lucide) {
         lucide.createIcons();
     }
@@ -69,6 +79,29 @@ function showStep(stepNumber) {
 function backToStep1() {
     showStep(1);
     selectedTeamId = null;
+}
+
+function switchServiceMode(mode) {
+    currentServiceMode = mode === 'warranty' ? 'warranty' : 'redeem';
+
+    const redeemPane = document.getElementById('redeemPane');
+    const warrantyPane = document.getElementById('warrantyPane');
+    const redeemModeBtn = document.getElementById('redeemModeBtn');
+    const warrantyModeBtn = document.getElementById('warrantyModeBtn');
+
+    if (redeemPane) redeemPane.style.display = currentServiceMode === 'redeem' ? 'block' : 'none';
+    if (warrantyPane) warrantyPane.style.display = currentServiceMode === 'warranty' ? 'block' : 'none';
+
+    if (redeemModeBtn) {
+        redeemModeBtn.className = currentServiceMode === 'redeem' ? 'btn btn-primary' : 'btn btn-secondary';
+    }
+    if (warrantyModeBtn) {
+        warrantyModeBtn.className = currentServiceMode === 'warranty' ? 'btn btn-primary' : 'btn btn-secondary';
+    }
+
+    if (window.lucide) {
+        lucide.createIcons();
+    }
 }
 
 function showEmailConfirmModal(email) {
@@ -159,6 +192,62 @@ emailConfirmModal?.addEventListener('click', (event) => {
 document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && emailConfirmModal?.classList.contains('show')) {
         hideEmailConfirmModal();
+    }
+});
+
+document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const ordinaryCode = document.getElementById('warrantyOrdinaryCode')?.value.trim();
+    const email = document.getElementById('warrantyEmail')?.value.trim();
+    const superCode = document.getElementById('superCode')?.value.trim();
+    const claimBtn = document.getElementById('claimBtn');
+
+    if (!ordinaryCode || !email || !superCode) {
+        showToast('请填写完整信息', 'error');
+        return;
+    }
+
+    if (claimBtn) claimBtn.disabled = true;
+    setClaimButtonContent('提交中...');
+
+    try {
+        const response = await fetch('/warranty/claim', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                ordinary_code: ordinaryCode,
+                email,
+                super_code: superCode
+            })
+        });
+
+        const text = await response.text();
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (error) {
+            throw new Error('服务器响应格式错误');
+        }
+
+        if (response.ok && data.success) {
+            showWarrantyClaimSuccessResult(data, email, ordinaryCode);
+        } else {
+            let errorMessage = '校验失败或当前无法提供质保服务';
+            if (typeof data.detail === 'string') {
+                errorMessage = data.detail;
+            } else if (typeof data.error === 'string') {
+                errorMessage = data.error;
+            }
+            showErrorResult(errorMessage);
+        }
+    } catch (error) {
+        showErrorResult(error.message || '网络错误,请稍后重试');
+    } finally {
+        if (claimBtn) claimBtn.disabled = false;
+        setClaimButtonContent('提交质保');
     }
 });
 
@@ -387,6 +476,51 @@ function showSuccessResult(data) {
     `;
     if (window.lucide) lucide.createIcons();
 
+    showStep(3);
+}
+
+function showWarrantyClaimSuccessResult(data, email, ordinaryCode) {
+    const resultContent = document.getElementById('resultContent');
+    const teamInfo = data.team_info || {};
+
+    resultContent.innerHTML = `
+        <div class="result-success">
+            <div class="result-icon"><i data-lucide="shield-check" style="width: 64px; height: 64px; color: var(--success);"></i></div>
+            <div class="result-title">质保邀请已发送</div>
+            <div class="result-message">${escapeHtml(data.message || '系统已为您发送质保 Team 邀请，请查收邮箱。')}</div>
+
+            <div class="result-details">
+                <div class="result-detail-item">
+                    <span class="result-detail-label">普通兑换码</span>
+                    <span class="result-detail-value">${escapeHtml(ordinaryCode)}</span>
+                </div>
+                <div class="result-detail-item">
+                    <span class="result-detail-label">邮箱地址</span>
+                    <span class="result-detail-value">${escapeHtml(email)}</span>
+                </div>
+                <div class="result-detail-item">
+                    <span class="result-detail-label">质保 Team</span>
+                    <span class="result-detail-value">${escapeHtml(teamInfo.team_name || '-')}</span>
+                </div>
+                ${teamInfo.expires_at ? `
+                <div class="result-detail-item">
+                    <span class="result-detail-label">到期时间</span>
+                    <span class="result-detail-value">${formatDate(teamInfo.expires_at)}</span>
+                </div>
+                ` : ''}
+            </div>
+
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 2rem; background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px; text-align: left;">
+                <i data-lucide="mail" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 5px;"></i>
+                质保 Team 邀请已发送到您的邮箱，请查收并按照邮件提示完成加入。
+            </p>
+
+            <button onclick="location.reload()" class="btn btn-primary" style="width: 100%;">
+                <i data-lucide="refresh-cw"></i> 返回首页
+            </button>
+        </div>
+    `;
+    if (window.lucide) lucide.createIcons();
     showStep(3);
 }
 

@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import RedemptionCode, RedemptionRecord, Team
+from app.services.settings import settings_service
+from app.services.team import TEAM_TYPE_WARRANTY
 from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
@@ -23,10 +25,152 @@ _query_rate_limit = {}
 class WarrantyService:
     """质保服务类"""
 
+    CLAIM_GENERIC_ERROR = "校验失败或当前无法提供质保服务"
+
     def __init__(self):
         """初始化质保服务"""
         from app.services.team import TeamService
         self.team_service = TeamService()
+
+    async def _ensure_warranty_record(
+        self,
+        db_session: AsyncSession,
+        ordinary_code: str,
+        email: str,
+        team: Team
+    ) -> None:
+        stmt = select(RedemptionRecord).where(
+            RedemptionRecord.code == ordinary_code,
+            RedemptionRecord.email == email,
+            RedemptionRecord.team_id == team.id,
+            RedemptionRecord.is_warranty_redemption.is_(True)
+        )
+        result = await db_session.execute(stmt)
+        existing_record = result.scalar_one_or_none()
+
+        if existing_record:
+            return
+
+        db_session.add(
+            RedemptionRecord(
+                email=email,
+                code=ordinary_code,
+                team_id=team.id,
+                account_id=team.account_id,
+                is_warranty_redemption=True
+            )
+        )
+        await db_session.commit()
+
+    async def claim_warranty_invite(
+        self,
+        db_session: AsyncSession,
+        ordinary_code: str,
+        email: str,
+        super_code: str
+    ) -> Dict[str, Any]:
+        normalized_email = (email or "").strip().lower()
+        ordinary_code = (ordinary_code or "").strip()
+        super_code = (super_code or "").strip()
+
+        try:
+            current_super_code = await settings_service.get_warranty_super_code(db_session)
+            if not current_super_code or super_code != current_super_code:
+                logger.warning("质保申请失败: 超级兑换码校验未通过")
+                return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
+
+            code_stmt = select(RedemptionCode).where(RedemptionCode.code == ordinary_code)
+            code_result = await db_session.execute(code_stmt)
+            redemption_code = code_result.scalar_one_or_none()
+            if not redemption_code:
+                logger.warning("质保申请失败: 普通兑换码不存在 code=%s", ordinary_code)
+                return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
+
+            matched_email = (redemption_code.used_by_email or "").strip().lower()
+            if not matched_email:
+                record_stmt = (
+                    select(RedemptionRecord)
+                    .where(RedemptionRecord.code == ordinary_code)
+                    .order_by(RedemptionRecord.redeemed_at.desc())
+                )
+                record_result = await db_session.execute(record_stmt)
+                latest_record = record_result.scalars().first()
+                matched_email = (latest_record.email or "").strip().lower() if latest_record else ""
+
+            if not matched_email or matched_email != normalized_email:
+                logger.warning("质保申请失败: 邮箱与普通兑换码不匹配 code=%s", ordinary_code)
+                return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
+
+            candidate_stmt = (
+                select(Team)
+                .where(
+                    Team.team_type == TEAM_TYPE_WARRANTY,
+                    Team.status == "active",
+                    Team.current_members < Team.max_members
+                )
+                .order_by(Team.created_at.asc())
+            )
+            candidate_result = await db_session.execute(candidate_stmt)
+            warranty_teams = candidate_result.scalars().all()
+
+            if not warranty_teams:
+                logger.warning("质保申请失败: 没有可用的质保 Team")
+                return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
+
+            for team in warranty_teams:
+                members_result = await self.team_service.get_team_members(team.id, db_session)
+                if not members_result.get("success"):
+                    logger.warning(
+                        "质保 Team 不可用，跳过 team_id=%s error=%s",
+                        team.id,
+                        members_result.get("error")
+                    )
+                    continue
+
+                all_members = members_result.get("members", [])
+                already_exists = any(
+                    (member.get("email") or "").strip().lower() == normalized_email
+                    for member in all_members
+                )
+
+                if already_exists:
+                    await self._ensure_warranty_record(db_session, ordinary_code, email, team)
+                    return {
+                        "success": True,
+                        "message": "质保邀请已存在，请直接查收邮箱中的邀请邮件。",
+                        "team_info": {
+                            "id": team.id,
+                            "team_name": team.team_name,
+                            "email": team.email,
+                            "expires_at": team.expires_at.isoformat() if team.expires_at else None
+                        }
+                    }
+
+                add_result = await self.team_service.add_team_member(team.id, email, db_session)
+                if add_result.get("success"):
+                    await self._ensure_warranty_record(db_session, ordinary_code, email, team)
+                    return {
+                        "success": True,
+                        "message": add_result.get("message") or "质保邀请发送成功，请查收邮箱。",
+                        "team_info": {
+                            "id": team.id,
+                            "team_name": team.team_name,
+                            "email": team.email,
+                            "expires_at": team.expires_at.isoformat() if team.expires_at else None
+                        }
+                    }
+
+                logger.warning(
+                    "质保 Team 邀请失败，尝试下一个 team_id=%s error=%s",
+                    team.id,
+                    add_result.get("error")
+                )
+
+            return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
+
+        except Exception as e:
+            logger.error(f"质保邀请申请失败: {e}")
+            return {"success": False, "error": self.CLAIM_GENERIC_ERROR}
 
     async def check_warranty_status(
         self,

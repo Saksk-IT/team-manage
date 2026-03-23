@@ -100,6 +100,17 @@ def run_auto_migration():
             cursor.execute("ALTER TABLE teams ADD COLUMN client_id VARCHAR(100)")
             migrations_applied.append("teams.client_id")
 
+        if not column_exists(cursor, "teams", "team_type"):
+            logger.info("添加 teams.team_type 字段")
+            cursor.execute("ALTER TABLE teams ADD COLUMN team_type VARCHAR(20) DEFAULT 'standard'")
+            migrations_applied.append("teams.team_type")
+
+        cursor.execute("""
+            UPDATE teams
+            SET team_type = 'standard'
+            WHERE team_type IS NULL OR TRIM(team_type) = ''
+        """)
+
         if not column_exists(cursor, "teams", "error_count"):
             logger.info("添加 teams.error_count 字段")
             cursor.execute("ALTER TABLE teams ADD COLUMN error_count INTEGER DEFAULT 0")

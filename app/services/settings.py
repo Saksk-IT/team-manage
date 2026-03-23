@@ -2,6 +2,8 @@
 系统设置服务
 管理系统配置的读取、更新和缓存
 """
+import secrets
+import string
 from typing import Optional, Dict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 class SettingsService:
     """系统设置服务类"""
+
+    WARRANTY_SUPER_CODE_KEY = "warranty_super_code"
 
     def __init__(self):
         self._cache: Dict[str, str] = {}
@@ -214,6 +218,22 @@ class SettingsService:
             logger.info(f"日志级别已更新为: {level.upper()}")
 
         return success
+
+    def _generate_warranty_super_code(self, length: int = 20) -> str:
+        alphabet = string.ascii_uppercase + string.digits
+        alphabet = alphabet.replace('0', '').replace('O', '').replace('I', '').replace('1', '')
+        raw = ''.join(secrets.choice(alphabet) for _ in range(length))
+        return '-'.join(raw[i:i + 4] for i in range(0, len(raw), 4))
+
+    async def get_warranty_super_code(self, session: AsyncSession) -> str:
+        return await self.get_setting(session, self.WARRANTY_SUPER_CODE_KEY, "") or ""
+
+    async def regenerate_warranty_super_code(self, session: AsyncSession) -> str:
+        code = self._generate_warranty_super_code()
+        success = await self.update_setting(session, self.WARRANTY_SUPER_CODE_KEY, code)
+        if not success:
+            raise RuntimeError("保存超级兑换码失败")
+        return code
 
 
 # 创建全局实例

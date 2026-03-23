@@ -21,6 +21,7 @@ class Team(Base):
     client_id = Column(String(100), comment="OAuth Client ID")
     encryption_key_id = Column(String(50), comment="加密密钥 ID")
     account_id = Column(String(100), comment="当前使用的 account-id")
+    team_type = Column(String(20), nullable=False, default="standard", comment="Team 类型: standard/warranty")
     team_name = Column(String(255), comment="Team 名称")
     plan_type = Column(String(50), comment="计划类型")
     subscription_plan = Column(String(100), comment="订阅计划")
@@ -41,6 +42,7 @@ class Team(Base):
     # 索引
     __table_args__ = (
         Index("idx_status", "status"),
+        Index("idx_team_type", "team_type"),
     )
 
 
