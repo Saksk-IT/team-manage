@@ -713,7 +713,7 @@
 
         try {
             showToast('正在刷新...', 'info');
-            const response = await fetch(`/api/teams/${teamId}/refresh?force=true`, {
+            const response = await fetch(`/api/teams/${teamId}/refresh`, {
                 method: 'GET'
             });
 

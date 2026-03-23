@@ -169,6 +169,42 @@ class TeamService:
         if not db_session.in_transaction():
             await db_session.commit()
 
+    def _is_fatal_token_refresh_error(self, result: Dict[str, Any]) -> bool:
+        """
+        判断 Token 刷新失败是否属于致命错误。
+
+        仅对明确的封禁/失效类错误提前终止刷新流程；
+        其他刷新失败应继续尝试备用刷新方式，或在当前 AT 仍有效时回退使用现有 Token。
+        """
+        error_code = result.get("error_code")
+        error_msg = str(result.get("error", "")).lower()
+
+        fatal_codes = {
+            "account_deactivated",
+            "token_invalidated",
+            "account_suspended",
+            "account_not_found",
+            "user_not_found",
+            "deactivated_workspace",
+        }
+        if error_code in fatal_codes:
+            return True
+
+        fatal_keywords = [
+            "token has been invalidated",
+            "account_deactivated",
+            "account has been deactivated",
+            "account is deactivated",
+            "account_suspended",
+            "account is suspended",
+            "account was deleted",
+            "user_not_found",
+            "session_invalidated",
+            "this account is deactivated",
+            "deactivated_workspace",
+        ]
+        return any(keyword in error_msg for keyword in fatal_keywords)
+
     async def ensure_access_token(self, team: Team, db_session: AsyncSession, force_refresh: bool = False) -> Optional[str]:
         """
         确保 AT Token 有效,如果过期则尝试刷新
@@ -181,21 +217,28 @@ class TeamService:
         Returns:
             有效的 AT Token, 刷新失败返回 None
         """
+        access_token = None
+        current_token_is_valid = False
+
         try:
             # 1. 解密当前 Token
             access_token = encryption_service.decrypt_token(team.access_token_encrypted)
-            
-            # 2. 检查是否过期 (如果不强制刷新且未过期，则返回)
-            if not force_refresh and not self.jwt_parser.is_token_expired(access_token):
+
+            # 2. 检查当前 Token 是否仍可用
+            current_token_is_valid = not self.jwt_parser.is_token_expired(access_token)
+
+            # 如果不强制刷新且未过期，则直接返回
+            if not force_refresh and current_token_is_valid:
                 return access_token
-                
+
             if force_refresh:
                 logger.info(f"Team {team.id} ({team.email}) 强制刷新 Token")
             else:
                 logger.info(f"Team {team.id} ({team.email}) Token 已过期, 尝试刷新")
         except Exception as e:
             logger.error(f"解密或验证 Token 失败: {e}")
-            access_token = None # 可能是解密失败，强制走刷新流程
+            access_token = None  # 可能是解密失败，强制走刷新流程
+            current_token_is_valid = False
 
         # 3. 尝试使用 session_token 刷新
         if team.session_token_encrypted:
@@ -218,9 +261,13 @@ class TeamService:
                 await self._reset_error_status(team, db_session)
                 return new_at
             else:
-                # 检查是否为致命错误 (如 token_invalidated)
-                if await self._handle_api_error(refresh_result, team, db_session):
+                if self._is_fatal_token_refresh_error(refresh_result):
+                    await self._handle_api_error(refresh_result, team, db_session)
                     return None
+                logger.warning(
+                    f"Team {team.id} ({team.email}) 通过 session_token 刷新失败，继续尝试其他方式: "
+                    f"{refresh_result.get('error', '未知错误')}"
+                )
 
         # 4. 尝试使用 refresh_token 刷新
         if team.refresh_token_encrypted and team.client_id:
@@ -239,10 +286,22 @@ class TeamService:
                 await self._reset_error_status(team, db_session)
                 return new_at
             else:
-                # 检查是否为致命错误 (如 account_deactivated)
-                if await self._handle_api_error(refresh_result, team, db_session):
+                if self._is_fatal_token_refresh_error(refresh_result):
+                    await self._handle_api_error(refresh_result, team, db_session)
                     return None
-        
+
+                logger.warning(
+                    f"Team {team.id} ({team.email}) 通过 refresh_token 刷新失败: "
+                    f"{refresh_result.get('error', '未知错误')}"
+                )
+
+        # 5. 强制刷新失败，但当前 Token 仍有效时，回退到现有 Token，避免误判为 expired
+        if current_token_is_valid and access_token:
+            logger.warning(
+                f"Team {team.id} ({team.email}) 强制刷新失败，但当前 Access Token 仍有效，继续使用现有 Token"
+            )
+            return access_token
+
         if team.status != "banned":
             logger.error(f"Team {team.id} Token 已过期且无法刷新，标记为 expired")
             team.status = "expired"
