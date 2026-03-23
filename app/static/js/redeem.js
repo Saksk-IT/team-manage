@@ -18,6 +18,10 @@ let currentEmail = '';
 let currentCode = '';
 let availableTeams = [];
 let selectedTeamId = null;
+const emailConfirmModal = document.getElementById('emailConfirmModal');
+const confirmEmailDisplay = document.getElementById('confirmEmailDisplay');
+const cancelConfirmBtn = document.getElementById('cancelConfirmBtn');
+const confirmRedeemBtn = document.getElementById('confirmRedeemBtn');
 
 function setVerifyButtonContent(text) {
     const verifyBtn = document.getElementById('verifyBtn');
@@ -67,23 +71,30 @@ function backToStep1() {
     selectedTeamId = null;
 }
 
-// 步骤1: 立即兑换
-document.getElementById('verifyForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
+function showEmailConfirmModal(email) {
+    if (!emailConfirmModal || !confirmEmailDisplay) return;
 
-    const email = document.getElementById('email').value.trim();
-    const code = document.getElementById('code').value.trim();
-    const verifyBtn = document.getElementById('verifyBtn');
+    confirmEmailDisplay.textContent = email;
+    emailConfirmModal.classList.add('show');
+    emailConfirmModal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
 
-    // 验证
-    if (!email || !code) {
-        showToast('请填写完整信息', 'error');
-        return;
+    if (window.lucide) {
+        lucide.createIcons();
     }
+}
 
-    // 保存到全局变量
-    currentEmail = email;
-    currentCode = code;
+function hideEmailConfirmModal() {
+    if (!emailConfirmModal) return;
+
+    emailConfirmModal.classList.remove('show');
+    emailConfirmModal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
+}
+
+async function startRedeemFlow() {
+    const verifyBtn = document.getElementById('verifyBtn');
+    if (!verifyBtn) return;
 
     verifyBtn.disabled = true;
 
@@ -106,6 +117,48 @@ document.getElementById('verifyForm').addEventListener('submit', async (e) => {
     } finally {
         verifyBtn.disabled = false;
         setVerifyButtonContent('立即兑换');
+    }
+}
+
+// 步骤1: 立即兑换
+document.getElementById('verifyForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const email = document.getElementById('email').value.trim();
+    const code = document.getElementById('code').value.trim();
+
+    // 验证
+    if (!email || !code) {
+        showToast('请填写完整信息', 'error');
+        return;
+    }
+
+    // 保存到全局变量
+    currentEmail = email;
+    currentCode = code;
+
+    showEmailConfirmModal(email);
+});
+
+cancelConfirmBtn?.addEventListener('click', () => {
+    hideEmailConfirmModal();
+    document.getElementById('email')?.focus();
+});
+
+confirmRedeemBtn?.addEventListener('click', async () => {
+    hideEmailConfirmModal();
+    await startRedeemFlow();
+});
+
+emailConfirmModal?.addEventListener('click', (event) => {
+    if (event.target === emailConfirmModal) {
+        hideEmailConfirmModal();
+    }
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && emailConfirmModal?.classList.contains('show')) {
+        hideEmailConfirmModal();
     }
 });
 
