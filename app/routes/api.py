@@ -46,6 +46,7 @@ async def refresh_team(
         logger.info(f"刷新 Team {team_id} 信息, force={force}")
 
         result = await team_service.sync_team_info(team_id, db, force_refresh=force)
+        await db.commit()
 
         if not result["success"]:
             return JSONResponse(
