@@ -64,6 +64,11 @@
         <div class="header-group">
             <!-- 批量操作 -->
             <div id="batchActions" class="batch-actions-group" style="display: none;">
+                {% if not is_warranty_mode %}
+                <button onclick="showTeamCodesExportModal()" class="btn btn-secondary btn-sm">
+                    <i data-lucide="download" style="width: 14px; height: 14px;"></i> 批量导出兑换码
+                </button>
+                {% endif %}
                 <button onclick="handleBatchRefresh()" class="btn btn-secondary btn-sm">
                     <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i> 批量刷新
                 </button>
@@ -170,6 +175,7 @@
             {% for team in teams %}
             <tr>
                 <td><input type="checkbox" class="team-checkbox" value="{{ team.id }}" data-email="{{ team.email }}"
+                        data-bound-code-count="{{ team.bound_code_count or 0 }}"
                         onchange="updateSelectedCount()">
                 </td>
                 <td><span class="text-muted">{{ team.id }}</span></td>
@@ -247,6 +253,14 @@
                         <button class="btn btn-sm btn-icon btn-minimal btn-success btn-enable-device-auth"
                             data-id="{{ team.id }}" title="一键开启设备代码验证">
                             <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i>
+                        </button>
+                        <button class="btn btn-sm btn-icon btn-minimal btn-warning btn-transfer-team"
+                            data-id="{{ team.id }}"
+                            data-email="{{ team.email }}"
+                            data-target-team-type="{{ 'standard' if is_warranty_mode else 'warranty' }}"
+                            data-target-team-label="{{ '控制台 Team' if is_warranty_mode else '质保 Team' }}"
+                            title="{{ '转移到控制台 Team' if is_warranty_mode else '转移到质保 Team' }}">
+                            <i data-lucide="arrow-right-left" style="width: 16px; height: 16px;"></i>
                         </button>
                         <button class="btn btn-sm btn-icon btn-minimal btn-danger btn-delete-team"
                             data-id="{{ team.id }}" data-email="{{ team.email }}" title="删除">
@@ -392,6 +406,42 @@
                 </table>
             </div>
             <textarea id="boundCodesContent" class="form-control" rows="10" readonly style="display: none;"></textarea>
+        </div>
+    </div>
+</div>
+
+<div id="teamCodesExportModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>批量导出绑定兑换码</h3>
+            <button class="modal-close" onclick="hideModal('teamCodesExportModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="alert alert-info export-hint">
+                <div id="teamCodesExportScopeText">将导出已勾选 Team 绑定的兑换码。</div>
+                <small id="teamCodesExportScopeSubtext" class="text-muted">可选择 Excel 下载，或直接复制兑换码文本。</small>
+            </div>
+            <form id="teamCodesExportForm" onsubmit="handleExportSelectedTeamCodes(event)">
+                <div class="form-group">
+                    <label>导出格式</label>
+                    <label class="export-option">
+                        <input type="radio" name="teamCodesExportFormat" value="excel" checked
+                            style="width: auto; margin: 0;">
+                        <div>
+                            <strong>Excel 下载</strong>
+                            <div class="text-muted">导出完整表格信息，并带上 Team 账号归属</div>
+                        </div>
+                    </label>
+                    <label class="export-option">
+                        <input type="radio" name="teamCodesExportFormat" value="text" style="width: auto; margin: 0;">
+                        <div>
+                            <strong>复制兑换码</strong>
+                            <div class="text-muted">仅复制兑换码，一行一个</div>
+                        </div>
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">确认导出</button>
+            </form>
         </div>
     </div>
 </div>
@@ -570,6 +620,22 @@
 {% endblock %}
 
 {% block extra_css %}
+<style>
+    .export-hint {
+        margin-bottom: 1rem;
+    }
+
+    .export-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 0.875rem 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        cursor: pointer;
+        margin-top: 0.75rem;
+    }
+</style>
 {% endblock %}
 
 {% block extra_js %}
@@ -617,6 +683,16 @@
             btn.addEventListener('click', () => {
                 const id = btn.getAttribute('data-id');
                 enableDeviceAuth(id);
+            });
+        });
+
+        document.querySelectorAll('.btn-transfer-team').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.getAttribute('data-id');
+                const email = btn.getAttribute('data-email');
+                const targetTeamType = btn.getAttribute('data-target-team-type');
+                const targetTeamLabel = btn.getAttribute('data-target-team-label');
+                transferTeamType(id, targetTeamType, targetTeamLabel, email);
             });
         });
 
@@ -1527,6 +1603,141 @@
         if (selectAll) {
             selectAll.checked = selectedCount === totalCount && totalCount > 0;
             selectAll.indeterminate = selectedCount > 0 && selectedCount < totalCount;
+        }
+    }
+
+    async function transferTeamType(teamId, targetTeamType, targetTeamLabel, email = '') {
+        const normalizedTargetType = (targetTeamType || '').trim().toLowerCase();
+        const movingToWarranty = normalizedTargetType === 'warranty';
+        const accountLabel = email || `Team #${teamId}`;
+
+        const confirmMessage = movingToWarranty
+            ? `确定要将账号「${accountLabel}」转移到${targetTeamLabel}吗？\n\n系统会自动清理该账号当前绑定的兑换码。`
+            : `确定要将账号「${accountLabel}」转移到${targetTeamLabel}吗？\n\n系统会自动补充 4 个绑定兑换码；若当前剩余席位不足，则按剩余席位生成。`;
+
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+
+        try {
+            showToast('正在转移账号...', 'info');
+            const response = await fetch(`/admin/teams/${teamId}/transfer`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    target_team_type: normalizedTargetType
+                })
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                showToast(result.message || '账号转移成功', 'success');
+                setTimeout(() => window.location.reload(), 1200);
+            } else {
+                showToast(result.error || '账号转移失败', 'error');
+            }
+        } catch (error) {
+            console.error('Transfer team type failed:', error);
+            showToast('网络错误', 'error');
+        }
+    }
+
+    function getSelectedTeamIds() {
+        return Array.from(document.querySelectorAll('.team-checkbox:checked'))
+            .map(cb => parseInt(cb.value, 10))
+            .filter(Number.isInteger);
+    }
+
+    function getSelectedTeamBoundCodeTotal() {
+        return Array.from(document.querySelectorAll('.team-checkbox:checked'))
+            .reduce((total, checkbox) => total + (parseInt(checkbox.dataset.boundCodeCount || '0', 10) || 0), 0);
+    }
+
+    function showTeamCodesExportModal() {
+        const selectedTeamIds = getSelectedTeamIds();
+        if (selectedTeamIds.length === 0) {
+            showToast('请先勾选要导出的 Team', 'warning');
+            return;
+        }
+
+        const selectedCodeTotal = getSelectedTeamBoundCodeTotal();
+        if (selectedCodeTotal <= 0) {
+            showToast('所选 Team 暂无绑定兑换码可导出', 'warning');
+            return;
+        }
+
+        const scopeText = document.getElementById('teamCodesExportScopeText');
+        const scopeSubtext = document.getElementById('teamCodesExportScopeSubtext');
+
+        if (scopeText) {
+            scopeText.textContent = `将导出已勾选的 ${selectedTeamIds.length} 个 Team，共 ${selectedCodeTotal} 个绑定兑换码。`;
+        }
+
+        if (scopeSubtext) {
+            scopeSubtext.textContent = 'Excel 会保留 Team 归属信息；文本模式会直接复制兑换码。';
+        }
+
+        showModal('teamCodesExportModal');
+    }
+
+    async function handleExportSelectedTeamCodes(event) {
+        event.preventDefault();
+
+        const selectedTeamIds = getSelectedTeamIds();
+        if (selectedTeamIds.length === 0) {
+            showToast('请先勾选要导出的 Team', 'warning');
+            return;
+        }
+
+        try {
+            const exportFormat = document.querySelector('input[name="teamCodesExportFormat"]:checked')?.value || 'excel';
+            const response = await fetch('/admin/codes/export', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    team_ids: selectedTeamIds,
+                    export_format: exportFormat
+                })
+            });
+
+            if (!response.ok) {
+                showToast('导出失败', 'error');
+                return;
+            }
+
+            if (exportFormat === 'text') {
+                const text = await response.text();
+                if (!text.trim()) {
+                    showToast('所选 Team 没有可复制的兑换码', 'error');
+                    return;
+                }
+
+                const copied = await copyToClipboard(text);
+                if (copied) {
+                    hideModal('teamCodesExportModal');
+                }
+                return;
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `team_bound_codes_${new Date().getTime()}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            hideModal('teamCodesExportModal');
+            showToast('导出成功', 'success');
+        } catch (error) {
+            console.error('Export selected team codes failed:', error);
+            showToast('网络错误', 'error');
         }
     }
 

@@ -123,6 +123,95 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(warranty_stats["total"], 1)
         self.assertEqual(warranty_stats["remaining_seats"], 4)
 
+    async def test_transfer_standard_team_to_warranty_clears_bound_codes(self):
+        async with self.Session() as session:
+            team = Team(
+                email="owner@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-standard-transfer",
+                team_type=TEAM_TYPE_STANDARD,
+                team_name="Transfer Me",
+                status="active",
+                current_members=1,
+                max_members=5,
+            )
+            session.add(team)
+            await session.flush()
+
+            session.add_all([
+                RedemptionCode(
+                    code="UNUSED-CODE-001",
+                    status="unused",
+                    bound_team_id=team.id,
+                ),
+                RedemptionCode(
+                    code="USED-CODE-001",
+                    status="used",
+                    bound_team_id=team.id,
+                    used_by_email="user@example.com",
+                ),
+            ])
+            await session.commit()
+
+            result = await self.service.transfer_team_type(
+                team_id=team.id,
+                target_team_type=TEAM_TYPE_WARRANTY,
+                db_session=session,
+            )
+
+            refreshed_team = await session.get(Team, team.id)
+            unused_code = await session.execute(
+                select(RedemptionCode).where(RedemptionCode.code == "UNUSED-CODE-001")
+            )
+            used_code = await session.execute(
+                select(RedemptionCode).where(RedemptionCode.code == "USED-CODE-001")
+            )
+            unused_code_obj = unused_code.scalar_one_or_none()
+            used_code_obj = used_code.scalar_one_or_none()
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["cleaned_code_count"], 2)
+        self.assertEqual(result["deleted_unused_code_count"], 1)
+        self.assertEqual(result["detached_history_code_count"], 1)
+        self.assertEqual(refreshed_team.team_type, TEAM_TYPE_WARRANTY)
+        self.assertIsNone(unused_code_obj)
+        self.assertIsNotNone(used_code_obj)
+        self.assertIsNone(used_code_obj.bound_team_id)
+
+    async def test_transfer_warranty_team_to_standard_generates_four_bound_codes(self):
+        async with self.Session() as session:
+            team = Team(
+                email="warranty-owner@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-warranty-transfer",
+                team_type=TEAM_TYPE_WARRANTY,
+                team_name="Warranty Transfer",
+                status="active",
+                current_members=1,
+                max_members=5,
+            )
+            session.add(team)
+            await session.commit()
+
+            result = await self.service.transfer_team_type(
+                team_id=team.id,
+                target_team_type=TEAM_TYPE_STANDARD,
+                db_session=session,
+            )
+
+            refreshed_team = await session.get(Team, team.id)
+            codes_result = await session.execute(
+                select(RedemptionCode).where(RedemptionCode.bound_team_id == team.id)
+            )
+            generated_codes = codes_result.scalars().all()
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["generated_code_count"], 4)
+        self.assertEqual(len(result["generated_codes"]), 4)
+        self.assertEqual(refreshed_team.team_type, TEAM_TYPE_STANDARD)
+        self.assertEqual(len(generated_codes), 4)
+        self.assertTrue(all(code.status == "unused" for code in generated_codes))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -418,7 +418,8 @@ class RedemptionService:
         search: Optional[str] = None,
         status: Optional[str] = None,
         selected_codes: Optional[List[str]] = None,
-        bound_team_id: Optional[int] = None
+        bound_team_id: Optional[int] = None,
+        bound_team_ids: Optional[List[int]] = None
     ) -> Dict[str, Any]:
         """
         获取所有兑换码
@@ -430,7 +431,8 @@ class RedemptionService:
             search: 搜索关键词 (兑换码或邮箱)
             status: 状态筛选
             selected_codes: 指定导出的兑换码列表
-            bound_team_id: 绑定的 Team ID
+            bound_team_id: 绑定的单个 Team ID
+            bound_team_ids: 绑定的多个 Team ID 列表
 
         Returns:
             结果字典,包含 success, codes, total, total_pages, current_page, error
@@ -451,7 +453,9 @@ class RedemptionService:
             if selected_codes:
                 filters.append(RedemptionCode.code.in_(selected_codes))
 
-            if bound_team_id:
+            if bound_team_ids:
+                filters.append(RedemptionCode.bound_team_id.in_(bound_team_ids))
+            elif bound_team_id:
                 filters.append(RedemptionCode.bound_team_id == bound_team_id)
 
             if status:

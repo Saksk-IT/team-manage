@@ -76,6 +76,11 @@ class TeamUpdateRequest(BaseModel):
     status: Optional[str] = Field(None, description="状态: active/full/expired/error/banned")
 
 
+class TeamTransferRequest(BaseModel):
+    """Team 类型转移请求"""
+    target_team_type: str = Field(..., description="目标 Team 类型: standard 或 warranty")
+
+
 class CodeUpdateRequest(BaseModel):
     """兑换码更新请求"""
     has_warranty: bool = Field(..., description="是否为质保兑换码")
@@ -94,6 +99,7 @@ class CodeExportRequest(BaseModel):
     search: Optional[str] = Field(None, description="搜索关键词")
     status_filter: Optional[str] = Field(None, description="状态筛选")
     team_id: Optional[int] = Field(None, description="绑定的 Team ID")
+    team_ids: List[int] = Field(default_factory=list, description="批量勾选的 Team ID 列表")
     export_format: str = Field("excel", description="导出格式: excel 或 text")
 
 
@@ -587,6 +593,45 @@ async def update_team(
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": str(e)}
+        )
+
+
+@router.post("/teams/{team_id}/transfer")
+async def transfer_team_type(
+    team_id: int,
+    transfer_data: TeamTransferRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """在普通 Team 与质保 Team 之间转移账号"""
+    try:
+        target_team_type = (transfer_data.target_team_type or "").strip().lower()
+        if target_team_type not in {TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY}:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "目标 Team 类型无效"}
+            )
+
+        logger.info("管理员转移 Team 类型: team_id=%s, target=%s", team_id, target_team_type)
+
+        result = await team_service.transfer_team_type(
+            team_id=team_id,
+            target_team_type=target_team_type,
+            db_session=db
+        )
+
+        if not result.get("success"):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=result
+            )
+
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error(f"转移 Team 类型失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"转移失败: {str(e)}"}
         )
 
 
@@ -1427,8 +1472,14 @@ async def _build_codes_export_response(
     search = export_data.search
     status_filter = export_data.status_filter
     team_id = export_data.team_id
+    team_ids = list(dict.fromkeys(export_data.team_ids or [])) or None
     selected_codes = export_data.codes or None
     if selected_codes:
+        search = None
+        status_filter = None
+        team_id = None
+        team_ids = None
+    elif team_ids:
         search = None
         status_filter = None
         team_id = None
@@ -1440,7 +1491,8 @@ async def _build_codes_export_response(
         search=search,
         status=status_filter,
         selected_codes=selected_codes,
-        bound_team_id=team_id
+        bound_team_id=team_id,
+        bound_team_ids=team_ids
     )
 
     if not codes_result.get("success"):
@@ -1487,15 +1539,29 @@ async def _build_codes_export_response(
         "border": 1
     })
 
-    worksheet.set_column("A:A", 25)
-    worksheet.set_column("B:B", 12)
-    worksheet.set_column("C:C", 18)
-    worksheet.set_column("D:D", 18)
-    worksheet.set_column("E:E", 30)
+    worksheet.set_column("A:A", 12)
+    worksheet.set_column("B:B", 30)
+    worksheet.set_column("C:C", 24)
+    worksheet.set_column("D:D", 25)
+    worksheet.set_column("E:E", 12)
     worksheet.set_column("F:F", 18)
-    worksheet.set_column("G:G", 12)
+    worksheet.set_column("G:G", 18)
+    worksheet.set_column("H:H", 30)
+    worksheet.set_column("I:I", 18)
+    worksheet.set_column("J:J", 12)
 
-    headers = ["兑换码", "状态", "创建时间", "过期时间", "使用者邮箱", "使用时间", "质保时长(天)"]
+    headers = [
+        "绑定 Team ID",
+        "绑定账号",
+        "Team 名称",
+        "兑换码",
+        "状态",
+        "创建时间",
+        "过期时间",
+        "使用者邮箱",
+        "使用时间",
+        "质保时长(天)"
+    ]
     for col, header in enumerate(headers):
         worksheet.write(0, col, header, header_format)
 
@@ -1507,13 +1573,16 @@ async def _build_codes_export_response(
     }
 
     for row, code in enumerate(all_codes, start=1):
-        worksheet.write(row, 0, code["code"], cell_format)
-        worksheet.write(row, 1, status_text_map.get(code["status"], code["status"]), cell_format)
-        worksheet.write(row, 2, code.get("created_at", "-"), cell_format)
-        worksheet.write(row, 3, code.get("expires_at", "永久有效"), cell_format)
-        worksheet.write(row, 4, code.get("used_by_email", "-"), cell_format)
-        worksheet.write(row, 5, code.get("used_at", "-"), cell_format)
-        worksheet.write(row, 6, code.get("warranty_days", "-") if code.get("has_warranty") else "-", cell_format)
+        worksheet.write(row, 0, code.get("bound_team_id", "-"), cell_format)
+        worksheet.write(row, 1, code.get("bound_team_email", "-"), cell_format)
+        worksheet.write(row, 2, code.get("bound_team_name", "-"), cell_format)
+        worksheet.write(row, 3, code["code"], cell_format)
+        worksheet.write(row, 4, status_text_map.get(code["status"], code["status"]), cell_format)
+        worksheet.write(row, 5, code.get("created_at", "-"), cell_format)
+        worksheet.write(row, 6, code.get("expires_at", "永久有效"), cell_format)
+        worksheet.write(row, 7, code.get("used_by_email", "-"), cell_format)
+        worksheet.write(row, 8, code.get("used_at", "-"), cell_format)
+        worksheet.write(row, 9, code.get("warranty_days", "-") if code.get("has_warranty") else "-", cell_format)
 
     workbook.close()
     excel_data = output.getvalue()

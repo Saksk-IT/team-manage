@@ -21,6 +21,7 @@ from app.utils.time_utils import get_now
 logger = logging.getLogger(__name__)
 
 DEFAULT_TEAM_MAX_MEMBERS = 5
+STANDARD_TRANSFER_CODE_COUNT = 4
 TEAM_TYPE_STANDARD = "standard"
 TEAM_TYPE_WARRANTY = "warranty"
 ProgressCallback = Optional[Callable[[Dict[str, Any]], Awaitable[None]]]
@@ -36,6 +37,58 @@ class TeamService:
         self.token_parser = TokenParser()
         self.jwt_parser = JWTParser()
         self.redemption_service = RedemptionService()
+
+    async def _clear_bound_codes_for_team(
+        self,
+        team_id: int,
+        db_session: AsyncSession
+    ) -> Dict[str, int]:
+        """
+        清理 Team 当前绑定的兑换码。
+
+        - 未使用兑换码：直接删除，避免继续流入库存
+        - 已使用/历史兑换码：仅解除绑定，避免破坏历史记录与质保追踪
+        """
+        stmt = select(RedemptionCode).where(RedemptionCode.bound_team_id == team_id)
+        result = await db_session.execute(stmt)
+        bound_codes = result.scalars().all()
+
+        if not bound_codes:
+            return {
+                "total_cleared": 0,
+                "deleted_unused_count": 0,
+                "detached_history_count": 0
+            }
+
+        unused_ids = [code.id for code in bound_codes if code.status == "unused"]
+        history_ids = [code.id for code in bound_codes if code.status != "unused"]
+
+        if unused_ids:
+            await db_session.execute(
+                delete(RedemptionCode).where(RedemptionCode.id.in_(unused_ids))
+            )
+
+        if history_ids:
+            await db_session.execute(
+                update(RedemptionCode)
+                .where(RedemptionCode.id.in_(history_ids))
+                .values(bound_team_id=None)
+            )
+
+        return {
+            "total_cleared": len(unused_ids) + len(history_ids),
+            "deleted_unused_count": len(unused_ids),
+            "detached_history_count": len(history_ids)
+        }
+
+    def _get_standard_transfer_code_count(self, team: Team) -> int:
+        """
+        转移到普通 Team 池时，补充绑定兑换码数量。
+
+        默认补 4 个；若当前剩余席位不足，则按剩余席位生成，避免超卖。
+        """
+        remaining_seats = max((team.max_members or DEFAULT_TEAM_MAX_MEMBERS) - (team.current_members or 0), 0)
+        return min(STANDARD_TRANSFER_CODE_COUNT, remaining_seats)
 
     async def _emit_progress(
         self,
@@ -817,6 +870,90 @@ class TeamService:
         except Exception as e:
             logger.error(f"获取 Team 信息失败: {e}")
             return {"success": False, "error": str(e)}
+
+    async def transfer_team_type(
+        self,
+        team_id: int,
+        target_team_type: str,
+        db_session: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        在普通 Team / 质保 Team 之间转移账号，并联动处理绑定兑换码。
+        """
+        try:
+            stmt = select(Team).where(Team.id == team_id)
+            result = await db_session.execute(stmt)
+            team = result.scalar_one_or_none()
+
+            if not team:
+                return {"success": False, "error": f"Team ID {team_id} 不存在"}
+
+            current_team_type = (team.team_type or TEAM_TYPE_STANDARD).strip().lower()
+            normalized_target_type = (target_team_type or "").strip().lower()
+
+            if normalized_target_type not in {TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY}:
+                return {"success": False, "error": "目标 Team 类型无效"}
+
+            if current_team_type == normalized_target_type:
+                return {"success": False, "error": "该账号已经在目标列表中，无需转移"}
+
+            cleanup_result = await self._clear_bound_codes_for_team(team.id, db_session)
+            team.team_type = normalized_target_type
+
+            generated_codes: List[str] = []
+            generated_code_count = 0
+
+            if normalized_target_type == TEAM_TYPE_STANDARD:
+                generate_count = self._get_standard_transfer_code_count(team)
+                if generate_count > 0:
+                    generate_result = await self.redemption_service.generate_code_batch(
+                        db_session=db_session,
+                        count=generate_count,
+                        bound_team_id=team.id,
+                        commit=False
+                    )
+                    if not generate_result["success"]:
+                        raise Exception(generate_result.get("error") or "自动生成绑定兑换码失败")
+
+                    generated_codes = generate_result.get("codes", [])
+                    generated_code_count = len(generated_codes)
+
+            await db_session.commit()
+
+            if normalized_target_type == TEAM_TYPE_WARRANTY:
+                message = (
+                    f"账号已转移到质保 Team，已清理 {cleanup_result['total_cleared']} 个原绑定兑换码"
+                )
+            else:
+                message = (
+                    f"账号已转移到控制台 Team，已生成 {generated_code_count} 个绑定兑换码"
+                )
+
+            logger.info(
+                "Team 类型转移成功: team_id=%s, from=%s, to=%s, cleaned=%s, generated=%s",
+                team.id,
+                current_team_type,
+                normalized_target_type,
+                cleanup_result["total_cleared"],
+                generated_code_count
+            )
+
+            return {
+                "success": True,
+                "team_id": team.id,
+                "team_type": normalized_target_type,
+                "cleaned_code_count": cleanup_result["total_cleared"],
+                "deleted_unused_code_count": cleanup_result["deleted_unused_count"],
+                "detached_history_code_count": cleanup_result["detached_history_count"],
+                "generated_code_count": generated_code_count,
+                "generated_codes": generated_codes,
+                "message": message,
+                "error": None
+            }
+        except Exception as e:
+            await db_session.rollback()
+            logger.error(f"转移 Team 类型失败: {e}")
+            return {"success": False, "error": f"转移失败: {str(e)}"}
 
     async def import_team_batch(
         self,
