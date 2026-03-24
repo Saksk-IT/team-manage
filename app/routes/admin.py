@@ -2,8 +2,11 @@
 管理员路由
 处理管理员面板的所有页面和操作
 """
+import asyncio
 import logging
-from typing import Optional, List
+from dataclasses import dataclass
+from typing import Optional, List, Dict, Any, Callable, Awaitable
+from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 import json
@@ -102,6 +105,246 @@ class BulkActionRequest(BaseModel):
 class WarrantySuperCodeConfigRequest(BaseModel):
     code: str = Field("", description="超级兑换码")
     limit_value: int = Field(..., description="限制值")
+
+
+@dataclass
+class BatchActionJobState:
+    job_id: str
+    action: str
+    stop_requested: bool = False
+
+
+batch_action_jobs: Dict[str, BatchActionJobState] = {}
+
+
+def _to_ndjson(payload: Dict[str, Any]) -> str:
+    return json.dumps(payload, ensure_ascii=False) + "\n"
+
+
+def _build_batch_finish_payload(
+    job_id: str,
+    total: int,
+    processed_count: int,
+    success_count: int,
+    failed_count: int,
+    stopped: bool,
+    action_label: str
+) -> Dict[str, Any]:
+    remaining_count = max(total - processed_count, 0)
+    status_label = "已停止" if stopped else "已完成"
+    summary = (
+        f"{action_label}{status_label}：共 {total} 项，已处理 {processed_count} 项，"
+        f"成功 {success_count} 项，失败 {failed_count} 项，剩余 {remaining_count} 项"
+    )
+    return {
+        "type": "finish",
+        "job_id": job_id,
+        "total": total,
+        "processed_count": processed_count,
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "stopped": stopped,
+        "summary": summary
+    }
+
+
+def _build_batch_item_result(
+    result: Dict[str, Any],
+    fallback_team_id: int,
+    index: int,
+    job_id: str,
+    processed_count: int,
+    success_count: int,
+    failed_count: int
+) -> Dict[str, Any]:
+    success = bool(result.get("success"))
+    message = (
+        result.get("message")
+        or result.get("error")
+        or ("处理成功" if success else "处理失败")
+    )
+    return {
+        "type": "item_result",
+        "job_id": job_id,
+        "index": index,
+        "team_id": result.get("team_id", fallback_team_id),
+        "email": result.get("email"),
+        "success": success,
+        "status": "success" if success else "failed",
+        "message": message,
+        "processed_count": processed_count,
+        "success_count": success_count,
+        "failed_count": failed_count
+    }
+
+
+def _build_batch_stage_payload(
+    stage_payload: Dict[str, Any],
+    fallback_team_id: int,
+    index: int,
+    job_id: str,
+    processed_count: int,
+    success_count: int,
+    failed_count: int
+) -> Dict[str, Any]:
+    return {
+        "type": "item_stage",
+        "job_id": job_id,
+        "index": index,
+        "team_id": stage_payload.get("team_id", fallback_team_id),
+        "email": stage_payload.get("email"),
+        "stage_key": stage_payload.get("stage_key", "processing"),
+        "stage_label": stage_payload.get("stage_label", "处理中"),
+        "processed_count": processed_count,
+        "success_count": success_count,
+        "failed_count": failed_count
+    }
+
+
+async def _stream_batch_team_action(
+    request: Request,
+    action_data: BulkActionRequest,
+    action_key: str,
+    action_label: str,
+    item_runner: Callable[[int, Callable[[Dict[str, Any]], Awaitable[None]]], Awaitable[Dict[str, Any]]]
+):
+    total = len(action_data.ids)
+    job_id = str(uuid4())
+    batch_action_jobs[job_id] = BatchActionJobState(job_id=job_id, action=action_key)
+
+    async def progress_generator():
+        processed_count = 0
+        success_count = 0
+        failed_count = 0
+
+        try:
+            yield _to_ndjson({
+                "type": "start",
+                "job_id": job_id,
+                "action": action_key,
+                "total": total
+            })
+
+            for index, team_id in enumerate(action_data.ids, start=1):
+                job_state = batch_action_jobs.get(job_id)
+                if not job_state or job_state.stop_requested:
+                    break
+
+                if await request.is_disconnected():
+                    logger.info(f"批量任务 {job_id} 客户端已断开连接")
+                    return
+
+                event_queue: asyncio.Queue = asyncio.Queue()
+
+                async def progress_callback(stage_payload: Dict[str, Any]):
+                    await event_queue.put(stage_payload)
+
+                task = asyncio.create_task(item_runner(team_id, progress_callback))
+                result: Optional[Dict[str, Any]] = None
+
+                try:
+                    while True:
+                        if await request.is_disconnected():
+                            task.cancel()
+                            logger.info(f"批量任务 {job_id} 处理中客户端断开，终止剩余流输出")
+                            return
+
+                        if task.done() and event_queue.empty():
+                            result = await task
+                            break
+
+                        try:
+                            stage_payload = await asyncio.wait_for(event_queue.get(), timeout=0.1)
+                        except asyncio.TimeoutError:
+                            continue
+
+                        yield _to_ndjson(
+                            _build_batch_stage_payload(
+                                stage_payload=stage_payload,
+                                fallback_team_id=team_id,
+                                index=index,
+                                job_id=job_id,
+                                processed_count=processed_count,
+                                success_count=success_count,
+                                failed_count=failed_count
+                            )
+                        )
+                except asyncio.CancelledError:
+                    if not task.done():
+                        task.cancel()
+                    raise
+                except Exception as ex:
+                    logger.error(f"{action_label}任务 {job_id} 处理 Team {team_id} 时异常: {ex}")
+                    result = {
+                        "success": False,
+                        "team_id": team_id,
+                        "email": None,
+                        "error": f"异常: {str(ex)}"
+                    }
+
+                processed_count += 1
+                if result and result.get("success"):
+                    success_count += 1
+                else:
+                    failed_count += 1
+
+                yield _to_ndjson(
+                    _build_batch_item_result(
+                        result=result or {
+                            "success": False,
+                            "team_id": team_id,
+                            "email": None,
+                            "error": "处理结果为空"
+                        },
+                        fallback_team_id=team_id,
+                        index=index,
+                        job_id=job_id,
+                        processed_count=processed_count,
+                        success_count=success_count,
+                        failed_count=failed_count
+                    )
+                )
+
+                job_state = batch_action_jobs.get(job_id)
+                if job_state and job_state.stop_requested:
+                    break
+
+            job_state = batch_action_jobs.get(job_id)
+            stopped = bool(job_state and job_state.stop_requested)
+            yield _to_ndjson(
+                _build_batch_finish_payload(
+                    job_id=job_id,
+                    total=total,
+                    processed_count=processed_count,
+                    success_count=success_count,
+                    failed_count=failed_count,
+                    stopped=stopped,
+                    action_label=action_label
+                )
+            )
+        except asyncio.CancelledError:
+            logger.info(f"批量任务 {job_id} 被取消")
+            raise
+        except Exception as e:
+            logger.error(f"{action_label}流式任务失败: {e}")
+            yield _to_ndjson(
+                _build_batch_finish_payload(
+                    job_id=job_id,
+                    total=total,
+                    processed_count=processed_count,
+                    success_count=success_count,
+                    failed_count=failed_count,
+                    stopped=True,
+                    action_label=f"{action_label}异常中断"
+                )
+            )
+        finally:
+            batch_action_jobs.pop(job_id, None)
+
+    return StreamingResponse(
+        progress_generator(),
+        media_type="application/x-ndjson"
+    )
 
 
 def _normalize_team_type(team_type: Optional[str]) -> str:
@@ -657,6 +900,32 @@ async def enable_team_device_auth(
 
 # ==================== 批量操作路由 ====================
 
+@router.post("/teams/batch-refresh/stream")
+async def batch_refresh_teams_stream(
+    request: Request,
+    action_data: BulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    logger.info(f"管理员流式批量刷新 {len(action_data.ids)} 个 Team")
+
+    async def item_runner(team_id: int, progress_callback):
+        return await team_service.sync_team_info(
+            team_id,
+            db,
+            force_refresh=True,
+            progress_callback=progress_callback
+        )
+
+    return await _stream_batch_team_action(
+        request=request,
+        action_data=action_data,
+        action_key="batch_refresh",
+        action_label="批量刷新",
+        item_runner=item_runner
+    )
+
+
 @router.post("/teams/batch-refresh")
 async def batch_refresh_teams(
     action_data: BulkActionRequest,
@@ -699,6 +968,22 @@ async def batch_refresh_teams(
         )
 
 
+@router.post("/teams/batch-actions/{job_id}/stop")
+async def stop_batch_action(
+    job_id: str,
+    current_user: dict = Depends(require_admin)
+):
+    job_state = batch_action_jobs.get(job_id)
+    if not job_state:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"success": False, "error": "批量任务不存在或已结束"}
+        )
+
+    job_state.stop_requested = True
+    return JSONResponse(content={"success": True, "message": "已请求停止当前批量任务"})
+
+
 @router.post("/teams/batch-delete")
 async def batch_delete_teams(
     action_data: BulkActionRequest,
@@ -737,6 +1022,31 @@ async def batch_delete_teams(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": str(e)}
         )
+
+
+@router.post("/teams/batch-enable-device-auth/stream")
+async def batch_enable_device_auth_stream(
+    request: Request,
+    action_data: BulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    logger.info(f"管理员流式批量开启 {len(action_data.ids)} 个 Team 的设备验证")
+
+    async def item_runner(team_id: int, progress_callback):
+        return await team_service.enable_device_code_auth(
+            team_id,
+            db,
+            progress_callback=progress_callback
+        )
+
+    return await _stream_batch_team_action(
+        request=request,
+        action_data=action_data,
+        action_key="batch_enable_device_auth",
+        action_label="批量开启验证",
+        item_runner=item_runner
+    )
 
 
 @router.post("/teams/batch-enable-device-auth")

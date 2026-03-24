@@ -1151,6 +1151,10 @@ body.admin-shell {
     transform: scale(1);
 }
 
+.modal.modal-wide {
+    max-width: 1040px;
+}
+
 .modal-header {
     padding: 1.25rem 1.5rem;
     border-bottom: 1px solid var(--border-base);
@@ -1176,6 +1180,142 @@ body.admin-shell {
     font-size: 1.5rem;
     cursor: pointer;
     color: var(--text-muted);
+}
+
+.modal-close:disabled,
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.batch-progress-modal {
+    min-height: min(760px, calc(100vh - 4rem));
+}
+
+.batch-progress-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.batch-progress-stat-card,
+.batch-progress-panel {
+    border: 1px solid var(--border-base);
+    border-radius: var(--radius-lg);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.batch-progress-stat-card {
+    padding: 1rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.batch-progress-stat-card strong {
+    font-size: 1.25rem;
+}
+
+.batch-progress-stat-label,
+.batch-progress-panel-title {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.batch-progress-panel {
+    padding: 1rem 1.1rem;
+    margin-bottom: 1rem;
+}
+
+.batch-progress-info-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.batch-progress-current-stage {
+    font-weight: 600;
+    margin-top: 0.2rem;
+}
+
+.batch-progress-percent {
+    font-weight: 700;
+    color: var(--primary);
+    min-width: 52px;
+    text-align: right;
+}
+
+.batch-progress-bar-bg {
+    width: 100%;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.batch-progress-bar {
+    width: 0;
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), var(--accent));
+    transition: width 0.25s ease;
+}
+
+.batch-progress-table-wrap {
+    overflow: auto;
+    max-height: 420px;
+}
+
+.batch-progress-table {
+    margin: 0;
+}
+
+.batch-progress-footer {
+    padding: 1rem 1.5rem 1.25rem;
+    border-top: 1px solid var(--border-base);
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+
+.batch-row-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 72px;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.batch-row-status-queued {
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--text-muted);
+}
+
+.batch-row-status-running {
+    background: rgba(59, 130, 246, 0.16);
+    color: var(--info);
+}
+
+.batch-row-status-success {
+    background: rgba(16, 185, 129, 0.16);
+    color: var(--success);
+}
+
+.batch-row-status-failed {
+    background: rgba(239, 68, 68, 0.16);
+    color: var(--danger);
+}
+
+.batch-row-status-stopped {
+    background: rgba(245, 158, 11, 0.16);
+    color: var(--warning);
 }
 
 /* Toast */
@@ -1456,8 +1596,22 @@ body.admin-shell {
         max-height: calc(100vh - 2rem);
     }
 
+    .modal.modal-wide {
+        max-width: 100%;
+    }
+
     .modal-overlay {
         padding: 0;
+    }
+
+    .batch-progress-footer,
+    .batch-progress-info-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .batch-progress-percent {
+        text-align: left;
     }
 
     /* Bulk Action Bar Mobile */

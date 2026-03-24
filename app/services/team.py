@@ -4,7 +4,7 @@ Team 管理服务
 """
 import logging
 import asyncio
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Callable, Awaitable
 from datetime import datetime
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_TEAM_MAX_MEMBERS = 5
 TEAM_TYPE_STANDARD = "standard"
 TEAM_TYPE_WARRANTY = "warranty"
+ProgressCallback = Optional[Callable[[Dict[str, Any]], Awaitable[None]]]
 
 
 class TeamService:
@@ -35,6 +36,26 @@ class TeamService:
         self.token_parser = TokenParser()
         self.jwt_parser = JWTParser()
         self.redemption_service = RedemptionService()
+
+    async def _emit_progress(
+        self,
+        progress_callback: ProgressCallback,
+        stage_key: str,
+        stage_label: str,
+        team: Optional[Team] = None
+    ) -> None:
+        if not progress_callback:
+            return
+
+        payload = {
+            "stage_key": stage_key,
+            "stage_label": stage_label,
+        }
+        if team is not None:
+            payload["team_id"] = team.id
+            payload["email"] = team.email
+
+        await progress_callback(payload)
 
     async def _handle_api_error(self, result: Dict[str, Any], team: Team, db_session: AsyncSession) -> bool:
         """
@@ -916,7 +937,8 @@ class TeamService:
         self,
         team_id: int,
         db_session: AsyncSession,
-        force_refresh: bool = False
+        force_refresh: bool = False,
+        progress_callback: ProgressCallback = None
     ) -> Dict[str, Any]:
         """
         同步单个 Team 的信息
@@ -942,7 +964,10 @@ class TeamService:
                     "error": f"Team ID {team_id} 不存在"
                 }
 
+            await self._emit_progress(progress_callback, "load_team", "加载 Team 信息", team)
+
             # 2. 确保 AT Token 有效
+            await self._emit_progress(progress_callback, "ensure_token", "校验 / 刷新 Token", team)
             access_token = await self.ensure_access_token(team, db_session, force_refresh=force_refresh)
             if not access_token:
                 if team.status == "banned":
@@ -968,6 +993,7 @@ class TeamService:
                 }
 
             # 3. 获取账户信息
+            await self._emit_progress(progress_callback, "fetch_account_info", "拉取账户信息", team)
             account_result = await self.chatgpt_service.get_account_info(
                 access_token,
                 db_session,
@@ -1067,6 +1093,7 @@ class TeamService:
                 }
 
             # 5. 获取成员列表 (包含已加入和待加入)
+            await self._emit_progress(progress_callback, "fetch_members", "拉取成员 / 邀请列表", team)
             members_result = await self.chatgpt_service.get_members(
                 access_token,
                 current_account["account_id"],
@@ -1151,6 +1178,7 @@ class TeamService:
                 status = "expired"
             
             # 8. 更新 Team 信息
+            await self._emit_progress(progress_callback, "persist_result", "写回同步结果", team)
             team.account_id = current_account["account_id"]
             team.team_name = current_account["name"]
             team.plan_type = current_account["plan_type"]
@@ -1727,7 +1755,8 @@ class TeamService:
     async def enable_device_code_auth(
         self,
         team_id: int,
-        db_session: AsyncSession
+        db_session: AsyncSession,
+        progress_callback: ProgressCallback = None
     ) -> Dict[str, Any]:
         """
         开启 Team 的设备代码身份验证
@@ -1748,6 +1777,8 @@ class TeamService:
                 }
 
             # 2. 确保 AT Token 有效
+            await self._emit_progress(progress_callback, "load_team", "加载 Team 信息", team)
+            await self._emit_progress(progress_callback, "ensure_token", "校验 / 刷新 Token", team)
             access_token = await self.ensure_access_token(team, db_session)
             if not access_token:
                 return {
@@ -1758,6 +1789,7 @@ class TeamService:
                 }
 
             # 3. 调用 ChatGPT API 开启功能
+            await self._emit_progress(progress_callback, "toggle_feature", "调用开启验证接口", team)
             result = await self.chatgpt_service.toggle_beta_feature(
                 access_token,
                 team.account_id,
@@ -1776,6 +1808,7 @@ class TeamService:
                 }
 
             # 更新数据库状态
+            await self._emit_progress(progress_callback, "persist_result", "写回开启验证结果", team)
             team.device_code_auth_enabled = True
             await db_session.commit()
 

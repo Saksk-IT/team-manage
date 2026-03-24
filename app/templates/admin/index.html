@@ -169,7 +169,8 @@
         <tbody>
             {% for team in teams %}
             <tr>
-                <td><input type="checkbox" class="team-checkbox" value="{{ team.id }}" onchange="updateSelectedCount()">
+                <td><input type="checkbox" class="team-checkbox" value="{{ team.id }}" data-email="{{ team.email }}"
+                        onchange="updateSelectedCount()">
                 </td>
                 <td><span class="text-muted">{{ team.id }}</span></td>
                 <td>
@@ -486,6 +487,86 @@
         </div>
     </div>
 </div>
+
+<div id="batchActionProgressModal" class="modal-overlay">
+    <div class="modal modal-wide batch-progress-modal">
+        <div class="modal-header">
+            <div>
+                <h3 id="batchActionProgressTitle" style="margin: 0;">批量操作进度</h3>
+                <small id="batchActionProgressSubtitle" class="text-muted">正在准备任务...</small>
+            </div>
+            <button id="batchActionProgressHeaderClose" class="modal-close" type="button"
+                onclick="handleBatchActionProgressClose()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="batch-progress-summary-grid">
+                <div class="batch-progress-stat-card">
+                    <span class="batch-progress-stat-label">总数</span>
+                    <strong id="batchActionProgressTotal">0</strong>
+                </div>
+                <div class="batch-progress-stat-card">
+                    <span class="batch-progress-stat-label">已处理</span>
+                    <strong id="batchActionProgressProcessed">0</strong>
+                </div>
+                <div class="batch-progress-stat-card">
+                    <span class="batch-progress-stat-label">成功</span>
+                    <strong id="batchActionProgressSuccess" class="text-success">0</strong>
+                </div>
+                <div class="batch-progress-stat-card">
+                    <span class="batch-progress-stat-label">失败</span>
+                    <strong id="batchActionProgressFailed" class="text-danger">0</strong>
+                </div>
+                <div class="batch-progress-stat-card">
+                    <span class="batch-progress-stat-label">剩余</span>
+                    <strong id="batchActionProgressRemaining">0</strong>
+                </div>
+            </div>
+
+            <div class="batch-progress-panel">
+                <div class="batch-progress-info-row">
+                    <div>
+                        <div class="batch-progress-panel-title">当前阶段</div>
+                        <div id="batchActionProgressCurrentStage" class="batch-progress-current-stage">等待开始...</div>
+                    </div>
+                    <div id="batchActionProgressPercent" class="batch-progress-percent">0%</div>
+                </div>
+                <div class="batch-progress-bar-bg">
+                    <div id="batchActionProgressBar" class="batch-progress-bar"></div>
+                </div>
+                <div id="batchActionProgressSummaryText" class="form-text" style="margin-top: 0.75rem;">任务尚未开始</div>
+            </div>
+
+            <div class="batch-progress-panel">
+                <div class="batch-progress-panel-title" style="margin-bottom: 0.75rem;">账号处理明细</div>
+                <div class="batch-progress-table-wrap">
+                    <table class="data-table batch-progress-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 72px;">序号</th>
+                                <th style="min-width: 220px;">账号</th>
+                                <th style="width: 100px;">Team ID</th>
+                                <th style="min-width: 180px;">当前阶段</th>
+                                <th style="width: 120px;">状态</th>
+                                <th style="min-width: 260px;">结果摘要</th>
+                            </tr>
+                        </thead>
+                        <tbody id="batchActionProgressTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="batch-progress-footer">
+            <button id="batchActionProgressCopyBtn" type="button" class="btn btn-secondary"
+                onclick="copyBatchActionProgressDetails()">复制结果</button>
+            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: flex-end;">
+                <button id="batchActionProgressStopBtn" type="button" class="btn btn-danger"
+                    onclick="stopCurrentBatchAction()">停止</button>
+                <button id="batchActionProgressCloseBtn" type="button" class="btn btn-primary"
+                    onclick="handleBatchActionProgressClose()">关闭并刷新列表</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_css %}
@@ -548,6 +629,481 @@
             });
         });
     });
+
+    const batchActionProgressState = {
+        isRunning: false,
+        stopRequested: false,
+        actionName: '',
+        stopButtonText: '停止',
+        jobId: null,
+        total: 0,
+        processedCount: 0,
+        successCount: 0,
+        failedCount: 0,
+        shouldRefreshOnClose: false,
+        items: [],
+        itemMap: new Map()
+    };
+
+    function handleBatchActionBeforeUnload(event) {
+        if (!batchActionProgressState.isRunning) {
+            return;
+        }
+
+        event.preventDefault();
+        event.returnValue = '';
+    }
+
+    function resetBatchActionProgressState() {
+        batchActionProgressState.isRunning = false;
+        batchActionProgressState.stopRequested = false;
+        batchActionProgressState.actionName = '';
+        batchActionProgressState.stopButtonText = '停止';
+        batchActionProgressState.jobId = null;
+        batchActionProgressState.total = 0;
+        batchActionProgressState.processedCount = 0;
+        batchActionProgressState.successCount = 0;
+        batchActionProgressState.failedCount = 0;
+        batchActionProgressState.shouldRefreshOnClose = false;
+        batchActionProgressState.items = [];
+        batchActionProgressState.itemMap = new Map();
+    }
+
+    function getSelectedBatchTargets() {
+        return Array.from(document.querySelectorAll('.team-checkbox:checked')).map((checkbox, index) => ({
+            index: index + 1,
+            teamId: parseInt(checkbox.value, 10),
+            email: checkbox.dataset.email || '',
+            stageLabel: '等待开始',
+            status: 'queued',
+            message: '等待处理'
+        }));
+    }
+
+    function getBatchProgressStatusMeta(status) {
+        switch (status) {
+            case 'running':
+                return { text: '处理中', className: 'batch-row-status-running' };
+            case 'success':
+                return { text: '成功', className: 'batch-row-status-success' };
+            case 'failed':
+                return { text: '失败', className: 'batch-row-status-failed' };
+            case 'stopped':
+                return { text: '已停止', className: 'batch-row-status-stopped' };
+            default:
+                return { text: '排队中', className: 'batch-row-status-queued' };
+        }
+    }
+
+    function renderBatchActionProgressRows() {
+        const tableBody = document.getElementById('batchActionProgressTableBody');
+        if (!tableBody) {
+            return;
+        }
+
+        tableBody.innerHTML = batchActionProgressState.items.map(item => {
+            const statusMeta = getBatchProgressStatusMeta(item.status);
+            return `
+                <tr>
+                    <td>${item.index}</td>
+                    <td>${escapeHtml(item.email || '-')}</td>
+                    <td><span class="text-muted">${item.teamId ?? '-'}</span></td>
+                    <td>${escapeHtml(item.stageLabel || '-')}</td>
+                    <td><span class="batch-row-status ${statusMeta.className}">${statusMeta.text}</span></td>
+                    <td>${escapeHtml(item.message || '-')}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function updateBatchActionProgressOverview() {
+        const total = batchActionProgressState.total;
+        const processed = batchActionProgressState.processedCount;
+        const success = batchActionProgressState.successCount;
+        const failed = batchActionProgressState.failedCount;
+        const remaining = Math.max(total - processed, 0);
+        const percent = total > 0 ? Math.round((processed / total) * 100) : 0;
+
+        const setText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+
+        setText('batchActionProgressTotal', total);
+        setText('batchActionProgressProcessed', processed);
+        setText('batchActionProgressSuccess', success);
+        setText('batchActionProgressFailed', failed);
+        setText('batchActionProgressRemaining', remaining);
+        setText('batchActionProgressPercent', `${percent}%`);
+
+        const bar = document.getElementById('batchActionProgressBar');
+        if (bar) {
+            bar.style.width = `${percent}%`;
+        }
+    }
+
+    function setBatchActionProgressRunningState(isRunning) {
+        batchActionProgressState.isRunning = isRunning;
+
+        const headerCloseBtn = document.getElementById('batchActionProgressHeaderClose');
+        const stopBtn = document.getElementById('batchActionProgressStopBtn');
+        const closeBtn = document.getElementById('batchActionProgressCloseBtn');
+        const copyBtn = document.getElementById('batchActionProgressCopyBtn');
+        const subtitleEl = document.getElementById('batchActionProgressSubtitle');
+
+        if (headerCloseBtn) {
+            headerCloseBtn.disabled = isRunning;
+            headerCloseBtn.style.visibility = isRunning ? 'hidden' : 'visible';
+        }
+
+        if (stopBtn) {
+            stopBtn.style.display = isRunning ? 'inline-flex' : 'none';
+            stopBtn.disabled = isRunning ? !batchActionProgressState.jobId || batchActionProgressState.stopRequested : true;
+            stopBtn.textContent = batchActionProgressState.stopRequested ? '停止中...' : batchActionProgressState.stopButtonText;
+        }
+
+        if (closeBtn) {
+            closeBtn.disabled = isRunning;
+        }
+
+        if (copyBtn) {
+            copyBtn.disabled = isRunning;
+        }
+
+        if (subtitleEl) {
+            if (isRunning) {
+                subtitleEl.textContent = `${batchActionProgressState.actionName}进行中，页面其他操作已锁定`;
+            } else if (batchActionProgressState.stopRequested) {
+                subtitleEl.textContent = `${batchActionProgressState.actionName}已停止，可查看部分结果`;
+            } else {
+                subtitleEl.textContent = `${batchActionProgressState.actionName}已结束，可查看完整结果`;
+            }
+        }
+
+        if (isRunning) {
+            window.addEventListener('beforeunload', handleBatchActionBeforeUnload);
+        } else {
+            window.removeEventListener('beforeunload', handleBatchActionBeforeUnload);
+        }
+    }
+
+    function openBatchActionProgressModal(actionName, stopButtonText, selectedTargets) {
+        resetBatchActionProgressState();
+
+        batchActionProgressState.actionName = actionName;
+        batchActionProgressState.stopButtonText = stopButtonText;
+        batchActionProgressState.total = selectedTargets.length;
+        batchActionProgressState.items = selectedTargets.map(item => ({ ...item }));
+        batchActionProgressState.itemMap = new Map(
+            batchActionProgressState.items.map(item => [item.teamId, item])
+        );
+
+        const titleEl = document.getElementById('batchActionProgressTitle');
+        const currentStageEl = document.getElementById('batchActionProgressCurrentStage');
+        const summaryEl = document.getElementById('batchActionProgressSummaryText');
+
+        if (titleEl) {
+            titleEl.textContent = `${actionName}进度`;
+        }
+        if (currentStageEl) {
+            currentStageEl.textContent = '正在创建任务...';
+        }
+        if (summaryEl) {
+            summaryEl.textContent = `已选 ${selectedTargets.length} 个账号，正在连接服务器...`;
+        }
+
+        updateBatchActionProgressOverview();
+        renderBatchActionProgressRows();
+        setBatchActionProgressRunningState(true);
+        showModal('batchActionProgressModal');
+    }
+
+    function updateBatchActionCurrentStage(text) {
+        const currentStageEl = document.getElementById('batchActionProgressCurrentStage');
+        if (currentStageEl) {
+            currentStageEl.textContent = text;
+        }
+    }
+
+    function applyBatchActionStartEvent(data) {
+        batchActionProgressState.jobId = data.job_id;
+        batchActionProgressState.total = data.total || batchActionProgressState.total;
+        updateBatchActionCurrentStage('任务已开始，等待处理第一个账号...');
+
+        const summaryEl = document.getElementById('batchActionProgressSummaryText');
+        if (summaryEl) {
+            summaryEl.textContent = `任务已启动，共 ${batchActionProgressState.total} 个账号待处理`;
+        }
+
+        setBatchActionProgressRunningState(true);
+        updateBatchActionProgressOverview();
+    }
+
+    function ensureBatchActionItem(teamId, email, index) {
+        let item = batchActionProgressState.itemMap.get(teamId);
+        if (!item) {
+            item = {
+                index: index || batchActionProgressState.items.length + 1,
+                teamId,
+                email: email || '',
+                stageLabel: '处理中',
+                status: 'queued',
+                message: '等待处理'
+            };
+            batchActionProgressState.items.push(item);
+            batchActionProgressState.itemMap.set(teamId, item);
+        }
+
+        if (email && !item.email) {
+            item.email = email;
+        }
+
+        return item;
+    }
+
+    function applyBatchActionStageEvent(data) {
+        const item = ensureBatchActionItem(data.team_id, data.email, data.index);
+        item.status = 'running';
+        item.stageLabel = data.stage_label || '处理中';
+        item.message = data.stage_label || '处理中';
+
+        updateBatchActionCurrentStage(`${item.email || `Team #${item.teamId}`}：${item.stageLabel}`);
+        renderBatchActionProgressRows();
+        updateBatchActionProgressOverview();
+    }
+
+    function applyBatchActionResultEvent(data) {
+        const item = ensureBatchActionItem(data.team_id, data.email, data.index);
+        item.status = data.status || (data.success ? 'success' : 'failed');
+        item.stageLabel = data.success ? '处理完成' : '处理失败';
+        item.message = data.message || (data.success ? '处理成功' : '处理失败');
+
+        batchActionProgressState.processedCount = data.processed_count ?? batchActionProgressState.processedCount;
+        batchActionProgressState.successCount = data.success_count ?? batchActionProgressState.successCount;
+        batchActionProgressState.failedCount = data.failed_count ?? batchActionProgressState.failedCount;
+
+        updateBatchActionCurrentStage(`${item.email || `Team #${item.teamId}`}已处理完成`);
+        renderBatchActionProgressRows();
+        updateBatchActionProgressOverview();
+    }
+
+    function markPendingBatchItemsStopped(reason = '管理员已停止，未开始处理') {
+        batchActionProgressState.items.forEach(item => {
+            if (item.status === 'queued') {
+                item.status = 'stopped';
+                item.stageLabel = '未开始';
+                item.message = reason;
+            }
+        });
+    }
+
+    function finalizeBatchActionProgress(data) {
+        batchActionProgressState.processedCount = data.processed_count ?? batchActionProgressState.processedCount;
+        batchActionProgressState.successCount = data.success_count ?? batchActionProgressState.successCount;
+        batchActionProgressState.failedCount = data.failed_count ?? batchActionProgressState.failedCount;
+        batchActionProgressState.total = data.total ?? batchActionProgressState.total;
+        batchActionProgressState.shouldRefreshOnClose = true;
+
+        if (data.stopped) {
+            markPendingBatchItemsStopped();
+            updateBatchActionCurrentStage('任务已按管理员请求停止');
+        } else {
+            updateBatchActionCurrentStage('全部账号已处理完成');
+        }
+
+        const summaryEl = document.getElementById('batchActionProgressSummaryText');
+        if (summaryEl) {
+            summaryEl.textContent = data.summary || `${batchActionProgressState.actionName}已结束`;
+        }
+
+        renderBatchActionProgressRows();
+        updateBatchActionProgressOverview();
+        setBatchActionProgressRunningState(false);
+
+        if (data.stopped) {
+            showToast(`${batchActionProgressState.actionName}已停止`, 'warning');
+        } else if (batchActionProgressState.failedCount > 0) {
+            showToast(`${batchActionProgressState.actionName}完成，存在失败项`, 'warning');
+        } else {
+            showToast(`${batchActionProgressState.actionName}完成`, 'success');
+        }
+    }
+
+    function finalizeBatchActionProgressWithError(message) {
+        batchActionProgressState.shouldRefreshOnClose = true;
+        batchActionProgressState.stopRequested = true;
+
+        batchActionProgressState.items.forEach(item => {
+            if (item.status === 'running') {
+                item.status = 'failed';
+                item.stageLabel = '流程中断';
+                item.message = message;
+            } else if (item.status === 'queued') {
+                item.status = 'stopped';
+                item.stageLabel = '未开始';
+                item.message = '流程异常中断，未开始处理';
+            }
+        });
+
+        const summaryEl = document.getElementById('batchActionProgressSummaryText');
+        if (summaryEl) {
+            summaryEl.textContent = message;
+        }
+
+        updateBatchActionCurrentStage('流程异常中断');
+        renderBatchActionProgressRows();
+        updateBatchActionProgressOverview();
+        setBatchActionProgressRunningState(false);
+        showToast(message, 'error');
+    }
+
+    function buildBatchActionProgressDetailsText() {
+        const summaryText = document.getElementById('batchActionProgressSummaryText')?.textContent?.trim() || '';
+        const lines = [`${batchActionProgressState.actionName}结果`, summaryText, ''];
+
+        batchActionProgressState.items.forEach(item => {
+            const statusMeta = getBatchProgressStatusMeta(item.status);
+            lines.push(`${item.index}. ${item.email || '-'} (#${item.teamId ?? '-'})`);
+            lines.push(`状态: ${statusMeta.text}`);
+            lines.push(`阶段: ${item.stageLabel || '-'}`);
+            lines.push(`结果: ${item.message || '-'}`);
+            lines.push('');
+        });
+
+        return lines.join('\n').trim();
+    }
+
+    async function copyBatchActionProgressDetails() {
+        const content = buildBatchActionProgressDetailsText();
+        if (!content) {
+            showToast('暂无可复制的结果', 'warning');
+            return;
+        }
+
+        await copyToClipboard(content);
+    }
+
+    async function stopCurrentBatchAction() {
+        if (!batchActionProgressState.isRunning || batchActionProgressState.stopRequested || !batchActionProgressState.jobId) {
+            return;
+        }
+
+        batchActionProgressState.stopRequested = true;
+        updateBatchActionCurrentStage('已请求停止，等待当前账号处理完成...');
+        setBatchActionProgressRunningState(true);
+
+        try {
+            const response = await fetch(`/admin/teams/batch-actions/${batchActionProgressState.jobId}/stop`, {
+                method: 'POST'
+            });
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                batchActionProgressState.stopRequested = false;
+                setBatchActionProgressRunningState(true);
+                throw new Error(result.error || '停止失败');
+            }
+        } catch (error) {
+            console.error(error);
+            batchActionProgressState.stopRequested = false;
+            updateBatchActionCurrentStage('停止请求失败，请重试');
+            setBatchActionProgressRunningState(true);
+            showToast(error.message || '停止请求失败', 'error');
+        }
+    }
+
+    function handleBatchActionProgressClose() {
+        if (batchActionProgressState.isRunning) {
+            showToast('请等待流程结束或点击停止', 'warning');
+            return;
+        }
+
+        hideModal('batchActionProgressModal');
+        if (batchActionProgressState.shouldRefreshOnClose) {
+            location.reload();
+            return;
+        }
+
+        resetBatchActionProgressState();
+    }
+
+    async function handleBlockingBatchAction(endpoint, actionName, stopButtonText) {
+        const selectedTargets = getSelectedBatchTargets();
+
+        if (selectedTargets.length === 0) {
+            showToast('请选择要操作的 Team', 'warning');
+            return;
+        }
+
+        if (!confirm(`确定要对选中的 ${selectedTargets.length} 个 Team 进行 "${actionName}" 操作吗？`)) {
+            return;
+        }
+
+        openBatchActionProgressModal(actionName, stopButtonText, selectedTargets);
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ ids: selectedTargets.map(item => item.teamId) })
+            });
+
+            if (!response.ok) {
+                let errorMessage = `${actionName}失败`;
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorData.detail || errorMessage;
+                } catch (_) {
+                    // ignore json parse error
+                }
+                throw new Error(errorMessage);
+            }
+
+            if (!response.body) {
+                throw new Error('服务端未返回进度流');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let hasFinishEvent = false;
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+
+                    const data = JSON.parse(line);
+
+                    if (data.type === 'start') {
+                        applyBatchActionStartEvent(data);
+                    } else if (data.type === 'item_stage') {
+                        applyBatchActionStageEvent(data);
+                    } else if (data.type === 'item_result') {
+                        applyBatchActionResultEvent(data);
+                    } else if (data.type === 'finish') {
+                        hasFinishEvent = true;
+                        finalizeBatchActionProgress(data);
+                    }
+                }
+            }
+
+            if (!hasFinishEvent) {
+                throw new Error(`${actionName}连接提前中断`);
+            }
+        } catch (error) {
+            console.error(error);
+            finalizeBatchActionProgressWithError(error.message || `${actionName}失败`);
+        }
+    }
 
     function showBoundCodes(email, codes) {
         const emailEl = document.getElementById('boundCodesTargetEmail');
@@ -1066,7 +1622,7 @@
     }
 
     function handleBatchRefresh() {
-        handleBatchAction('/admin/teams/batch-refresh', '批量刷新');
+        handleBlockingBatchAction('/admin/teams/batch-refresh/stream', '批量刷新', '停止刷新');
     }
 
     function handleBatchDelete() {
@@ -1074,7 +1630,7 @@
     }
 
     function handleBatchEnableDeviceAuth() {
-        handleBatchAction('/admin/teams/batch-enable-device-auth', '批量开启验证');
+        handleBlockingBatchAction('/admin/teams/batch-enable-device-auth/stream', '批量开启验证', '停止开启验证');
     }
 
     function changePerPage(val) {
