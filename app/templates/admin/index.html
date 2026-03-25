@@ -704,6 +704,8 @@
                 showBoundCodes(email, codes);
             });
         });
+
+        scheduleTeamAutoRefresh();
     });
 
     const batchActionProgressState = {
@@ -720,6 +722,43 @@
         items: [],
         itemMap: new Map()
     };
+
+    const teamAutoRefreshConfig = {
+        enabled: {{ 'true' if team_auto_refresh_enabled else 'false' }},
+        intervalMs: {{ (team_auto_refresh_interval_minutes or 5) * 60 * 1000 }},
+        timerId: null
+    };
+
+    function hasOpenModal() {
+        return Boolean(document.querySelector('.modal-overlay.show'));
+    }
+
+    function hasSelectedTeams() {
+        return Boolean(document.querySelector('.team-checkbox:checked'));
+    }
+
+    function shouldPauseTeamAutoRefresh() {
+        return hasOpenModal() || batchActionProgressState.isRunning || hasSelectedTeams();
+    }
+
+    function scheduleTeamAutoRefresh(delayMs = teamAutoRefreshConfig.intervalMs) {
+        if (!teamAutoRefreshConfig.enabled || !teamAutoRefreshConfig.intervalMs) {
+            return;
+        }
+
+        if (teamAutoRefreshConfig.timerId) {
+            window.clearTimeout(teamAutoRefreshConfig.timerId);
+        }
+
+        teamAutoRefreshConfig.timerId = window.setTimeout(() => {
+            if (shouldPauseTeamAutoRefresh()) {
+                scheduleTeamAutoRefresh(30 * 1000);
+                return;
+            }
+
+            window.location.reload();
+        }, delayMs);
+    }
 
     function handleBatchActionBeforeUnload(event) {
         if (!batchActionProgressState.isRunning) {

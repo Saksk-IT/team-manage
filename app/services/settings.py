@@ -22,6 +22,12 @@ class SettingsService:
     WARRANTY_TIME_LIMIT_DAYS_KEY = "warranty_time_limit_days"
     WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT = "usage_limit"
     WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT = "time_limit"
+    TEAM_AUTO_REFRESH_ENABLED_KEY = "team_auto_refresh_enabled"
+    TEAM_AUTO_REFRESH_INTERVAL_MINUTES_KEY = "team_auto_refresh_interval_minutes"
+    DEFAULT_TEAM_AUTO_REFRESH_ENABLED = True
+    DEFAULT_TEAM_AUTO_REFRESH_INTERVAL_MINUTES = 5
+    MIN_TEAM_AUTO_REFRESH_INTERVAL_MINUTES = 1
+    MAX_TEAM_AUTO_REFRESH_INTERVAL_MINUTES = 1440
 
     def __init__(self):
         self._cache: Dict[str, str] = {}
@@ -150,6 +156,69 @@ class SettingsService:
         """清空缓存"""
         self._cache.clear()
         logger.info("配置缓存已清空")
+
+    def _parse_bool(self, value: Optional[str], default: bool = False) -> bool:
+        if value is None:
+            return default
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _parse_int(self, value: Optional[str], default: int) -> int:
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError, AttributeError):
+            return default
+
+    async def get_team_auto_refresh_config(self, session: AsyncSession) -> Dict[str, int | bool]:
+        """
+        获取 Team 自动刷新配置。
+        """
+        enabled_raw = await self.get_setting(
+            session,
+            self.TEAM_AUTO_REFRESH_ENABLED_KEY,
+            str(self.DEFAULT_TEAM_AUTO_REFRESH_ENABLED).lower()
+        )
+        interval_raw = await self.get_setting(
+            session,
+            self.TEAM_AUTO_REFRESH_INTERVAL_MINUTES_KEY,
+            str(self.DEFAULT_TEAM_AUTO_REFRESH_INTERVAL_MINUTES)
+        )
+
+        interval_minutes = self._parse_int(
+            interval_raw,
+            self.DEFAULT_TEAM_AUTO_REFRESH_INTERVAL_MINUTES
+        )
+        if interval_minutes < self.MIN_TEAM_AUTO_REFRESH_INTERVAL_MINUTES or interval_minutes > self.MAX_TEAM_AUTO_REFRESH_INTERVAL_MINUTES:
+            interval_minutes = self.DEFAULT_TEAM_AUTO_REFRESH_INTERVAL_MINUTES
+
+        return {
+            "enabled": self._parse_bool(
+                enabled_raw,
+                self.DEFAULT_TEAM_AUTO_REFRESH_ENABLED
+            ),
+            "interval_minutes": interval_minutes
+        }
+
+    async def update_team_auto_refresh_config(
+        self,
+        session: AsyncSession,
+        enabled: bool,
+        interval_minutes: int
+    ) -> bool:
+        """
+        更新 Team 自动刷新配置。
+        """
+        if interval_minutes < self.MIN_TEAM_AUTO_REFRESH_INTERVAL_MINUTES or interval_minutes > self.MAX_TEAM_AUTO_REFRESH_INTERVAL_MINUTES:
+            raise ValueError(
+                f"自动刷新间隔必须在 {self.MIN_TEAM_AUTO_REFRESH_INTERVAL_MINUTES} 到 {self.MAX_TEAM_AUTO_REFRESH_INTERVAL_MINUTES} 分钟之间"
+            )
+
+        return await self.update_settings(
+            session,
+            {
+                self.TEAM_AUTO_REFRESH_ENABLED_KEY: str(bool(enabled)).lower(),
+                self.TEAM_AUTO_REFRESH_INTERVAL_MINUTES_KEY: str(interval_minutes)
+            }
+        )
 
     async def get_proxy_config(self, session: AsyncSession) -> Dict[str, str]:
         """

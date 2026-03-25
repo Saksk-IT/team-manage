@@ -19,6 +19,7 @@ from app.dependencies.auth import require_admin
 from app.models import Team, RedemptionCode
 from app.services.team import TeamService, TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY
 from app.services.redemption import RedemptionService
+from app.services.settings import settings_service
 from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
@@ -381,6 +382,7 @@ async def _render_team_dashboard_page(
 ):
     from app.main import templates
 
+    auto_refresh_config = await settings_service.get_team_auto_refresh_config(db)
     teams_result = await team_service.get_all_teams(
         db,
         page=page,
@@ -419,6 +421,8 @@ async def _render_team_dashboard_page(
             "stats": stats,
             "search": search,
             "status_filter": status,
+            "team_auto_refresh_enabled": auto_refresh_config["enabled"],
+            "team_auto_refresh_interval_minutes": auto_refresh_config["interval_minutes"],
             "pagination": {
                 "current_page": teams_result.get("current_page", page),
                 "total_pages": teams_result.get("total_pages", 1),
@@ -1881,13 +1885,13 @@ async def settings_page(
     """
     try:
         from app.main import templates
-        from app.services.settings import settings_service
 
         logger.info("管理员访问系统设置页面")
 
         # 获取当前配置
         proxy_config = await settings_service.get_proxy_config(db)
         log_level = await settings_service.get_log_level(db)
+        team_auto_refresh_config = await settings_service.get_team_auto_refresh_config(db)
 
         return templates.TemplateResponse(
             "admin/settings/index.html",
@@ -1898,6 +1902,8 @@ async def settings_page(
                 "proxy_enabled": proxy_config["enabled"],
                 "proxy": proxy_config["proxy"],
                 "log_level": log_level,
+                "team_auto_refresh_enabled": team_auto_refresh_config["enabled"],
+                "team_auto_refresh_interval_minutes": team_auto_refresh_config["interval_minutes"],
                 "webhook_url": await settings_service.get_setting(db, "webhook_url", ""),
                 "low_stock_threshold": await settings_service.get_setting(db, "low_stock_threshold", "10"),
                 "api_key": await settings_service.get_setting(db, "api_key", "")
@@ -1928,6 +1934,15 @@ class WebhookSettingsRequest(BaseModel):
     webhook_url: str = Field("", description="Webhook URL")
     low_stock_threshold: int = Field(10, description="库存阈值")
     api_key: str = Field("", description="API Key")
+
+
+class TeamAutoRefreshSettingsRequest(BaseModel):
+    """Team 自动刷新设置请求"""
+    enabled: bool = Field(..., description="是否启用 Team 自动刷新")
+    interval_minutes: int = Field(
+        settings_service.DEFAULT_TEAM_AUTO_REFRESH_INTERVAL_MINUTES,
+        description="自动刷新间隔（分钟）"
+    )
 
 
 @router.get("/warranty-super-codes", response_class=HTMLResponse)
@@ -2186,6 +2201,48 @@ async def update_webhook_settings(
 
     except Exception as e:
         logger.error(f"更新配置失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"更新失败: {str(e)}"}
+        )
+
+
+@router.post("/settings/team-auto-refresh")
+async def update_team_auto_refresh_settings(
+    refresh_data: TeamAutoRefreshSettingsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """
+    更新 Team 自动刷新设置
+    """
+    try:
+        logger.info(
+            "管理员更新 Team 自动刷新配置: enabled=%s, interval_minutes=%s",
+            refresh_data.enabled,
+            refresh_data.interval_minutes
+        )
+
+        success = await settings_service.update_team_auto_refresh_config(
+            db,
+            refresh_data.enabled,
+            refresh_data.interval_minutes
+        )
+
+        if success:
+            return JSONResponse(content={"success": True, "message": "Team 自动刷新配置已保存"})
+
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": "保存失败"}
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"success": False, "error": str(e)}
+        )
+    except Exception as e:
+        logger.error(f"更新 Team 自动刷新配置失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"更新失败: {str(e)}"}
