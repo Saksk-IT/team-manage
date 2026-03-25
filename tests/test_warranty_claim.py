@@ -396,6 +396,136 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         service.team_service.add_team_member.assert_not_awaited()
         self.assertEqual(result["super_code_info"]["remaining_uses"], 2)
 
+    async def test_claim_warranty_uses_local_record_for_full_team_without_requesting_team(self):
+        async with self.Session() as session:
+            ordinary_team, _ = await self._seed_base_data(
+                session,
+                usage_code="USAGE-CODE-1234",
+                usage_limit=2
+            )
+            full_warranty_team = Team(
+                email="warranty-full@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-warranty-full",
+                team_type=TEAM_TYPE_WARRANTY,
+                team_name="Warranty Full Team",
+                status="full",
+                current_members=5,
+                max_members=5
+            )
+            session.add(full_warranty_team)
+            await session.flush()
+
+            session.add_all([
+                RedemptionCode(
+                    code="CODE-LOCAL-RECORD",
+                    status="used",
+                    bound_team_id=ordinary_team.id,
+                    used_by_email="buyer@example.com",
+                    used_team_id=ordinary_team.id
+                ),
+                RedemptionRecord(
+                    email="buyer@example.com",
+                    code="CODE-LOCAL-RECORD",
+                    team_id=full_warranty_team.id,
+                    account_id=full_warranty_team.account_id,
+                    is_warranty_redemption=True,
+                    warranty_super_code_type=settings_service.WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT
+                )
+            ])
+            await session.commit()
+
+            service = WarrantyService()
+            service.team_service.get_team_members = AsyncMock()
+            service.team_service.add_team_member = AsyncMock()
+
+            result = await service.claim_warranty_invite(
+                db_session=session,
+                ordinary_code="CODE-LOCAL-RECORD",
+                email="buyer@example.com",
+                super_code="USAGE-CODE-1234"
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["team_info"]["id"], full_warranty_team.id)
+        self.assertEqual(result["super_code_info"]["remaining_uses"], 1)
+        service.team_service.get_team_members.assert_not_awaited()
+        service.team_service.add_team_member.assert_not_awaited()
+
+    async def test_find_existing_warranty_team_only_requests_available_teams(self):
+        async with self.Session() as session:
+            session.add_all([
+                Team(
+                    email="available-1@example.com",
+                    access_token_encrypted="dummy",
+                    account_id="acc-available-1",
+                    team_type=TEAM_TYPE_WARRANTY,
+                    team_name="Available Team 1",
+                    status="active",
+                    current_members=1,
+                    max_members=5
+                ),
+                Team(
+                    email="available-2@example.com",
+                    access_token_encrypted="dummy",
+                    account_id="acc-available-2",
+                    team_type=TEAM_TYPE_WARRANTY,
+                    team_name="Available Team 2",
+                    status="active",
+                    current_members=2,
+                    max_members=5
+                ),
+                Team(
+                    email="full@example.com",
+                    access_token_encrypted="dummy",
+                    account_id="acc-full",
+                    team_type=TEAM_TYPE_WARRANTY,
+                    team_name="Full Team",
+                    status="full",
+                    current_members=5,
+                    max_members=5
+                ),
+                Team(
+                    email="banned@example.com",
+                    access_token_encrypted="dummy",
+                    account_id="acc-banned",
+                    team_type=TEAM_TYPE_WARRANTY,
+                    team_name="Banned Team",
+                    status="banned",
+                    current_members=1,
+                    max_members=5
+                )
+            ])
+            await session.commit()
+
+            team_rows = (
+                await session.execute(
+                    select(Team)
+                    .where(Team.team_type == TEAM_TYPE_WARRANTY)
+                    .order_by(Team.created_at.asc(), Team.id.asc())
+                )
+            ).scalars().all()
+            available_team_ids = [
+                team.id
+                for team in team_rows
+                if team.status == "active" and team.current_members < team.max_members
+            ]
+
+            service = WarrantyService()
+            service.team_service.get_team_members = AsyncMock(side_effect=[
+                {"success": True, "members": [], "total": 0},
+                {"success": True, "members": [{"email": "buyer@example.com"}], "total": 1}
+            ])
+
+            existing_team = await service._find_existing_warranty_team_for_email(session, "buyer@example.com")
+
+        self.assertIsNotNone(existing_team)
+        self.assertEqual(existing_team.id, available_team_ids[1])
+        self.assertEqual(
+            [call.args[0] for call in service.team_service.get_team_members.await_args_list],
+            available_team_ids
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
