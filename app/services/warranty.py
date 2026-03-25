@@ -152,22 +152,35 @@ class WarrantyService:
         result = await db_session.execute(stmt)
         return result.scalars().all()
 
+    async def _find_existing_full_warranty_team_from_records(
+        self,
+        db_session: AsyncSession,
+        ordinary_code: str,
+        email: str
+    ) -> Optional[Team]:
+        normalized_email = (email or "").strip().lower()
+        stmt = (
+            select(Team)
+            .join(RedemptionRecord, RedemptionRecord.team_id == Team.id)
+            .where(
+                RedemptionRecord.code == ordinary_code,
+                func.lower(RedemptionRecord.email) == normalized_email,
+                RedemptionRecord.is_warranty_redemption.is_(True),
+                Team.team_type == TEAM_TYPE_WARRANTY,
+                Team.status == "full"
+            )
+            .order_by(RedemptionRecord.redeemed_at.desc(), Team.created_at.asc())
+        )
+        result = await db_session.execute(stmt)
+        return result.scalars().first()
+
     async def _find_existing_warranty_team_for_email(
         self,
         db_session: AsyncSession,
         email: str
     ) -> Optional[Team]:
         normalized_email = (email or "").strip().lower()
-        stmt = (
-            select(Team)
-            .where(
-                Team.team_type == TEAM_TYPE_WARRANTY,
-                Team.status.in_(["active", "full"])
-            )
-            .order_by(Team.created_at.asc())
-        )
-        result = await db_session.execute(stmt)
-        warranty_teams = result.scalars().all()
+        warranty_teams = await self._get_available_warranty_teams(db_session)
 
         for team in warranty_teams:
             members_result = await self.team_service.get_team_members(team.id, db_session)
@@ -218,7 +231,13 @@ class WarrantyService:
                 logger.warning("质保申请失败: 邮箱与普通兑换码不匹配 code=%s", ordinary_code)
                 return {"success": False, "error": "邮箱与普通兑换码不匹配"}
 
-            existing_team = await self._find_existing_warranty_team_for_email(db_session, email)
+            existing_team = await self._find_existing_full_warranty_team_from_records(
+                db_session,
+                ordinary_code,
+                email
+            )
+            if not existing_team:
+                existing_team = await self._find_existing_warranty_team_for_email(db_session, email)
             if existing_team:
                 usage_info = None
                 time_info = None
