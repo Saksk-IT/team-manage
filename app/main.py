@@ -17,6 +17,7 @@ from app.routes import redeem, auth, admin, api, user, warranty
 from app.config import settings
 from app.database import init_db, close_db, AsyncSessionLocal
 from app.services.auth import auth_service
+from app.services.team_auto_refresh import team_auto_refresh_service
 
 # 获取项目根目录
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -46,6 +47,7 @@ async def lifespan(app: FastAPI):
         # 3. 初始化管理员密码（如果不存在）
         async with AsyncSessionLocal() as session:
             await auth_service.initialize_admin_password(session)
+        await team_auto_refresh_service.start()
         logger.info("数据库初始化完成")
     except Exception as e:
         logger.error(f"数据库初始化失败: {e}")
@@ -53,6 +55,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # 关闭连接
+    await team_auto_refresh_service.stop()
     await close_db()
     logger.info("系统正在关闭，已释放数据库连接")
 

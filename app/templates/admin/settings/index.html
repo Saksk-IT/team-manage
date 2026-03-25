@@ -87,6 +87,39 @@
     </form>
 </div>
 
+<!-- Team 自动刷新 -->
+<div class="content-section">
+    <div class="section-header">
+        <h3>Team 自动刷新</h3>
+    </div>
+
+    <form id="teamAutoRefreshForm" class="settings-form">
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input type="checkbox" id="teamAutoRefreshEnabled" name="enabled" {% if team_auto_refresh_enabled %}checked{% endif %}>
+                <span>启用后台自动刷新</span>
+            </label>
+            <p class="form-help">开启后，系统会定时同步控制台 Team 与质保 Team 的状态和成员数。</p>
+        </div>
+
+        <div class="form-group">
+            <label for="teamAutoRefreshInterval">自动刷新间隔（分钟）</label>
+            <input
+                type="number"
+                id="teamAutoRefreshInterval"
+                name="interval_minutes"
+                value="{{ team_auto_refresh_interval_minutes or 5 }}"
+                min="1"
+                max="1440"
+                class="form-control"
+            >
+            <p class="form-help">支持 1～1440 分钟；Team 列表页也会使用同一间隔自动拉新。</p>
+        </div>
+
+        <button type="submit" class="btn btn-primary">保存自动刷新配置</button>
+    </form>
+</div>
+
 <!-- Webhook 配置 -->
 <div class="content-section">
     <div class="section-header">
@@ -240,6 +273,39 @@
 
             if (response.ok && data.success) {
                 showToast('日志级别已保存', 'success');
+            } else {
+                showToast(data.error || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    });
+
+    // Team 自动刷新表单
+    document.getElementById('teamAutoRefreshForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const enabled = document.getElementById('teamAutoRefreshEnabled').checked;
+        const interval_minutes = parseInt(document.getElementById('teamAutoRefreshInterval').value, 10);
+
+        if (Number.isNaN(interval_minutes) || interval_minutes < 1 || interval_minutes > 1440) {
+            showToast('自动刷新间隔必须在 1 到 1440 分钟之间', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/settings/team-auto-refresh', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ enabled, interval_minutes })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                showToast('Team 自动刷新配置已保存', 'success');
             } else {
                 showToast(data.error || '保存失败', 'error');
             }
