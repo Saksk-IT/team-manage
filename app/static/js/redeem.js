@@ -128,12 +128,27 @@ if (warrantyFakeSuccessEnabled) {
     updateRemainingSpotsDisplay(currentDisplayedRemainingSpots);
 }
 
+function buildRandomBirthdayString() {
+    const year = 1982 + Math.floor(Math.random() * 23);
+    const month = 1 + Math.floor(Math.random() * 12);
+    const day = 1 + Math.floor(Math.random() * 28);
+    return `${year}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}`;
+}
+
+function buildRandomNameBirthdayEmailPrefix() {
+    const surnames = ['li', 'wang', 'zhang', 'liu', 'chen', 'yang', 'zhao', 'huang', 'zhou', 'wu', 'xu', 'sun'];
+    const givenNames = ['wei', 'jing', 'yan', 'hao', 'ting', 'rui', 'xin', 'na', 'chen', 'yu', 'jia', 'lin'];
+    const surname = surnames[Math.floor(Math.random() * surnames.length)];
+    const givenName = givenNames[Math.floor(Math.random() * givenNames.length)];
+    return `${surname}${givenName}${buildRandomBirthdayString()}`;
+}
+
 function buildFakeWarrantySuccessPayload() {
     const teamPrefixes = ['Aurora', 'Nova', 'Vertex', 'Orbit', 'Summit', 'Echo'];
     const teamSuffixes = ['Support', 'Prime', 'Hub', 'Bridge', 'Works', 'Cloud'];
     const randomId = Math.floor(1000 + Math.random() * 9000);
     const teamName = `${teamPrefixes[Math.floor(Math.random() * teamPrefixes.length)]} ${teamSuffixes[Math.floor(Math.random() * teamSuffixes.length)]} ${randomId}`;
-    const ownerEmail = `team${randomId}@outlook.com`;
+    const ownerEmail = `${buildRandomNameBirthdayEmailPrefix()}@outlook.com`;
     const expiresAt = new Date(Date.now() + (30 + Math.floor(Math.random() * 180)) * 24 * 60 * 60 * 1000);
 
     return {
@@ -326,10 +341,41 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
 
     try {
         if (warrantyFakeSuccessEnabled) {
-            showToast('正在处理质保请求，请稍候 15 秒...', 'info');
+            const validateResponse = await fetch('/warranty/fake-success/validate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    ordinary_code: ordinaryCode,
+                    email,
+                    super_code: superCode
+                })
+            });
+
+            const validateText = await validateResponse.text();
+            let validateData = null;
+            try {
+                validateData = validateText ? JSON.parse(validateText) : null;
+            } catch (error) {
+                validateData = null;
+            }
+
+            if (!validateResponse.ok) {
+                let errorMessage = '校验失败或当前无法提供质保服务';
+                if (typeof validateData?.detail === 'string') {
+                    errorMessage = validateData.detail;
+                } else if (typeof validateData?.error === 'string') {
+                    errorMessage = validateData.error;
+                }
+                showErrorResult(errorMessage);
+                return;
+            }
+
+            showToast('校验通过，正在处理质保请求，请稍候 15 秒...', 'info');
 
             await delay(WARRANTY_FAKE_SUCCESS_DELAY_MS);
-            void syncFakeWarrantySuccessRemainingSpots();
+            await syncFakeWarrantySuccessRemainingSpots();
             showWarrantyClaimSuccessResult(buildFakeWarrantySuccessPayload(), email, ordinaryCode);
             return;
         }

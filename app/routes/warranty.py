@@ -116,6 +116,33 @@ async def complete_fake_warranty_success(
     }
 
 
+@router.post("/fake-success/validate")
+async def validate_fake_warranty_success(
+    request: WarrantyClaimRequest,
+    db_session: AsyncSession = Depends(get_db)
+):
+    """
+    前台质保模拟成功模式下的基础输入校验。
+    """
+    config = await settings_service.get_warranty_fake_success_config(db_session)
+    if not config.get("enabled"):
+        raise HTTPException(status_code=400, detail="前台质保模拟成功模式未启用")
+
+    result = await warranty_service.validate_warranty_claim_input(
+        db_session=db_session,
+        ordinary_code=request.ordinary_code,
+        email=request.email,
+        super_code=request.super_code
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "校验失败")
+
+    return {
+        "success": True,
+        "message": "校验通过"
+    }
+
+
 @router.post("/enable-device-auth")
 async def enable_device_auth(
     request: EnableDeviceAuthRequest,

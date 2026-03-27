@@ -209,27 +209,20 @@ class WarrantyService:
         email: str,
         super_code: str
     ) -> Dict[str, Any]:
-        normalized_email = (email or "").strip().lower()
-        ordinary_code = (ordinary_code or "").strip()
-        super_code = (super_code or "").strip().upper()
-
         try:
-            matched_super_code = await settings_service.match_warranty_super_code(db_session, super_code)
-            if not matched_super_code:
-                logger.warning("质保申请失败: 超级兑换码校验未通过")
-                return {"success": False, "error": "超级兑换码错误或未启用"}
+            validation_result = await self.validate_warranty_claim_input(
+                db_session=db_session,
+                ordinary_code=ordinary_code,
+                email=email,
+                super_code=super_code
+            )
+            if not validation_result.get("success"):
+                return validation_result
 
-            code_stmt = select(RedemptionCode).where(RedemptionCode.code == ordinary_code)
-            code_result = await db_session.execute(code_stmt)
-            redemption_code = code_result.scalar_one_or_none()
-            if not redemption_code:
-                logger.warning("质保申请失败: 普通兑换码不存在 code=%s", ordinary_code)
-                return {"success": False, "error": "普通兑换码不存在"}
-
-            matched_email = await self._resolve_matched_email(db_session, ordinary_code, redemption_code)
-            if not matched_email or matched_email != normalized_email:
-                logger.warning("质保申请失败: 邮箱与普通兑换码不匹配 code=%s", ordinary_code)
-                return {"success": False, "error": "邮箱与普通兑换码不匹配"}
+            normalized_email = validation_result["normalized_email"]
+            ordinary_code = validation_result["ordinary_code"]
+            matched_super_code = validation_result["matched_super_code"]
+            redemption_code = validation_result["redemption_code"]
 
             existing_team = await self._find_existing_full_warranty_team_from_records(
                 db_session,
@@ -341,6 +334,55 @@ class WarrantyService:
         except Exception as e:
             logger.error(f"质保邀请申请失败: {e}")
             return {"success": False, "error": f"质保申请失败: {str(e)}"}
+
+    async def validate_warranty_claim_input(
+        self,
+        db_session: AsyncSession,
+        ordinary_code: str,
+        email: str,
+        super_code: str
+    ) -> Dict[str, Any]:
+        """
+        校验前台质保申请的基础输入：
+        1. 超级兑换码有效
+        2. 普通兑换码存在
+        3. 邮箱与普通兑换码绑定一致
+        """
+        normalized_email = (email or "").strip().lower()
+        normalized_code = (ordinary_code or "").strip()
+        normalized_super_code = (super_code or "").strip().upper()
+
+        matched_super_code = await settings_service.match_warranty_super_code(
+            db_session,
+            normalized_super_code
+        )
+        if not matched_super_code:
+            logger.warning("质保申请失败: 超级兑换码校验未通过")
+            return {"success": False, "error": "超级兑换码错误或未启用"}
+
+        code_stmt = select(RedemptionCode).where(RedemptionCode.code == normalized_code)
+        code_result = await db_session.execute(code_stmt)
+        redemption_code = code_result.scalar_one_or_none()
+        if not redemption_code:
+            logger.warning("质保申请失败: 普通兑换码不存在 code=%s", normalized_code)
+            return {"success": False, "error": "普通兑换码不存在"}
+
+        matched_email = await self._resolve_matched_email(
+            db_session,
+            normalized_code,
+            redemption_code
+        )
+        if not matched_email or matched_email != normalized_email:
+            logger.warning("质保申请失败: 邮箱与普通兑换码不匹配 code=%s", normalized_code)
+            return {"success": False, "error": "邮箱与普通兑换码不匹配"}
+
+        return {
+            "success": True,
+            "ordinary_code": normalized_code,
+            "normalized_email": normalized_email,
+            "matched_super_code": matched_super_code,
+            "redemption_code": redemption_code
+        }
 
     async def check_warranty_status(
         self,
