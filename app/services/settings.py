@@ -20,8 +20,10 @@ class SettingsService:
     WARRANTY_USAGE_LIMIT_MAX_USES_KEY = "warranty_usage_limit_max_uses"
     WARRANTY_TIME_LIMIT_SUPER_CODE_KEY = "warranty_time_limit_super_code"
     WARRANTY_TIME_LIMIT_DAYS_KEY = "warranty_time_limit_days"
+    WARRANTY_FAKE_SUCCESS_ENABLED_KEY = "warranty_fake_success_enabled"
     WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT = "usage_limit"
     WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT = "time_limit"
+    DEFAULT_WARRANTY_FAKE_SUCCESS_ENABLED = False
     TEAM_AUTO_REFRESH_ENABLED_KEY = "team_auto_refresh_enabled"
     TEAM_AUTO_REFRESH_INTERVAL_MINUTES_KEY = "team_auto_refresh_interval_minutes"
     DEFAULT_TEAM_AUTO_REFRESH_ENABLED = True
@@ -218,6 +220,36 @@ class SettingsService:
                 self.TEAM_AUTO_REFRESH_ENABLED_KEY: str(bool(enabled)).lower(),
                 self.TEAM_AUTO_REFRESH_INTERVAL_MINUTES_KEY: str(interval_minutes)
             }
+        )
+
+    async def get_warranty_fake_success_config(self, session: AsyncSession) -> Dict[str, bool]:
+        """
+        获取前台质保模拟成功开关配置。
+        """
+        enabled_raw = await self.get_setting(
+            session,
+            self.WARRANTY_FAKE_SUCCESS_ENABLED_KEY,
+            str(self.DEFAULT_WARRANTY_FAKE_SUCCESS_ENABLED).lower()
+        )
+        return {
+            "enabled": self._parse_bool(
+                enabled_raw,
+                self.DEFAULT_WARRANTY_FAKE_SUCCESS_ENABLED
+            )
+        }
+
+    async def update_warranty_fake_success_config(
+        self,
+        session: AsyncSession,
+        enabled: bool
+    ) -> bool:
+        """
+        更新前台质保模拟成功开关配置。
+        """
+        return await self.update_setting(
+            session,
+            self.WARRANTY_FAKE_SUCCESS_ENABLED_KEY,
+            str(bool(enabled)).lower()
         )
 
     async def get_proxy_config(self, session: AsyncSession) -> Dict[str, str]:

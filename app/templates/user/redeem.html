@@ -135,6 +135,11 @@
     <!-- Toast提示 -->
     <div id="toast" class="toast"></div>
 
+    <script>
+        window.APP_CONFIG = {
+            warrantyFakeSuccessEnabled: {{ warranty_fake_success_enabled|default(false)|tojson }}
+        };
+    </script>
     <script src="/static/js/redeem.js"></script>
     <script>
         if (window.lucide) lucide.createIcons();

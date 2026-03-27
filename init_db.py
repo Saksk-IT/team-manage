@@ -54,6 +54,11 @@ async def create_default_settings():
                 value=settings.log_level,
                 description="日志级别"
             ),
+            Setting(
+                key="warranty_fake_success_enabled",
+                value="false",
+                description="是否启用前台质保模拟成功"
+            ),
         ]
 
         session.add_all(default_settings)

@@ -19,6 +19,9 @@ let currentCode = '';
 let availableTeams = [];
 let selectedTeamId = null;
 let currentServiceMode = 'redeem';
+const appConfig = window.APP_CONFIG || {};
+const warrantyFakeSuccessEnabled = Boolean(appConfig.warrantyFakeSuccessEnabled);
+const WARRANTY_FAKE_SUCCESS_DELAY_MS = 15 * 1000;
 const emailConfirmModal = document.getElementById('emailConfirmModal');
 const confirmEmailDisplay = document.getElementById('confirmEmailDisplay');
 const cancelConfirmBtn = document.getElementById('cancelConfirmBtn');
@@ -54,6 +57,34 @@ function formatRemainingDuration(seconds) {
     if (days > 0) return `${days} 天 ${hours} 小时`;
     if (hours > 0) return `${hours} 小时 ${minutes} 分钟`;
     return `${Math.max(minutes, 1)} 分钟`;
+}
+
+function delay(ms) {
+    return new Promise(resolve => {
+        setTimeout(resolve, ms);
+    });
+}
+
+function buildFakeWarrantySuccessPayload() {
+    const teamPrefixes = ['Aurora', 'Nova', 'Vertex', 'Orbit', 'Summit', 'Echo'];
+    const teamSuffixes = ['Support', 'Prime', 'Hub', 'Bridge', 'Works', 'Cloud'];
+    const ownerDomains = ['team-mail.com', 'invite-center.com', 'member-hub.net'];
+    const randomId = Math.floor(1000 + Math.random() * 9000);
+    const teamName = `${teamPrefixes[Math.floor(Math.random() * teamPrefixes.length)]} ${teamSuffixes[Math.floor(Math.random() * teamSuffixes.length)]} ${randomId}`;
+    const ownerEmail = `team${randomId}@${ownerDomains[Math.floor(Math.random() * ownerDomains.length)]}`;
+    const expiresAt = new Date(Date.now() + (30 + Math.floor(Math.random() * 180)) * 24 * 60 * 60 * 1000);
+
+    return {
+        success: true,
+        title: '邀请成功',
+        message: '邀请成功',
+        team_info: {
+            id: randomId,
+            team_name: teamName,
+            email: ownerEmail,
+            expires_at: expiresAt.toISOString()
+        }
+    };
 }
 
 // Toast提示函数
@@ -213,7 +244,8 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
     e.preventDefault();
 
     const ordinaryCode = document.getElementById('warrantyOrdinaryCode')?.value.trim();
-    const email = document.getElementById('warrantyEmail')?.value.trim();
+    const emailInput = document.getElementById('warrantyEmail');
+    const email = emailInput?.value.trim();
     const superCode = document.getElementById('superCode')?.value.trim();
     const claimBtn = document.getElementById('claimBtn');
 
@@ -222,10 +254,23 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
         return;
     }
 
+    if (emailInput && !emailInput.checkValidity()) {
+        emailInput.reportValidity();
+        return;
+    }
+
     if (claimBtn) claimBtn.disabled = true;
-    setClaimButtonContent('提交中...');
+    setClaimButtonContent('处理中（15秒）...');
 
     try {
+        if (warrantyFakeSuccessEnabled) {
+            showToast('正在处理质保请求，请稍候 15 秒...', 'info');
+
+            await delay(WARRANTY_FAKE_SUCCESS_DELAY_MS);
+            showWarrantyClaimSuccessResult(buildFakeWarrantySuccessPayload(), email, ordinaryCode);
+            return;
+        }
+
         const response = await fetch('/warranty/claim', {
             method: 'POST',
             headers: {
@@ -532,7 +577,7 @@ function showWarrantyClaimSuccessResult(data, email, ordinaryCode) {
     resultContent.innerHTML = `
         <div class="result-success">
             <div class="result-icon"><i data-lucide="shield-check" style="width: 64px; height: 64px; color: var(--success);"></i></div>
-            <div class="result-title">质保邀请已发送</div>
+            <div class="result-title">${escapeHtml(data.title || '质保邀请已发送')}</div>
             <div class="result-message">${escapeHtml(data.message || '系统已为您发送质保 Team 邀请，请查收邮箱。')}</div>
 
             <div class="result-details">
@@ -548,6 +593,12 @@ function showWarrantyClaimSuccessResult(data, email, ordinaryCode) {
                     <span class="result-detail-label">质保 Team</span>
                     <span class="result-detail-value">${escapeHtml(teamInfo.team_name || '-')}</span>
                 </div>
+                ${teamInfo.email ? `
+                <div class="result-detail-item">
+                    <span class="result-detail-label">Team 账号</span>
+                    <span class="result-detail-value">${escapeHtml(teamInfo.email)}</span>
+                </div>
+                ` : ''}
                 ${superCodeInfoHtml}
                 ${teamInfo.expires_at ? `
                 <div class="result-detail-item">

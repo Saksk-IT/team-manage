@@ -120,6 +120,30 @@
     </form>
 </div>
 
+<!-- 前台质保服务 -->
+<div class="content-section">
+    <div class="section-header">
+        <h3>前台质保服务</h3>
+    </div>
+
+    <form id="warrantyFakeSuccessForm" class="settings-form">
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input
+                    type="checkbox"
+                    id="warrantyFakeSuccessEnabled"
+                    name="enabled"
+                    {% if warranty_fake_success_enabled %}checked{% endif %}
+                >
+                <span>启用前台 15 秒后固定显示“邀请成功”</span>
+            </label>
+            <p class="form-help">开启后，前台“质保服务”只校验用户是否填写了正确格式的信息；提交后固定等待 15 秒，并展示随机 Team 信息的成功结果。</p>
+        </div>
+
+        <button type="submit" class="btn btn-primary">保存质保服务开关</button>
+    </form>
+</div>
+
 <!-- Webhook 配置 -->
 <div class="content-section">
     <div class="section-header">
@@ -306,6 +330,33 @@
 
             if (response.ok && data.success) {
                 showToast('Team 自动刷新配置已保存', 'success');
+            } else {
+                showToast(data.error || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    });
+
+    // 前台质保服务开关
+    document.getElementById('warrantyFakeSuccessForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const enabled = document.getElementById('warrantyFakeSuccessEnabled').checked;
+
+        try {
+            const response = await fetch('/admin/settings/warranty-fake-success', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ enabled })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                showToast('前台质保服务开关已保存', 'success');
             } else {
                 showToast(data.error || '保存失败', 'error');
             }
