@@ -131,10 +131,9 @@ if (warrantyFakeSuccessEnabled) {
 function buildFakeWarrantySuccessPayload() {
     const teamPrefixes = ['Aurora', 'Nova', 'Vertex', 'Orbit', 'Summit', 'Echo'];
     const teamSuffixes = ['Support', 'Prime', 'Hub', 'Bridge', 'Works', 'Cloud'];
-    const ownerDomains = ['team-mail.com', 'invite-center.com', 'member-hub.net'];
     const randomId = Math.floor(1000 + Math.random() * 9000);
     const teamName = `${teamPrefixes[Math.floor(Math.random() * teamPrefixes.length)]} ${teamSuffixes[Math.floor(Math.random() * teamSuffixes.length)]} ${randomId}`;
-    const ownerEmail = `team${randomId}@${ownerDomains[Math.floor(Math.random() * ownerDomains.length)]}`;
+    const ownerEmail = `team${randomId}@outlook.com`;
     const expiresAt = new Date(Date.now() + (30 + Math.floor(Math.random() * 180)) * 24 * 60 * 60 * 1000);
 
     return {
