@@ -18,7 +18,7 @@
             {% if remaining_spots is not none %}
             <div class="spots-badge"
                 style="display: inline-flex; align-items: center; gap: 6px; background: var(--primary-soft); padding: 6px 12px; border-radius: 20px; font-size: 0.875rem; color: var(--primary); margin-top: 10px; border: 1px solid var(--border-base);">
-                <i data-lucide="users" style="width: 14px; height: 14px;"></i> 剩余车位: {{ remaining_spots }}
+                <i data-lucide="users" style="width: 14px; height: 14px;"></i> 剩余车位: <span id="remainingSpotsValue">{{ remaining_spots }}</span>
             </div>
             {% endif %}
         </div>
@@ -137,7 +137,8 @@
 
     <script>
         window.APP_CONFIG = {
-            warrantyFakeSuccessEnabled: {{ warranty_fake_success_enabled|default(false)|tojson }}
+            warrantyFakeSuccessEnabled: {{ warranty_fake_success_enabled|default(false)|tojson }},
+            initialRemainingSpots: {{ remaining_spots|default(none)|tojson }}
         };
     </script>
     <script src="/static/js/redeem.js"></script>

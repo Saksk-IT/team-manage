@@ -21,9 +21,12 @@ class SettingsService:
     WARRANTY_TIME_LIMIT_SUPER_CODE_KEY = "warranty_time_limit_super_code"
     WARRANTY_TIME_LIMIT_DAYS_KEY = "warranty_time_limit_days"
     WARRANTY_FAKE_SUCCESS_ENABLED_KEY = "warranty_fake_success_enabled"
+    WARRANTY_FAKE_SUCCESS_REMAINING_SPOTS_KEY = "warranty_fake_success_remaining_spots"
     WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT = "usage_limit"
     WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT = "time_limit"
     DEFAULT_WARRANTY_FAKE_SUCCESS_ENABLED = False
+    WARRANTY_FAKE_SUCCESS_MIN_SPOTS = 60
+    WARRANTY_FAKE_SUCCESS_MAX_SPOTS = 100
     TEAM_AUTO_REFRESH_ENABLED_KEY = "team_auto_refresh_enabled"
     TEAM_AUTO_REFRESH_INTERVAL_MINUTES_KEY = "team_auto_refresh_interval_minutes"
     DEFAULT_TEAM_AUTO_REFRESH_ENABLED = True
@@ -246,11 +249,75 @@ class SettingsService:
         """
         更新前台质保模拟成功开关配置。
         """
-        return await self.update_setting(
+        success = await self.update_setting(
             session,
             self.WARRANTY_FAKE_SUCCESS_ENABLED_KEY,
             str(bool(enabled)).lower()
         )
+        if not success:
+            return False
+
+        if enabled:
+            try:
+                await self.get_warranty_fake_success_remaining_spots(session)
+            except Exception as e:
+                logger.error(f"初始化前台质保模拟席位失败: {e}")
+                return False
+
+        return True
+
+    def _parse_warranty_fake_success_remaining_spots(self, value: Optional[str]) -> Optional[int]:
+        parsed_value = self._parse_int(value, -1)
+        if self.WARRANTY_FAKE_SUCCESS_MIN_SPOTS <= parsed_value <= self.WARRANTY_FAKE_SUCCESS_MAX_SPOTS:
+            return parsed_value
+        return None
+
+    def _generate_warranty_fake_success_remaining_spots(self) -> int:
+        span = self.WARRANTY_FAKE_SUCCESS_MAX_SPOTS - self.WARRANTY_FAKE_SUCCESS_MIN_SPOTS + 1
+        return self.WARRANTY_FAKE_SUCCESS_MIN_SPOTS + secrets.randbelow(span)
+
+    async def get_warranty_fake_success_remaining_spots(self, session: AsyncSession) -> int:
+        """
+        获取前台质保模拟成功模式下的持久化席位数。
+        若不存在或越界，则自动初始化到 60~100 的随机值。
+        """
+        remaining_spots_raw = await self.get_setting(
+            session,
+            self.WARRANTY_FAKE_SUCCESS_REMAINING_SPOTS_KEY,
+            ""
+        )
+        remaining_spots = self._parse_warranty_fake_success_remaining_spots(remaining_spots_raw)
+        if remaining_spots is not None:
+            return remaining_spots
+
+        generated_spots = self._generate_warranty_fake_success_remaining_spots()
+        success = await self.update_setting(
+            session,
+            self.WARRANTY_FAKE_SUCCESS_REMAINING_SPOTS_KEY,
+            str(generated_spots)
+        )
+        if not success:
+            raise RuntimeError("初始化前台质保模拟席位失败")
+        return generated_spots
+
+    async def decrement_warranty_fake_success_remaining_spots(self, session: AsyncSession) -> int:
+        """
+        质保模拟成功后扣减展示席位，但不会低于 60。
+        """
+        current_spots = await self.get_warranty_fake_success_remaining_spots(session)
+        next_spots = max(current_spots - 1, self.WARRANTY_FAKE_SUCCESS_MIN_SPOTS)
+
+        if next_spots == current_spots:
+            return current_spots
+
+        success = await self.update_setting(
+            session,
+            self.WARRANTY_FAKE_SUCCESS_REMAINING_SPOTS_KEY,
+            str(next_spots)
+        )
+        if not success:
+            raise RuntimeError("扣减前台质保模拟席位失败")
+        return next_spots
 
     async def get_proxy_config(self, session: AsyncSession) -> Dict[str, str]:
         """

@@ -8,6 +8,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.services.settings import settings_service
 from app.services.warranty import warranty_service
 
 router = APIRouter(
@@ -95,6 +96,24 @@ async def claim_warranty(
         raise HTTPException(status_code=400, detail=result.get("error") or "校验失败或当前无法提供质保服务")
 
     return result
+
+
+@router.post("/fake-success/complete")
+async def complete_fake_warranty_success(
+    db_session: AsyncSession = Depends(get_db)
+):
+    """
+    前台质保模拟成功模式下，扣减并返回持久化展示席位。
+    """
+    config = await settings_service.get_warranty_fake_success_config(db_session)
+    if not config.get("enabled"):
+        raise HTTPException(status_code=400, detail="前台质保模拟成功模式未启用")
+
+    remaining_spots = await settings_service.decrement_warranty_fake_success_remaining_spots(db_session)
+    return {
+        "success": True,
+        "remaining_spots": remaining_spots
+    }
 
 
 @router.post("/enable-device-auth")

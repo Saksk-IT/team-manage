@@ -22,6 +22,9 @@ let currentServiceMode = 'redeem';
 const appConfig = window.APP_CONFIG || {};
 const warrantyFakeSuccessEnabled = Boolean(appConfig.warrantyFakeSuccessEnabled);
 const WARRANTY_FAKE_SUCCESS_DELAY_MS = 15 * 1000;
+const WARRANTY_FAKE_SUCCESS_MIN_SPOTS = 60;
+const WARRANTY_FAKE_SUCCESS_MAX_SPOTS = 100;
+let currentDisplayedRemainingSpots = Number(appConfig.initialRemainingSpots);
 const emailConfirmModal = document.getElementById('emailConfirmModal');
 const confirmEmailDisplay = document.getElementById('confirmEmailDisplay');
 const cancelConfirmBtn = document.getElementById('cancelConfirmBtn');
@@ -63,6 +66,66 @@ function delay(ms) {
     return new Promise(resolve => {
         setTimeout(resolve, ms);
     });
+}
+
+function normalizeWarrantyFakeSuccessSpots(value) {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+        return null;
+    }
+    return Math.min(
+        WARRANTY_FAKE_SUCCESS_MAX_SPOTS,
+        Math.max(WARRANTY_FAKE_SUCCESS_MIN_SPOTS, Math.round(numericValue))
+    );
+}
+
+function updateRemainingSpotsDisplay(value) {
+    const normalizedValue = normalizeWarrantyFakeSuccessSpots(value);
+    if (normalizedValue === null) {
+        return;
+    }
+
+    currentDisplayedRemainingSpots = normalizedValue;
+    const remainingSpotsValue = document.getElementById('remainingSpotsValue');
+    if (remainingSpotsValue) {
+        remainingSpotsValue.textContent = String(normalizedValue);
+    }
+}
+
+async function syncFakeWarrantySuccessRemainingSpots() {
+    try {
+        const response = await fetch('/warranty/fake-success/complete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const text = await response.text();
+        let data = null;
+        try {
+            data = text ? JSON.parse(text) : null;
+        } catch (error) {
+            data = null;
+        }
+
+        const serverRemainingSpots = normalizeWarrantyFakeSuccessSpots(data?.remaining_spots);
+        if (response.ok && serverRemainingSpots !== null) {
+            updateRemainingSpotsDisplay(serverRemainingSpots);
+            return;
+        }
+    } catch (error) {
+        // ignore
+    }
+
+    const fallbackRemainingSpots = normalizeWarrantyFakeSuccessSpots(currentDisplayedRemainingSpots);
+    if (fallbackRemainingSpots !== null) {
+        updateRemainingSpotsDisplay(Math.max(fallbackRemainingSpots - 1, WARRANTY_FAKE_SUCCESS_MIN_SPOTS));
+    }
+}
+
+if (warrantyFakeSuccessEnabled) {
+    updateRemainingSpotsDisplay(currentDisplayedRemainingSpots);
 }
 
 function buildFakeWarrantySuccessPayload() {
@@ -267,6 +330,7 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
             showToast('正在处理质保请求，请稍候 15 秒...', 'info');
 
             await delay(WARRANTY_FAKE_SUCCESS_DELAY_MS);
+            void syncFakeWarrantySuccessRemainingSpots();
             showWarrantyClaimSuccessResult(buildFakeWarrantySuccessPayload(), email, ordinaryCode);
             return;
         }
