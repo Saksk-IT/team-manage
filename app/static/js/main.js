@@ -67,7 +67,7 @@ function getImportModeMeta(teamType = TEAM_TYPE_STANDARD) {
 
     return {
         modalTitle: '导入 Team',
-        singleHelper: '导入后会按每个 Team 默认总席位 5 人，自动根据实际剩余席位生成同数量的绑定兑换码。',
+        singleHelper: '导入后会按系统设置中的每个 Team 默认最大人数，自动根据实际剩余席位生成同数量的绑定兑换码。',
         batchHelper: '支持粘贴一行一个 AT Token，也支持直接粘贴完整的多个 Team 账号 JSON，系统会自动提取 Access Token (AT)。',
         singleResultTitle: '自动生成的绑定兑换码',
         batchCodesTitle: '自动生成的绑定兑换码'

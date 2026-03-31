@@ -14,6 +14,7 @@ from app.models import Team, TeamAccount, RedemptionCode, RedemptionRecord
 from app.services.chatgpt import ChatGPTService
 from app.services.encryption import encryption_service
 from app.services.redemption import RedemptionService
+from app.services.settings import settings_service
 from app.utils.token_parser import TokenParser
 from app.utils.jwt_parser import JWTParser
 from app.utils.time_utils import get_now
@@ -603,8 +604,8 @@ class TeamService:
                     beta_settings = settings_result["data"].get("beta_settings", {})
                     device_code_auth_enabled = beta_settings.get("codex_device_code_auth", False)
 
-                # 确定状态和最大成员数 (默认 5)
-                max_members = DEFAULT_TEAM_MAX_MEMBERS
+                # 确定状态和最大成员数（默认值来自系统设置）
+                max_members = await settings_service.get_default_team_max_members(db_session)
                 status = "active"
                 if current_members >= max_members:
                     status = "full"

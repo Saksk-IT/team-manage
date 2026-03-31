@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 class SettingsService:
     """系统设置服务类"""
 
+    DEFAULT_TEAM_MAX_MEMBERS_KEY = "default_team_max_members"
     WARRANTY_SERVICE_ENABLED_KEY = "warranty_service_enabled"
     WARRANTY_USAGE_LIMIT_SUPER_CODE_KEY = "warranty_usage_limit_super_code"
     WARRANTY_USAGE_LIMIT_MAX_USES_KEY = "warranty_usage_limit_max_uses"
@@ -27,6 +28,7 @@ class SettingsService:
     WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT = "time_limit"
     DEFAULT_WARRANTY_SERVICE_ENABLED = True
     DEFAULT_WARRANTY_FAKE_SUCCESS_ENABLED = False
+    DEFAULT_TEAM_MAX_MEMBERS = 5
     WARRANTY_FAKE_SUCCESS_MIN_SPOTS = 60
     WARRANTY_FAKE_SUCCESS_MAX_SPOTS = 100
     TEAM_AUTO_REFRESH_ENABLED_KEY = "team_auto_refresh_enabled"
@@ -225,6 +227,40 @@ class SettingsService:
                 self.TEAM_AUTO_REFRESH_ENABLED_KEY: str(bool(enabled)).lower(),
                 self.TEAM_AUTO_REFRESH_INTERVAL_MINUTES_KEY: str(interval_minutes)
             }
+        )
+
+    async def get_default_team_max_members(self, session: AsyncSession) -> int:
+        """
+        获取每个 Team 的默认最大人数。
+        """
+        value_raw = await self.get_setting(
+            session,
+            self.DEFAULT_TEAM_MAX_MEMBERS_KEY,
+            str(self.DEFAULT_TEAM_MAX_MEMBERS)
+        )
+        value = self._parse_int(value_raw, self.DEFAULT_TEAM_MAX_MEMBERS)
+        return value if value > 0 else self.DEFAULT_TEAM_MAX_MEMBERS
+
+    async def update_default_team_max_members(
+        self,
+        session: AsyncSession,
+        value: int
+    ) -> bool:
+        """
+        更新每个 Team 的默认最大人数。
+        """
+        try:
+            normalized_value = int(value)
+        except (TypeError, ValueError):
+            raise ValueError("每个 Team 默认最大人数必须为正整数")
+
+        if normalized_value <= 0:
+            raise ValueError("每个 Team 默认最大人数必须大于 0")
+
+        return await self.update_setting(
+            session,
+            self.DEFAULT_TEAM_MAX_MEMBERS_KEY,
+            str(normalized_value)
         )
 
     async def get_warranty_service_config(self, session: AsyncSession) -> Dict[str, bool]:

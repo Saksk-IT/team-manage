@@ -1,7 +1,7 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -60,32 +60,38 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_standard_import_generates_codes_but_warranty_import_does_not(self):
         async with self.Session() as session:
-            self._mock_import_dependencies("standard@example.com", "11111111-1111-1111-1111-111111111111", "Standard Team")
-            standard_result = await self.service.import_team_single(
-                access_token="eyJ.standard.payload",
-                db_session=session,
-                email="standard@example.com",
-                account_id="11111111-1111-1111-1111-111111111111",
-                team_type=TEAM_TYPE_STANDARD
-            )
+            with patch(
+                "app.services.team.settings_service.get_default_team_max_members",
+                new=AsyncMock(return_value=8)
+            ):
+                self._mock_import_dependencies("standard@example.com", "11111111-1111-1111-1111-111111111111", "Standard Team")
+                standard_result = await self.service.import_team_single(
+                    access_token="eyJ.standard.payload",
+                    db_session=session,
+                    email="standard@example.com",
+                    account_id="11111111-1111-1111-1111-111111111111",
+                    team_type=TEAM_TYPE_STANDARD
+                )
 
-            self._mock_import_dependencies("warranty@example.com", "22222222-2222-2222-2222-222222222222", "Warranty Team")
-            warranty_result = await self.service.import_team_single(
-                access_token="eyJ.warranty.payload",
-                db_session=session,
-                email="warranty@example.com",
-                account_id="22222222-2222-2222-2222-222222222222",
-                team_type=TEAM_TYPE_WARRANTY
-            )
+                self._mock_import_dependencies("warranty@example.com", "22222222-2222-2222-2222-222222222222", "Warranty Team")
+                warranty_result = await self.service.import_team_single(
+                    access_token="eyJ.warranty.payload",
+                    db_session=session,
+                    email="warranty@example.com",
+                    account_id="22222222-2222-2222-2222-222222222222",
+                    team_type=TEAM_TYPE_WARRANTY
+                )
 
             code_count_result = await session.execute(select(func.count(RedemptionCode.id)))
             code_count = code_count_result.scalar() or 0
 
         self.assertTrue(standard_result["success"])
-        self.assertEqual(standard_result["generated_code_count"], 4)
+        self.assertEqual(standard_result["generated_code_count"], 7)
+        self.assertEqual(standard_result["imported_teams"][0]["max_members"], 8)
         self.assertTrue(warranty_result["success"])
         self.assertEqual(warranty_result["generated_code_count"], 0)
-        self.assertEqual(code_count, 4)
+        self.assertEqual(warranty_result["imported_teams"][0]["max_members"], 8)
+        self.assertEqual(code_count, 7)
 
     async def test_standard_inventory_queries_exclude_warranty_teams(self):
         async with self.Session() as session:

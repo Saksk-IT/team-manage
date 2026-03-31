@@ -1895,6 +1895,7 @@ async def settings_page(
         proxy_config = await settings_service.get_proxy_config(db)
         log_level = await settings_service.get_log_level(db)
         team_auto_refresh_config = await settings_service.get_team_auto_refresh_config(db)
+        default_team_max_members = await settings_service.get_default_team_max_members(db)
         warranty_service_config = await settings_service.get_warranty_service_config(db)
         warranty_fake_success_config = await settings_service.get_warranty_fake_success_config(db)
 
@@ -1910,6 +1911,7 @@ async def settings_page(
                 "log_level": log_level,
                 "team_auto_refresh_enabled": team_auto_refresh_config["enabled"],
                 "team_auto_refresh_interval_minutes": team_auto_refresh_config["interval_minutes"],
+                "default_team_max_members": default_team_max_members,
                 "warranty_service_enabled": warranty_service_config["enabled"],
                 "warranty_fake_success_enabled": warranty_fake_success_config["enabled"],
                 "webhook_url": await settings_service.get_setting(db, "webhook_url", ""),
@@ -1951,6 +1953,11 @@ class TeamAutoRefreshSettingsRequest(BaseModel):
         settings_service.DEFAULT_TEAM_AUTO_REFRESH_INTERVAL_MINUTES,
         description="自动刷新间隔（分钟）"
     )
+
+
+class DefaultTeamMaxMembersSettingsRequest(BaseModel):
+    """每个 Team 默认最大人数设置请求"""
+    value: int = Field(..., description="每个 Team 默认最大人数")
 
 
 class WarrantyServiceSettingsRequest(BaseModel):
@@ -2262,6 +2269,46 @@ async def update_team_auto_refresh_settings(
         )
     except Exception as e:
         logger.error(f"更新 Team 自动刷新配置失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"更新失败: {str(e)}"}
+        )
+
+
+@router.post("/settings/default-team-max-members")
+async def update_default_team_max_members_settings(
+    settings_data: DefaultTeamMaxMembersSettingsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """
+    更新每个 Team 默认最大人数。
+    """
+    try:
+        logger.info(
+            "管理员更新每个 Team 默认最大人数: value=%s",
+            settings_data.value
+        )
+
+        success = await settings_service.update_default_team_max_members(
+            db,
+            settings_data.value
+        )
+
+        if success:
+            return JSONResponse(content={"success": True, "message": "Team 默认最大人数已保存"})
+
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": "保存失败"}
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"success": False, "error": str(e)}
+        )
+    except Exception as e:
+        logger.error(f"更新 Team 默认最大人数失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"更新失败: {str(e)}"}

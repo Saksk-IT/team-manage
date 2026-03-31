@@ -120,6 +120,30 @@
     </form>
 </div>
 
+<!-- Team 默认最大人数 -->
+<div class="content-section">
+    <div class="section-header">
+        <h3>Team 默认最大人数</h3>
+    </div>
+
+    <form id="defaultTeamMaxMembersForm" class="settings-form">
+        <div class="form-group">
+            <label for="defaultTeamMaxMembers">每个 Team 默认最大人数</label>
+            <input
+                type="number"
+                id="defaultTeamMaxMembers"
+                name="value"
+                value="{{ default_team_max_members or 5 }}"
+                min="1"
+                class="form-control"
+            >
+            <p class="form-help">新导入的 Team 会默认使用这个人数上限，并按剩余席位自动生成绑定兑换码。</p>
+        </div>
+
+        <button type="submit" class="btn btn-primary">保存默认人数</button>
+    </form>
+</div>
+
 <!-- 前台质保服务 -->
 <div class="content-section">
     <div class="section-header">
@@ -354,6 +378,38 @@
 
             if (response.ok && data.success) {
                 showToast('Team 自动刷新配置已保存', 'success');
+            } else {
+                showToast(data.error || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    });
+
+    // Team 默认最大人数
+    document.getElementById('defaultTeamMaxMembersForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const value = parseInt(document.getElementById('defaultTeamMaxMembers').value, 10);
+
+        if (Number.isNaN(value) || value <= 0) {
+            showToast('每个 Team 默认最大人数必须大于 0', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/settings/default-team-max-members', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ value })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                showToast('Team 默认最大人数已保存', 'success');
             } else {
                 showToast(data.error || '保存失败', 'error');
             }
