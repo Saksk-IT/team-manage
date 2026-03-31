@@ -1895,6 +1895,7 @@ async def settings_page(
         proxy_config = await settings_service.get_proxy_config(db)
         log_level = await settings_service.get_log_level(db)
         team_auto_refresh_config = await settings_service.get_team_auto_refresh_config(db)
+        warranty_service_config = await settings_service.get_warranty_service_config(db)
         warranty_fake_success_config = await settings_service.get_warranty_fake_success_config(db)
 
         return templates.TemplateResponse(
@@ -1909,6 +1910,7 @@ async def settings_page(
                 "log_level": log_level,
                 "team_auto_refresh_enabled": team_auto_refresh_config["enabled"],
                 "team_auto_refresh_interval_minutes": team_auto_refresh_config["interval_minutes"],
+                "warranty_service_enabled": warranty_service_config["enabled"],
                 "warranty_fake_success_enabled": warranty_fake_success_config["enabled"],
                 "webhook_url": await settings_service.get_setting(db, "webhook_url", ""),
                 "low_stock_threshold": await settings_service.get_setting(db, "low_stock_threshold", "10"),
@@ -1949,6 +1951,11 @@ class TeamAutoRefreshSettingsRequest(BaseModel):
         settings_service.DEFAULT_TEAM_AUTO_REFRESH_INTERVAL_MINUTES,
         description="自动刷新间隔（分钟）"
     )
+
+
+class WarrantyServiceSettingsRequest(BaseModel):
+    """前台质保服务开关请求"""
+    enabled: bool = Field(..., description="是否启用前台质保服务")
 
 
 class WarrantyFakeSuccessSettingsRequest(BaseModel):
@@ -2255,6 +2262,41 @@ async def update_team_auto_refresh_settings(
         )
     except Exception as e:
         logger.error(f"更新 Team 自动刷新配置失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"更新失败: {str(e)}"}
+        )
+
+
+@router.post("/settings/warranty-service")
+async def update_warranty_service_settings(
+    warranty_data: WarrantyServiceSettingsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """
+    更新前台质保服务开关。
+    """
+    try:
+        logger.info(
+            "管理员更新前台质保服务开关: enabled=%s",
+            warranty_data.enabled
+        )
+
+        success = await settings_service.update_warranty_service_config(
+            db,
+            warranty_data.enabled
+        )
+
+        if success:
+            return JSONResponse(content={"success": True, "message": "前台质保服务开关已保存"})
+
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": "保存失败"}
+        )
+    except Exception as e:
+        logger.error(f"更新前台质保服务开关失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"更新失败: {str(e)}"}

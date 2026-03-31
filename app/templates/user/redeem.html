@@ -32,10 +32,12 @@
                         onclick="switchServiceMode('redeem')">
                         <i data-lucide="ticket"></i> 普通兑换
                     </button>
+                    {% if warranty_service_enabled %}
                     <button type="button" id="warrantyModeBtn" class="btn btn-secondary" style="flex: 1; min-width: 140px;"
                         onclick="switchServiceMode('warranty')">
                         <i data-lucide="shield"></i> 质保服务
                     </button>
+                    {% endif %}
                 </div>
 
                 <div id="redeemPane">
@@ -56,6 +58,7 @@
                         </button>
                     </form>
 
+                    {% if warranty_service_enabled %}
                     <div class="warranty-section"
                         style="margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--border-base);">
                         <h3 style="font-size: 1.1rem; margin-bottom: 15px; color: var(--text-primary);">
@@ -69,8 +72,10 @@
                             </div>
                         </div>
                     </div>
+                    {% endif %}
                 </div>
 
+                {% if warranty_service_enabled %}
                 <div id="warrantyPane" style="display: none;">
                     <form id="warrantyClaimForm">
                         <div class="form-group">
@@ -91,6 +96,7 @@
                         </button>
                     </form>
                 </div>
+                {% endif %}
             </div>
         </div>
 
@@ -137,6 +143,7 @@
 
     <script>
         window.APP_CONFIG = {
+            warrantyServiceEnabled: {{ warranty_service_enabled|default(true)|tojson }},
             warrantyFakeSuccessEnabled: {{ warranty_fake_success_enabled|default(false)|tojson }},
             initialRemainingSpots: {{ remaining_spots|default(none)|tojson }}
         };

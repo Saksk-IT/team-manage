@@ -35,9 +35,13 @@ async def redeem_page(
         from app.main import templates
         from app.services.team import TeamService
         from app.services.settings import settings_service
-        
+
+        warranty_service_config = await settings_service.get_warranty_service_config(db)
         warranty_fake_success_config = await settings_service.get_warranty_fake_success_config(db)
-        if warranty_fake_success_config["enabled"]:
+        warranty_service_enabled = warranty_service_config["enabled"]
+        warranty_fake_success_enabled = warranty_service_enabled and warranty_fake_success_config["enabled"]
+
+        if warranty_fake_success_enabled:
             remaining_spots = await settings_service.get_warranty_fake_success_remaining_spots(db)
         else:
             team_service = TeamService()
@@ -51,7 +55,8 @@ async def redeem_page(
             {
                 "request": request,
                 "remaining_spots": remaining_spots,
-                "warranty_fake_success_enabled": warranty_fake_success_config["enabled"]
+                "warranty_service_enabled": warranty_service_enabled,
+                "warranty_fake_success_enabled": warranty_fake_success_enabled
             }
         )
 

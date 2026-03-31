@@ -126,6 +126,30 @@
         <h3>前台质保服务</h3>
     </div>
 
+    <form id="warrantyServiceForm" class="settings-form">
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input
+                    type="checkbox"
+                    id="warrantyServiceEnabled"
+                    name="enabled"
+                    {% if warranty_service_enabled %}checked{% endif %}
+                >
+                <span>显示并启用前台质保服务</span>
+            </label>
+            <p class="form-help">关闭后，前台兑换页不会显示任何质保相关字样、说明和提交入口；对应接口也会被禁用。</p>
+        </div>
+
+        <button type="submit" class="btn btn-primary">保存质保服务开关</button>
+    </form>
+</div>
+
+<!-- 前台质保模拟成功 -->
+<div class="content-section">
+    <div class="section-header">
+        <h3>前台质保模拟成功</h3>
+    </div>
+
     <form id="warrantyFakeSuccessForm" class="settings-form">
         <div class="form-group">
             <label class="checkbox-label">
@@ -137,10 +161,10 @@
                 >
                 <span>启用前台 15 秒后固定显示“邀请成功”</span>
             </label>
-            <p class="form-help">开启后，前台“质保服务”只校验用户是否填写了正确格式的信息；提交后固定等待 15 秒，并展示随机 Team 信息的成功结果。同时前台席位会切换为持久化模拟值，范围固定在 60～100，每次模拟成功扣减 1，最低保持 60。</p>
+            <p class="form-help">仅在“前台质保服务”已开启时生效。开启后，前台质保提交只校验输入格式；提交后固定等待 15 秒，并展示随机 Team 信息的成功结果。同时前台席位会切换为持久化模拟值，范围固定在 60～100，每次模拟成功扣减 1，最低保持 60。</p>
         </div>
 
-        <button type="submit" class="btn btn-primary">保存质保服务开关</button>
+        <button type="submit" class="btn btn-primary">保存模拟成功开关</button>
     </form>
 </div>
 
@@ -339,6 +363,33 @@
     });
 
     // 前台质保服务开关
+    document.getElementById('warrantyServiceForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const enabled = document.getElementById('warrantyServiceEnabled').checked;
+
+        try {
+            const response = await fetch('/admin/settings/warranty-service', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ enabled })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                showToast('前台质保服务开关已保存', 'success');
+            } else {
+                showToast(data.error || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    });
+
+    // 前台质保模拟成功开关
     document.getElementById('warrantyFakeSuccessForm').addEventListener('submit', async (e) => {
         e.preventDefault();
 
@@ -356,7 +407,7 @@
             const data = await response.json();
 
             if (response.ok && data.success) {
-                showToast('前台质保服务开关已保存', 'success');
+                showToast('前台质保模拟成功开关已保存', 'success');
             } else {
                 showToast(data.error || '保存失败', 'error');
             }

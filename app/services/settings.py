@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 class SettingsService:
     """系统设置服务类"""
 
+    WARRANTY_SERVICE_ENABLED_KEY = "warranty_service_enabled"
     WARRANTY_USAGE_LIMIT_SUPER_CODE_KEY = "warranty_usage_limit_super_code"
     WARRANTY_USAGE_LIMIT_MAX_USES_KEY = "warranty_usage_limit_max_uses"
     WARRANTY_TIME_LIMIT_SUPER_CODE_KEY = "warranty_time_limit_super_code"
@@ -24,6 +25,7 @@ class SettingsService:
     WARRANTY_FAKE_SUCCESS_REMAINING_SPOTS_KEY = "warranty_fake_success_remaining_spots"
     WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT = "usage_limit"
     WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT = "time_limit"
+    DEFAULT_WARRANTY_SERVICE_ENABLED = True
     DEFAULT_WARRANTY_FAKE_SUCCESS_ENABLED = False
     WARRANTY_FAKE_SUCCESS_MIN_SPOTS = 60
     WARRANTY_FAKE_SUCCESS_MAX_SPOTS = 100
@@ -223,6 +225,36 @@ class SettingsService:
                 self.TEAM_AUTO_REFRESH_ENABLED_KEY: str(bool(enabled)).lower(),
                 self.TEAM_AUTO_REFRESH_INTERVAL_MINUTES_KEY: str(interval_minutes)
             }
+        )
+
+    async def get_warranty_service_config(self, session: AsyncSession) -> Dict[str, bool]:
+        """
+        获取前台质保服务开关配置。
+        """
+        enabled_raw = await self.get_setting(
+            session,
+            self.WARRANTY_SERVICE_ENABLED_KEY,
+            str(self.DEFAULT_WARRANTY_SERVICE_ENABLED).lower()
+        )
+        return {
+            "enabled": self._parse_bool(
+                enabled_raw,
+                self.DEFAULT_WARRANTY_SERVICE_ENABLED
+            )
+        }
+
+    async def update_warranty_service_config(
+        self,
+        session: AsyncSession,
+        enabled: bool
+    ) -> bool:
+        """
+        更新前台质保服务开关配置。
+        """
+        return await self.update_setting(
+            session,
+            self.WARRANTY_SERVICE_ENABLED_KEY,
+            str(bool(enabled)).lower()
         )
 
     async def get_warranty_fake_success_config(self, session: AsyncSession) -> Dict[str, bool]:

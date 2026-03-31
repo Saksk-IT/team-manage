@@ -20,7 +20,8 @@ let availableTeams = [];
 let selectedTeamId = null;
 let currentServiceMode = 'redeem';
 const appConfig = window.APP_CONFIG || {};
-const warrantyFakeSuccessEnabled = Boolean(appConfig.warrantyFakeSuccessEnabled);
+const warrantyServiceEnabled = Boolean(appConfig.warrantyServiceEnabled);
+const warrantyFakeSuccessEnabled = warrantyServiceEnabled && Boolean(appConfig.warrantyFakeSuccessEnabled);
 const WARRANTY_FAKE_SUCCESS_DELAY_MS = 15 * 1000;
 const WARRANTY_FAKE_SUCCESS_MIN_SPOTS = 60;
 const WARRANTY_FAKE_SUCCESS_MAX_SPOTS = 100;
@@ -204,6 +205,10 @@ function backToStep1() {
 }
 
 function switchServiceMode(mode) {
+    if (mode === 'warranty' && !warrantyServiceEnabled) {
+        mode = 'redeem';
+    }
+
     currentServiceMode = mode === 'warranty' ? 'warranty' : 'redeem';
 
     const redeemPane = document.getElementById('redeemPane');
@@ -601,6 +606,14 @@ async function confirmRedeem(teamId) {
 function showSuccessResult(data) {
     const resultContent = document.getElementById('resultContent');
     const teamInfo = data.team_info || {};
+    const warrantyNoticeHtml = warrantyServiceEnabled ? `
+            <div style="margin-bottom: 2rem; border-top: 1px solid var(--border-base); padding-top: 1.5rem;">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+                    <strong>质保说明</strong><br>
+                    质保期间如果您使用兑换码加入的 Team 被封号，可以在质保期内（一个月）联系客服，再次获取兑换码。
+                </p>
+            </div>
+    ` : '';
 
     resultContent.innerHTML = `
         <div class="result-success">
@@ -630,12 +643,7 @@ function showSuccessResult(data) {
                 邀请邮件已发送到您的邮箱，请查收并按照邮件指引接受邀请。
             </p>
 
-            <div style="margin-bottom: 2rem; border-top: 1px solid var(--border-base); padding-top: 1.5rem;">
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
-                    <strong>质保说明</strong><br>
-                    质保期间如果您使用兑换码加入的 Team 被封号，可以在质保期内（一个月）联系客服，再次获取兑换码。
-                </p>
-            </div>
+            ${warrantyNoticeHtml}
 
             <button onclick="location.reload()" class="btn btn-primary" style="width: 100%;">
                 <i data-lucide="refresh-cw"></i> 再次兑换

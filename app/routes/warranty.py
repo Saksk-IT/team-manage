@@ -17,6 +17,12 @@ router = APIRouter(
 )
 
 
+async def ensure_warranty_service_enabled(db_session: AsyncSession) -> None:
+    config = await settings_service.get_warranty_service_config(db_session)
+    if not config.get("enabled"):
+        raise HTTPException(status_code=404, detail="前台质保服务未开启")
+
+
 class WarrantyCheckRequest(BaseModel):
     """质保查询请求"""
     email: Optional[EmailStr] = None
@@ -61,6 +67,7 @@ async def check_warranty(
     """
     前台质保查询暂时停用
     """
+    await ensure_warranty_service_enabled(db_session)
     raise HTTPException(
         status_code=503,
         detail="前台质保查询暂时停用。质保期间如果您使用兑换码加入的 Team 被封号，请在质保期内（一个月）联系客服，再次获取兑换码。"
@@ -85,6 +92,7 @@ async def claim_warranty(
     request: WarrantyClaimRequest,
     db_session: AsyncSession = Depends(get_db)
 ):
+    await ensure_warranty_service_enabled(db_session)
     result = await warranty_service.claim_warranty_invite(
         db_session=db_session,
         ordinary_code=request.ordinary_code,
@@ -105,6 +113,7 @@ async def complete_fake_warranty_success(
     """
     前台质保模拟成功模式下，扣减并返回持久化展示席位。
     """
+    await ensure_warranty_service_enabled(db_session)
     config = await settings_service.get_warranty_fake_success_config(db_session)
     if not config.get("enabled"):
         raise HTTPException(status_code=400, detail="前台质保模拟成功模式未启用")
@@ -124,6 +133,7 @@ async def validate_fake_warranty_success(
     """
     前台质保模拟成功模式下的基础输入校验。
     """
+    await ensure_warranty_service_enabled(db_session)
     config = await settings_service.get_warranty_fake_success_config(db_session)
     if not config.get("enabled"):
         raise HTTPException(status_code=400, detail="前台质保模拟成功模式未启用")
@@ -151,6 +161,7 @@ async def enable_device_auth(
     """
     用户一键开启设备身份验证
     """
+    await ensure_warranty_service_enabled(db_session)
     from app.services.team import team_service
     from sqlalchemy import select
     from app.models import RedemptionRecord
