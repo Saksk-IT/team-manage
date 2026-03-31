@@ -6,7 +6,7 @@ import logging
 import asyncio
 from typing import Optional, Dict, Any, List, Callable, Awaitable
 from datetime import datetime
-from sqlalchemy import select, update, delete, func
+from sqlalchemy import select, update, delete, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -2351,21 +2351,34 @@ class TeamService:
                     "error": f"Team ID {team_id} 不存在"
                 }
 
-            # 1.5 处理 RedemptionCode 关联 (置空)
-            update_stmt = update(RedemptionCode).where(RedemptionCode.used_team_id == team_id).values(used_team_id=None)
-            await db_session.execute(update_stmt)
-            bound_update_stmt = update(RedemptionCode).where(RedemptionCode.bound_team_id == team_id).values(bound_team_id=None)
-            await db_session.execute(bound_update_stmt)
+            # 1.5 删除 Team 关联的兑换记录和兑换码
+            codes_stmt = select(RedemptionCode.id).where(
+                or_(
+                    RedemptionCode.bound_team_id == team_id,
+                    RedemptionCode.used_team_id == team_id
+                )
+            )
+            codes_result = await db_session.execute(codes_stmt)
+            code_ids = codes_result.scalars().all()
+            deleted_code_count = len(code_ids)
+
+            records_delete_stmt = delete(RedemptionRecord).where(RedemptionRecord.team_id == team_id)
+            await db_session.execute(records_delete_stmt)
+
+            if code_ids:
+                codes_delete_stmt = delete(RedemptionCode).where(RedemptionCode.id.in_(code_ids))
+                await db_session.execute(codes_delete_stmt)
 
             # 2. 删除 Team (级联删除 team_accounts 和 redemption_records)
             await db_session.delete(team)
             await db_session.commit()
 
-            logger.info(f"删除 Team {team_id} 成功")
+            logger.info(f"删除 Team {team_id} 成功，并删除 %s 个关联兑换码", deleted_code_count)
 
             return {
                 "success": True,
-                "message": "Team 已删除",
+                "deleted_code_count": deleted_code_count,
+                "message": f"Team 已删除，并删除 {deleted_code_count} 个关联兑换码",
                 "error": None
             }
 

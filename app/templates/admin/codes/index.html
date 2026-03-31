@@ -229,6 +229,9 @@
             <button onclick="showBulkEditModal()" class="btn btn-primary">
                 <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i> 批量修改质保
             </button>
+            <button onclick="batchDeleteCodes()" class="btn btn-danger">
+                <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i> 批量删除
+            </button>
             <button onclick="deselectAll()" class="btn btn-secondary">取消全选</button>
         </div>
     </div>
@@ -743,6 +746,41 @@
                 }, 1000);
             } else {
                 showToast(result.error || '删除失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    async function batchDeleteCodes() {
+        const codes = getSelectedCodes();
+        if (codes.length === 0) {
+            showToast('请先选择要删除的兑换码', 'error');
+            return;
+        }
+
+        if (!confirm(`确定要批量删除选中的 ${codes.length} 个兑换码吗？\n\n此操作不可恢复!`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/codes/batch-delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ codes })
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                showToast(result.message || '批量删除成功', 'success');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showToast(result.error || '批量删除失败', 'error');
             }
         } catch (error) {
             showToast('网络错误', 'error');

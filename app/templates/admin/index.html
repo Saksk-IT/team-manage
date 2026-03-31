@@ -1458,7 +1458,7 @@
             const data = await response.json();
 
             if (response.ok && data.success) {
-                showToast('删除成功', 'success');
+                showToast(data.message || '删除成功', 'success');
                 setTimeout(() => location.reload(), 1000);
             } else {
                 showToast(data.error || '删除失败', 'error');
