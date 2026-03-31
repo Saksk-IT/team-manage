@@ -410,6 +410,7 @@ async def _render_team_dashboard_page(
         }
 
     return templates.TemplateResponse(
+        request,
         "admin/index.html",
         {
             "request": request,
@@ -1245,6 +1246,7 @@ async def codes_list_page(
                 code["used_at"] = dt.strftime("%Y-%m-%d %H:%M")
 
         return templates.TemplateResponse(
+            request,
             "admin/codes/index.html",
             {
                 "request": request,
@@ -1795,6 +1797,7 @@ async def records_page(
                 pass
 
         return templates.TemplateResponse(
+            request,
             "admin/records/index.html",
             {
                 "request": request,
@@ -1895,6 +1898,7 @@ async def settings_page(
         warranty_fake_success_config = await settings_service.get_warranty_fake_success_config(db)
 
         return templates.TemplateResponse(
+            request,
             "admin/settings/index.html",
             {
                 "request": request,
@@ -1965,6 +1969,7 @@ async def warranty_super_codes_page(
         logger.info("管理员访问超级兑换码管理页")
         configs = await settings_service.get_warranty_super_code_configs(db)
         return templates.TemplateResponse(
+            request,
             "admin/warranty_super_codes/index.html",
             {
                 "request": request,

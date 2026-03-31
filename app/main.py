@@ -154,6 +154,7 @@ app.include_router(api.router)
 async def login_page(request: Request):
     """登录页面"""
     return templates.TemplateResponse(
+        request,
         "auth/login.html",
         {"request": request, "user": None}
     )
