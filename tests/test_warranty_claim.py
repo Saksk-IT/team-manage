@@ -8,7 +8,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import RedemptionCode, RedemptionRecord, Team, WarrantyEmailEntry
+from app.models import RedemptionCode, RedemptionRecord, Team, TeamMemberSnapshot, WarrantyEmailEntry
 from app.services.team import TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY
 from app.services.warranty import WarrantyService
 from app.utils.time_utils import get_now
@@ -234,6 +234,73 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["success"])
         self.assertTrue(result["can_claim"])
         self.assertEqual(result["latest_team"]["status"], "banned")
+
+    async def test_get_warranty_claim_status_falls_back_to_team_member_snapshot(self):
+        async with self.Session() as session:
+            ordinary_team, _ = await self._seed_team_data(session)
+            ordinary_team.status = "banned"
+            session.add(
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=5),
+                    source="manual"
+                )
+            )
+            session.add(
+                TeamMemberSnapshot(
+                    team_id=ordinary_team.id,
+                    email="buyer@example.com",
+                    member_state="joined",
+                )
+            )
+            await session.commit()
+
+            result = await WarrantyService().get_warranty_claim_status(
+                db_session=session,
+                email="buyer@example.com"
+            )
+
+        self.assertTrue(result["success"])
+        self.assertTrue(result["can_claim"])
+        self.assertEqual(result["latest_team"]["status"], "banned")
+        self.assertEqual(result["latest_team"]["code"], None)
+
+    async def test_claim_warranty_uses_team_member_snapshot_when_no_redemption_record_exists(self):
+        async with self.Session() as session:
+            ordinary_team, warranty_team = await self._seed_team_data(session)
+            ordinary_team.status = "banned"
+            session.add_all([
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=5),
+                    source="manual",
+                    last_redeem_code="CODE-123"
+                ),
+                RedemptionCode(code="CODE-123", status="used"),
+                TeamMemberSnapshot(
+                    team_id=ordinary_team.id,
+                    email="buyer@example.com",
+                    member_state="joined",
+                )
+            ])
+            await session.commit()
+
+            service = WarrantyService()
+            service._find_existing_warranty_team_for_email = AsyncMock(return_value=None)
+            service.team_service.add_team_member = AsyncMock(return_value={"success": True, "message": "邀请已发送"})
+
+            result = await service.claim_warranty_invite(
+                db_session=session,
+                email="buyer@example.com"
+            )
+
+            entry = await service.get_warranty_email_entry(session, "buyer@example.com")
+
+        self.assertTrue(result["success"])
+        self.assertEqual(entry.remaining_claims, 1)
+        self.assertEqual(result["team_info"]["id"], warranty_team.id)
 
 
 if __name__ == "__main__":

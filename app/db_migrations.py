@@ -24,6 +24,15 @@ def column_exists(cursor, table_name, column_name):
     return column_name in columns
 
 
+def table_exists(cursor, table_name):
+    """检查表是否存在"""
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,)
+    )
+    return cursor.fetchone() is not None
+
+
 def run_auto_migration():
     """
     自动运行数据库迁移
@@ -133,6 +142,29 @@ def run_auto_migration():
             logger.info("添加 teams.device_code_auth_enabled 字段")
             cursor.execute("ALTER TABLE teams ADD COLUMN device_code_auth_enabled BOOLEAN DEFAULT 0")
             migrations_applied.append("teams.device_code_auth_enabled")
+
+        if not table_exists(cursor, "team_member_snapshots"):
+            logger.info("创建 team_member_snapshots 表")
+            cursor.execute("""
+                CREATE TABLE team_member_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    team_id INTEGER NOT NULL,
+                    email VARCHAR(255) NOT NULL,
+                    member_state VARCHAR(20) NOT NULL DEFAULT 'joined',
+                    created_at DATETIME,
+                    updated_at DATETIME,
+                    FOREIGN KEY(team_id) REFERENCES teams(id) ON DELETE CASCADE
+                )
+            """)
+            cursor.execute("""
+                CREATE UNIQUE INDEX idx_team_member_snapshot_team_email
+                ON team_member_snapshots (team_id, email)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_team_member_snapshot_email
+                ON team_member_snapshots (email)
+            """)
+            migrations_applied.append("team_member_snapshots")
         
         # 提交更改
         conn.commit()

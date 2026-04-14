@@ -66,6 +66,23 @@ class TeamAccount(Base):
     )
 
 
+class TeamMemberSnapshot(Base):
+    """Team 子账号成员快照表"""
+    __tablename__ = "team_member_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, comment="Team ID")
+    email = Column(String(255), nullable=False, comment="成员邮箱（统一小写）")
+    member_state = Column(String(20), nullable=False, default="joined", comment="成员状态: joined/invited")
+    created_at = Column(DateTime, default=get_now, comment="创建时间")
+    updated_at = Column(DateTime, default=get_now, onupdate=get_now, comment="更新时间")
+
+    __table_args__ = (
+        Index("idx_team_member_snapshot_team_email", "team_id", "email", unique=True),
+        Index("idx_team_member_snapshot_email", "email"),
+    )
+
+
 class RedemptionCode(Base):
     """兑换码表"""
     __tablename__ = "redemption_codes"

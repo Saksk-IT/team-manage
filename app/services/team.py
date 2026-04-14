@@ -10,7 +10,7 @@ from sqlalchemy import select, update, delete, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Team, TeamAccount, RedemptionCode, RedemptionRecord
+from app.models import Team, TeamAccount, TeamMemberSnapshot, RedemptionCode, RedemptionRecord, WarrantyEmailEntry
 from app.services.chatgpt import ChatGPTService
 from app.services.encryption import encryption_service
 from app.services.redemption import RedemptionService
@@ -110,6 +110,68 @@ class TeamService:
             payload["email"] = team.email
 
         await progress_callback(payload)
+
+    def _normalize_member_email(self, email: Optional[str]) -> Optional[str]:
+        normalized_email = (email or "").strip().lower()
+        return normalized_email or None
+
+    async def _sync_team_member_snapshots(
+        self,
+        team: Team,
+        joined_member_emails: set[str],
+        invited_member_emails: set[str],
+        db_session: AsyncSession
+    ) -> None:
+        desired_states: Dict[str, str] = {}
+
+        for email in joined_member_emails:
+            normalized_email = self._normalize_member_email(email)
+            if normalized_email:
+                desired_states[normalized_email] = "joined"
+
+        for email in invited_member_emails:
+            normalized_email = self._normalize_member_email(email)
+            if normalized_email and normalized_email not in desired_states:
+                desired_states[normalized_email] = "invited"
+
+        result = await db_session.execute(
+            select(TeamMemberSnapshot).where(TeamMemberSnapshot.team_id == team.id)
+        )
+        existing_snapshots = {
+            snapshot.email: snapshot
+            for snapshot in result.scalars().all()
+        }
+
+        desired_emails = set(desired_states.keys())
+        for email, snapshot in existing_snapshots.items():
+            if email not in desired_emails:
+                await db_session.delete(snapshot)
+
+        now = get_now()
+        for email, member_state in desired_states.items():
+            snapshot = existing_snapshots.get(email)
+            if snapshot:
+                snapshot.member_state = member_state
+                snapshot.updated_at = now
+            else:
+                db_session.add(
+                    TeamMemberSnapshot(
+                        team_id=team.id,
+                        email=email,
+                        member_state=member_state,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+
+        if desired_emails:
+            warranty_entries_result = await db_session.execute(
+                select(WarrantyEmailEntry).where(WarrantyEmailEntry.email.in_(desired_emails))
+            )
+            for entry in warranty_entries_result.scalars().all():
+                entry.last_warranty_team_id = team.id
+
+        await db_session.flush()
 
     async def _handle_api_error(self, result: Dict[str, Any], team: Team, db_session: AsyncSession) -> bool:
         """
@@ -1247,18 +1309,24 @@ class TeamService:
             )
 
             all_member_emails = set()
+            joined_member_emails = set()
+            invited_member_emails = set()
             current_members = 0
             if members_result["success"]:
                 current_members += members_result["total"]
                 for m in members_result.get("members", []):
                     if m.get("email"):
-                        all_member_emails.add(m["email"].lower())
+                        normalized_email = m["email"].lower()
+                        all_member_emails.add(normalized_email)
+                        joined_member_emails.add(normalized_email)
             
             if invites_result["success"]:
                 current_members += invites_result["total"]
                 for inv in invites_result.get("items", []):
                     if inv.get("email_address"):
-                        all_member_emails.add(inv["email_address"].lower())
+                        normalized_email = inv["email_address"].lower()
+                        all_member_emails.add(normalized_email)
+                        invited_member_emails.add(normalized_email)
             else:
                 # 检查是否封号或 Token 失效
                 if await self._handle_api_error(invites_result, team, db_session):
@@ -1328,6 +1396,12 @@ class TeamService:
             team.device_code_auth_enabled = device_code_auth_enabled
             team.error_count = 0  # 同步成功，重置错误次数
             team.last_sync = get_now()
+            await self._sync_team_member_snapshots(
+                team=team,
+                joined_member_emails=joined_member_emails,
+                invited_member_emails=invited_member_emails,
+                db_session=db_session
+            )
 
             if not db_session.in_transaction():
                 await db_session.commit()

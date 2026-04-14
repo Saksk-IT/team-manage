@@ -13,6 +13,17 @@ class ScalarResult:
         return self._team
 
 
+class ScalarsResult:
+    def __init__(self, items):
+        self._items = items
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return self._items
+
+
 class TeamProgressCallbackTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.service = TeamService()
@@ -33,7 +44,11 @@ class TeamProgressCallbackTests(unittest.IsolatedAsyncioTestCase):
             status='active',
             error_count=0,
         )
-        self.db_session.execute.return_value = ScalarResult(team)
+        self.db_session.execute = AsyncMock(side_effect=[
+            ScalarResult(team),
+            ScalarsResult([]),
+            ScalarsResult([]),
+        ])
 
         self.service.ensure_access_token = AsyncMock(return_value='access-token')
         self.service.jwt_parser.extract_email = Mock(return_value='sync@example.com')

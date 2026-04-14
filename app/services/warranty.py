@@ -11,7 +11,7 @@ from sqlalchemy import select, and_, or_, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import RedemptionCode, RedemptionRecord, Team, WarrantyEmailEntry
+from app.models import RedemptionCode, RedemptionRecord, Team, TeamMemberSnapshot, WarrantyEmailEntry
 from app.services.settings import settings_service
 from app.services.team import TEAM_TYPE_WARRANTY
 from app.utils.time_utils import get_now
@@ -32,6 +32,7 @@ class WarrantyService:
         "expired": "已过期",
         "error": "异常",
         "banned": "封禁",
+        "no_record": "暂无记录",
     }
 
     def __init__(self):
@@ -284,6 +285,38 @@ class WarrantyService:
             return None, None
         return latest_row[0], latest_row[1]
 
+    async def _get_latest_team_snapshot_for_email(
+        self,
+        db_session: AsyncSession,
+        email: str
+    ) -> tuple[Optional[TeamMemberSnapshot], Optional[Team]]:
+        normalized_email = self.normalize_email(email)
+
+        joined_stmt = (
+            select(TeamMemberSnapshot, Team)
+            .join(Team, TeamMemberSnapshot.team_id == Team.id)
+            .where(TeamMemberSnapshot.email == normalized_email)
+            .where(TeamMemberSnapshot.member_state == "joined")
+            .order_by(TeamMemberSnapshot.updated_at.desc(), TeamMemberSnapshot.id.desc())
+        )
+        joined_result = await db_session.execute(joined_stmt)
+        joined_row = joined_result.first()
+        if joined_row:
+            return joined_row[0], joined_row[1]
+
+        invited_stmt = (
+            select(TeamMemberSnapshot, Team)
+            .join(Team, TeamMemberSnapshot.team_id == Team.id)
+            .where(TeamMemberSnapshot.email == normalized_email)
+            .order_by(TeamMemberSnapshot.updated_at.desc(), TeamMemberSnapshot.id.desc())
+        )
+        invited_result = await db_session.execute(invited_stmt)
+        invited_row = invited_result.first()
+        if invited_row:
+            return invited_row[0], invited_row[1]
+
+        return None, None
+
     def _serialize_latest_team_info(
         self,
         record: RedemptionRecord,
@@ -301,6 +334,27 @@ class WarrantyService:
             "expires_at": team.expires_at.isoformat() if team and team.expires_at else None,
             "code": record.code if record else None,
             "is_warranty_redemption": bool(record.is_warranty_redemption) if record else False,
+        }
+
+    def _serialize_snapshot_team_info(
+        self,
+        snapshot: TeamMemberSnapshot,
+        team: Team
+    ) -> Dict[str, Any]:
+        team_status = (team.status or "").strip().lower()
+        member_state = (snapshot.member_state or "").strip().lower()
+        return {
+            "id": team.id,
+            "team_name": team.team_name,
+            "email": team.email,
+            "account_id": team.account_id,
+            "status": team_status or "no_record",
+            "status_label": self.get_team_status_label(team_status or "no_record"),
+            "redeemed_at": snapshot.updated_at.isoformat() if snapshot and snapshot.updated_at else None,
+            "expires_at": team.expires_at.isoformat() if team and team.expires_at else None,
+            "code": None,
+            "is_warranty_redemption": False,
+            "member_state": member_state,
         }
 
     async def get_warranty_claim_status(
@@ -322,12 +376,27 @@ class WarrantyService:
             db_session,
             normalized_email
         )
+        latest_team_info = None
 
-        if not latest_record or not latest_team:
-            logger.warning("质保状态查询失败: 未找到最近 Team 记录 email=%s", normalized_email)
-            return {"success": False, "error": "未找到该邮箱最近加入的 Team 记录"}
+        if latest_record and latest_team:
+            latest_team_info = self._serialize_latest_team_info(latest_record, latest_team)
+        else:
+            latest_snapshot, latest_snapshot_team = await self._get_latest_team_snapshot_for_email(
+                db_session,
+                normalized_email
+            )
+            if latest_snapshot and latest_snapshot_team:
+                latest_team_info = self._serialize_snapshot_team_info(
+                    latest_snapshot,
+                    latest_snapshot_team
+                )
+            else:
+                logger.warning("质保状态查询失败: 未找到最近 Team 记录或成员快照 email=%s", normalized_email)
+                return {
+                    "success": False,
+                    "error": "未找到该邮箱最近加入的 Team 记录，请先手动刷新 Team 或等待系统自动刷新后再试"
+                }
 
-        latest_team_info = self._serialize_latest_team_info(latest_record, latest_team)
         can_claim = latest_team_info["status"] == "banned"
         if can_claim:
             message = "该邮箱最近加入的 Team 已封禁，可以继续提交质保。"
@@ -690,11 +759,25 @@ class WarrantyService:
                 db_session,
                 normalized_email
             )
-            if not latest_record or not latest_team:
-                logger.warning("质保申请失败: 未找到最近 Team 记录 email=%s", normalized_email)
-                return {"success": False, "error": "未找到该邮箱最近加入的 Team 记录"}
+            if latest_record and latest_team:
+                latest_team_info = self._serialize_latest_team_info(latest_record, latest_team)
+            else:
+                latest_snapshot, latest_snapshot_team = await self._get_latest_team_snapshot_for_email(
+                    db_session,
+                    normalized_email
+                )
+                if latest_snapshot and latest_snapshot_team:
+                    latest_team_info = self._serialize_snapshot_team_info(
+                        latest_snapshot,
+                        latest_snapshot_team
+                    )
+                else:
+                    logger.warning("质保申请失败: 未找到最近 Team 记录或成员快照 email=%s", normalized_email)
+                    return {
+                        "success": False,
+                        "error": "未找到该邮箱最近加入的 Team 记录，请先手动刷新 Team 或等待系统自动刷新后再试"
+                    }
 
-            latest_team_info = self._serialize_latest_team_info(latest_record, latest_team)
             if latest_team_info["status"] != "banned":
                 logger.warning(
                     "质保申请失败: 最近 Team 未封禁 email=%s status=%s",
