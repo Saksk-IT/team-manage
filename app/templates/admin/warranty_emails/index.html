@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block title %}质保邮箱列表 - GPT Team 管理系统{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>质保邮箱列表</h2>
+</div>
+
+<div class="content-section" id="warrantyEmailEditorCard">
+    <div class="section-header">
+        <h3 id="warrantyEditorTitle">新增 / 编辑质保邮箱</h3>
+    </div>
+
+    <form id="warrantyEmailForm" class="settings-form">
+        <input type="hidden" id="warrantyEntryId" value="">
+        <div id="warrantyEditorNotice" class="editor-notice" style="display: none;"></div>
+        <div class="form-group">
+            <label for="warrantyEmail">邮箱</label>
+            <input type="email" id="warrantyEmail" class="form-control" placeholder="user@example.com" required>
+        </div>
+        <div class="form-group">
+            <label for="warrantyRemainingDays">剩余天数</label>
+            <input type="number" id="warrantyRemainingDays" class="form-control" min="0" placeholder="0 表示立即过期；留空表示未启用">
+            <p class="form-help">系统按“剩余天数 + 剩余次数”同时满足时才允许质保。</p>
+        </div>
+        <div class="form-group">
+            <label for="warrantyRemainingClaims">剩余次数</label>
+            <input type="number" id="warrantyRemainingClaims" class="form-control" min="0" value="0" required>
+        </div>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button type="submit" class="btn btn-primary" id="warrantyEditorSubmitBtn">保存质保邮箱</button>
+            <button type="button" class="btn btn-secondary" onclick="resetWarrantyEmailForm()">清空表单</button>
+        </div>
+    </form>
+</div>
+
+<div class="content-section">
+    <div class="section-header">
+        <h3>邮箱列表</h3>
+    </div>
+
+    <form method="get" style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem;">
+        <input type="text" name="search" value="{{ search or '' }}" class="form-control" style="max-width: 320px;" placeholder="搜索邮箱">
+        <button type="submit" class="btn btn-secondary">搜索</button>
+        {% if search %}
+        <a href="/admin/warranty-emails" class="btn btn-secondary">清空</a>
+        {% endif %}
+    </form>
+
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>邮箱</th>
+                    <th>状态</th>
+                    <th>剩余次数</th>
+                    <th>剩余天数</th>
+                    <th>来源</th>
+                    <th>最近普通兑换码</th>
+                    <th>最近质保 Team</th>
+                    <th>更新时间</th>
+                    <th style="text-align: right;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in entries %}
+                <tr>
+                    <td>{{ entry.email }}</td>
+                    <td>
+                        <span class="status-badge
+                            {% if entry.status == 'active' %}status-active
+                            {% elif entry.status == 'claims_exhausted' %}status-warning
+                            {% elif entry.status == 'expired' %}status-expired
+                            {% else %}status-info{% endif %}">
+                            {{ entry.status_label }}
+                        </span>
+                    </td>
+                    <td>{{ entry.remaining_claims }}</td>
+                    <td>{{ entry.remaining_days if entry.remaining_days is not none else '-' }}</td>
+                    <td>{{ entry.source_label }}</td>
+                    <td>{{ entry.last_redeem_code or '-' }}</td>
+                    <td>{{ entry.last_warranty_team_id or '-' }}</td>
+                    <td>{{ entry.updated_at|format_datetime }}</td>
+                    <td style="text-align: right;">
+                        <div style="display: inline-flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
+                            <button
+                                type="button"
+                                class="btn btn-secondary btn-sm"
+                                onclick='fillWarrantyEmailForm({{ entry|tojson }})'
+                            >
+                                编辑
+                            </button>
+                            <button
+                                type="button"
+                                class="btn btn-danger btn-sm"
+                                onclick="deleteWarrantyEmail({{ entry.id }}, '{{ entry.email|escape_js }}')"
+                            >
+                                删除
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="9" class="empty-state-cell">暂无质保邮箱记录</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-help {
+        font-size: 0.8125rem;
+        color: var(--text-muted);
+        margin-top: 0.375rem;
+    }
+
+    .empty-state-cell {
+        text-align: center;
+        color: var(--text-muted);
+        padding: 2rem 1rem;
+    }
+
+    .editor-notice {
+        margin-bottom: 1rem;
+        padding: 0.75rem 1rem;
+        border-radius: 10px;
+        border: 1px solid rgba(99, 102, 241, 0.18);
+        background: rgba(99, 102, 241, 0.08);
+        color: var(--text-primary);
+        font-size: 0.875rem;
+    }
+
+    .editor-active {
+        box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.25);
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function setWarrantyEditorMode(isEditing, entry = null) {
+        const card = document.getElementById('warrantyEmailEditorCard');
+        const title = document.getElementById('warrantyEditorTitle');
+        const notice = document.getElementById('warrantyEditorNotice');
+        const submitBtn = document.getElementById('warrantyEditorSubmitBtn');
+
+        if (title) {
+            title.textContent = isEditing ? '编辑质保邮箱' : '新增 / 编辑质保邮箱';
+        }
+
+        if (submitBtn) {
+            submitBtn.textContent = isEditing ? '更新质保邮箱' : '保存质保邮箱';
+        }
+
+        if (notice) {
+            if (isEditing && entry?.email) {
+                notice.style.display = 'block';
+                notice.textContent = `当前正在编辑：${entry.email}`;
+            } else {
+                notice.style.display = 'none';
+                notice.textContent = '';
+            }
+        }
+
+        if (card) {
+            card.classList.toggle('editor-active', Boolean(isEditing));
+        }
+    }
+
+    function resetWarrantyEmailForm() {
+        document.getElementById('warrantyEntryId').value = '';
+        document.getElementById('warrantyEmail').value = '';
+        document.getElementById('warrantyRemainingDays').value = '';
+        document.getElementById('warrantyRemainingClaims').value = '0';
+        setWarrantyEditorMode(false);
+    }
+
+    function fillWarrantyEmailForm(entry) {
+        document.getElementById('warrantyEntryId').value = entry.id || '';
+        document.getElementById('warrantyEmail').value = entry.email || '';
+        document.getElementById('warrantyRemainingDays').value = entry.remaining_days ?? '';
+        document.getElementById('warrantyRemainingClaims').value = entry.remaining_claims ?? 0;
+        setWarrantyEditorMode(true, entry);
+        document.getElementById('warrantyEmail')?.focus();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    document.getElementById('warrantyEmailForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const entryId = document.getElementById('warrantyEntryId').value.trim();
+        const email = document.getElementById('warrantyEmail').value.trim();
+        const remainingDaysValue = document.getElementById('warrantyRemainingDays').value.trim();
+        const remainingClaims = parseInt(document.getElementById('warrantyRemainingClaims').value, 10);
+        const remainingDays = remainingDaysValue === '' ? null : parseInt(remainingDaysValue, 10);
+
+        if (!email) {
+            showToast('请输入邮箱', 'error');
+            return;
+        }
+
+        if (Number.isNaN(remainingClaims) || remainingClaims < 0) {
+            showToast('剩余次数必须是非负整数', 'error');
+            return;
+        }
+
+        if (remainingDaysValue !== '' && (Number.isNaN(remainingDays) || remainingDays < 0)) {
+            showToast('剩余天数必须是非负整数', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/warranty-emails/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    entry_id: entryId ? parseInt(entryId, 10) : null,
+                    email,
+                    remaining_days: remainingDays,
+                    remaining_claims: remainingClaims
+                })
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                showToast('质保邮箱已保存', 'success');
+                setTimeout(() => window.location.reload(), 300);
+            } else {
+                showToast(data.error || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    });
+
+    async function deleteWarrantyEmail(entryId, email) {
+        if (!confirm(`确定要删除质保邮箱 ${email} 吗？`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/admin/warranty-emails/${entryId}/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                showToast('质保邮箱已删除', 'success');
+                setTimeout(() => window.location.reload(), 300);
+            } else {
+                showToast(data.error || '删除失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    }
+</script>
+{% endblock %}
