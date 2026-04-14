@@ -11,6 +11,8 @@
 </head>
 
 <body>
+    {% set show_front_announcement = front_announcement.enabled and front_announcement.content %}
+    {% set show_customer_service = customer_service.enabled and (customer_service.qr_code_url or customer_service.link_url or customer_service.text_content) %}
     <div class="container">
         <div class="header">
             <h1>GPT Team 兑换</h1>
@@ -22,6 +24,59 @@
             </div>
             {% endif %}
         </div>
+
+        {% if show_front_announcement %}
+        <div class="card" style="margin-bottom: 1rem; border: 1px solid rgba(245, 158, 11, 0.18); background: rgba(245, 158, 11, 0.08);">
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; color: var(--text-primary); font-weight: 600;">
+                <i data-lucide="bell" style="width: 18px; height: 18px;"></i>
+                <span>公告通知</span>
+            </div>
+            <div style="white-space: pre-wrap; color: var(--text-secondary); line-height: 1.75;">{{ front_announcement.content }}</div>
+        </div>
+        {% endif %}
+
+        {% if show_customer_service %}
+        <div class="card" style="margin-bottom: 1rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; color: var(--text-primary); font-weight: 600;">
+                <i data-lucide="message-circle" style="width: 18px; height: 18px;"></i>
+                <span>客服支持</span>
+            </div>
+            <div style="display: grid; gap: 1rem;">
+                {% if customer_service.qr_code_url %}
+                <div style="padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border-base); background: rgba(255,255,255,0.02);">
+                    <div style="font-size: 0.95rem; color: var(--text-primary); margin-bottom: 0.75rem;">扫描二维码联系客服</div>
+                    <img
+                        src="{{ customer_service.qr_code_url }}"
+                        alt="客服二维码"
+                        style="display: block; width: min(220px, 100%); border-radius: 12px; border: 1px solid var(--border-base); background: #fff;"
+                    >
+                </div>
+                {% endif %}
+
+                {% if customer_service.link_url %}
+                <div style="padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border-base); background: rgba(255,255,255,0.02);">
+                    <div style="font-size: 0.95rem; color: var(--text-primary); margin-bottom: 0.75rem;">链接跳转联系客服</div>
+                    <a
+                        href="{{ customer_service.link_url }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="btn btn-secondary"
+                        style="display: inline-flex;"
+                    >
+                        <i data-lucide="external-link"></i> {{ customer_service.link_text or '立即联系' }}
+                    </a>
+                </div>
+                {% endif %}
+
+                {% if customer_service.text_content %}
+                <div style="padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border-base); background: rgba(255,255,255,0.02);">
+                    <div style="font-size: 0.95rem; color: var(--text-primary); margin-bottom: 0.75rem;">文字客服信息</div>
+                    <div style="white-space: pre-wrap; color: var(--text-secondary); line-height: 1.75;">{{ customer_service.text_content }}</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
 
         <!-- 步骤1: 输入兑换码 -->
         <div id="step1" class="step active">

@@ -15,6 +15,18 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         db = AsyncMock()
 
         with patch(
+            "app.services.settings.settings_service.get_front_announcement_config",
+            new=AsyncMock(return_value={"enabled": False, "content": ""})
+        ), patch(
+            "app.services.settings.settings_service.get_customer_service_config",
+            new=AsyncMock(return_value={
+                "enabled": False,
+                "qr_code_url": "",
+                "link_url": "",
+                "link_text": "",
+                "text_content": ""
+            })
+        ), patch(
             "app.services.settings.settings_service.get_warranty_service_config",
             new=AsyncMock(return_value={"enabled": False})
         ), patch(
@@ -32,6 +44,8 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("质保服务", html)
         self.assertNotIn("质保说明", html)
         self.assertNotIn("提交质保", html)
+        self.assertNotIn("公告通知", html)
+        self.assertNotIn("客服支持", html)
         self.assertIn("warrantyServiceEnabled: false", html)
         self.assertIn("warrantyFakeSuccessEnabled: false", html)
 
@@ -40,6 +54,21 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         db = AsyncMock()
 
         with patch(
+            "app.services.settings.settings_service.get_front_announcement_config",
+            new=AsyncMock(return_value={
+                "enabled": True,
+                "content": "系统公告：今晚 10 点维护"
+            })
+        ), patch(
+            "app.services.settings.settings_service.get_customer_service_config",
+            new=AsyncMock(return_value={
+                "enabled": True,
+                "qr_code_url": "https://example.com/qrcode.png",
+                "link_url": "https://example.com/contact",
+                "link_text": "联系客服",
+                "text_content": "微信：support001"
+            })
+        ), patch(
             "app.services.settings.settings_service.get_warranty_service_config",
             new=AsyncMock(return_value={"enabled": True})
         ), patch(
@@ -57,6 +86,13 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("质保说明", html)
         self.assertIn("如您购买了质保服务", html)
         self.assertIn("查看状态", html)
+        self.assertIn("公告通知", html)
+        self.assertIn("系统公告：今晚 10 点维护", html)
+        self.assertIn("客服支持", html)
+        self.assertIn("扫描二维码联系客服", html)
+        self.assertIn("链接跳转联系客服", html)
+        self.assertIn("文字客服信息", html)
+        self.assertIn("微信：support001", html)
         self.assertNotIn("普通兑换码", html)
         self.assertNotIn("超级兑换码", html)
         self.assertIn("质保邮箱", html)

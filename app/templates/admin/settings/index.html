@@ -192,6 +192,113 @@
     </form>
 </div>
 
+<!-- 前台公告通知 -->
+<div class="content-section">
+    <div class="section-header">
+        <h3>前台公告通知</h3>
+    </div>
+
+    <form id="frontAnnouncementForm" class="settings-form">
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input
+                    type="checkbox"
+                    id="frontAnnouncementEnabled"
+                    name="enabled"
+                    {% if front_announcement_enabled %}checked{% endif %}
+                >
+                <span>显示前台公告通知</span>
+            </label>
+            <p class="form-help">开启后，前台兑换页顶部会显示公告通知模块。</p>
+        </div>
+
+        <div class="form-group">
+            <label for="frontAnnouncementContent">公告内容</label>
+            <textarea
+                id="frontAnnouncementContent"
+                name="content"
+                class="form-control"
+                rows="4"
+                placeholder="请输入前台公告内容，支持多行文本"
+            >{{ front_announcement_content or '' }}</textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary">保存公告通知</button>
+    </form>
+</div>
+
+<!-- 前台客服模块 -->
+<div class="content-section">
+    <div class="section-header">
+        <h3>前台客服模块</h3>
+    </div>
+
+    <form id="customerServiceForm" class="settings-form">
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input
+                    type="checkbox"
+                    id="customerServiceEnabled"
+                    name="enabled"
+                    {% if customer_service_enabled %}checked{% endif %}
+                >
+                <span>显示前台客服模块</span>
+            </label>
+            <p class="form-help">可同时配置二维码、链接跳转和文字说明，前台会自动展示已填写的内容。</p>
+        </div>
+
+        <div class="form-group">
+            <label for="customerServiceQrCodeUrl">客服二维码图片地址</label>
+            <input
+                type="url"
+                id="customerServiceQrCodeUrl"
+                name="qr_code_url"
+                value="{{ customer_service_qr_code_url or '' }}"
+                placeholder="https://example.com/qrcode.png"
+                class="form-control"
+            >
+            <p class="form-help">填写 http/https 图片链接，前台会显示“扫描二维码联系客服”。</p>
+        </div>
+
+        <div class="form-group">
+            <label for="customerServiceLinkUrl">客服跳转链接</label>
+            <input
+                type="url"
+                id="customerServiceLinkUrl"
+                name="link_url"
+                value="{{ customer_service_link_url or '' }}"
+                placeholder="https://example.com/contact"
+                class="form-control"
+            >
+        </div>
+
+        <div class="form-group">
+            <label for="customerServiceLinkText">客服链接文案</label>
+            <input
+                type="text"
+                id="customerServiceLinkText"
+                name="link_text"
+                value="{{ customer_service_link_text or '' }}"
+                placeholder="立即联系"
+                class="form-control"
+            >
+        </div>
+
+        <div class="form-group">
+            <label for="customerServiceTextContent">客服文字内容</label>
+            <textarea
+                id="customerServiceTextContent"
+                name="text_content"
+                class="form-control"
+                rows="4"
+                placeholder="例如：微信号、服务时间、备注说明等"
+            >{{ customer_service_text_content or '' }}</textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary">保存客服模块</button>
+    </form>
+</div>
+
 <!-- Webhook 配置 -->
 <div class="content-section">
     <div class="section-header">
@@ -464,6 +571,65 @@
 
             if (response.ok && data.success) {
                 showToast('前台质保模拟成功开关已保存', 'success');
+            } else {
+                showToast(data.error || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    });
+
+    // 前台公告通知
+    document.getElementById('frontAnnouncementForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const enabled = document.getElementById('frontAnnouncementEnabled').checked;
+        const content = document.getElementById('frontAnnouncementContent').value.trim();
+
+        try {
+            const response = await fetch('/admin/settings/front-announcement', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ enabled, content })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                showToast('前台公告已保存', 'success');
+            } else {
+                showToast(data.error || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    });
+
+    // 前台客服模块
+    document.getElementById('customerServiceForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const enabled = document.getElementById('customerServiceEnabled').checked;
+        const qr_code_url = document.getElementById('customerServiceQrCodeUrl').value.trim();
+        const link_url = document.getElementById('customerServiceLinkUrl').value.trim();
+        const link_text = document.getElementById('customerServiceLinkText').value.trim();
+        const text_content = document.getElementById('customerServiceTextContent').value.trim();
+
+        try {
+            const response = await fetch('/admin/settings/customer-service', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ enabled, qr_code_url, link_url, link_text, text_content })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                showToast('前台客服模块已保存', 'success');
             } else {
                 showToast(data.error || '保存失败', 'error');
             }

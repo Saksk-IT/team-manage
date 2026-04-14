@@ -6,6 +6,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any, Callable, Awaitable
+from urllib.parse import urlparse
 from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, RedirectResponse
@@ -127,6 +128,21 @@ class WarrantyEmailSaveRequest(BaseModel):
     remaining_claims: int = Field(..., description="剩余次数")
 
 
+class FrontAnnouncementSettingsRequest(BaseModel):
+    """前台公告设置请求"""
+    enabled: bool = Field(..., description="是否启用前台公告")
+    content: str = Field("", description="公告内容", max_length=5000)
+
+
+class CustomerServiceSettingsRequest(BaseModel):
+    """前台客服设置请求"""
+    enabled: bool = Field(..., description="是否启用前台客服模块")
+    qr_code_url: str = Field("", description="客服二维码图片地址", max_length=2000)
+    link_url: str = Field("", description="客服跳转链接", max_length=2000)
+    link_text: str = Field("", description="客服链接文案", max_length=200)
+    text_content: str = Field("", description="客服文字内容", max_length=5000)
+
+
 @dataclass
 class BatchActionJobState:
     job_id: str
@@ -166,6 +182,19 @@ def _build_batch_finish_payload(
         "stopped": stopped,
         "summary": summary
     }
+
+
+def _is_valid_http_url(value: str) -> bool:
+    normalized_value = (value or "").strip()
+    if not normalized_value:
+        return True
+
+    try:
+        parsed = urlparse(normalized_value)
+    except Exception:
+        return False
+
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def _build_batch_item_result(
@@ -1956,6 +1985,8 @@ async def settings_page(
         log_level = await settings_service.get_log_level(db)
         team_auto_refresh_config = await settings_service.get_team_auto_refresh_config(db)
         default_team_max_members = await settings_service.get_default_team_max_members(db)
+        front_announcement_config = await settings_service.get_front_announcement_config(db)
+        customer_service_config = await settings_service.get_customer_service_config(db)
         warranty_service_config = await settings_service.get_warranty_service_config(db)
         warranty_fake_success_config = await settings_service.get_warranty_fake_success_config(db)
 
@@ -1972,6 +2003,13 @@ async def settings_page(
                 "team_auto_refresh_enabled": team_auto_refresh_config["enabled"],
                 "team_auto_refresh_interval_minutes": team_auto_refresh_config["interval_minutes"],
                 "default_team_max_members": default_team_max_members,
+                "front_announcement_enabled": front_announcement_config["enabled"],
+                "front_announcement_content": front_announcement_config["content"],
+                "customer_service_enabled": customer_service_config["enabled"],
+                "customer_service_qr_code_url": customer_service_config["qr_code_url"],
+                "customer_service_link_url": customer_service_config["link_url"],
+                "customer_service_link_text": customer_service_config["link_text"],
+                "customer_service_text_content": customer_service_config["text_content"],
                 "warranty_service_enabled": warranty_service_config["enabled"],
                 "warranty_fake_success_enabled": warranty_fake_success_config["enabled"],
                 "webhook_url": await settings_service.get_setting(db, "webhook_url", ""),
@@ -2028,6 +2066,100 @@ class WarrantyServiceSettingsRequest(BaseModel):
 class WarrantyFakeSuccessSettingsRequest(BaseModel):
     """前台质保模拟成功开关请求"""
     enabled: bool = Field(..., description="是否启用前台质保模拟成功")
+
+
+@router.post("/settings/front-announcement")
+async def update_front_announcement_settings(
+    announcement_data: FrontAnnouncementSettingsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """
+    更新前台公告配置。
+    """
+    try:
+        logger.info(
+            "管理员更新前台公告配置: enabled=%s content_length=%s",
+            announcement_data.enabled,
+            len((announcement_data.content or "").strip())
+        )
+
+        success = await settings_service.update_front_announcement_config(
+            db,
+            announcement_data.enabled,
+            announcement_data.content
+        )
+
+        if success:
+            return JSONResponse(content={"success": True, "message": "前台公告已保存"})
+
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": "保存失败"}
+        )
+    except Exception as e:
+        logger.error(f"更新前台公告配置失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"更新失败: {str(e)}"}
+        )
+
+
+@router.post("/settings/customer-service")
+async def update_customer_service_settings(
+    customer_service_data: CustomerServiceSettingsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """
+    更新前台客服模块配置。
+    """
+    try:
+        qr_code_url = (customer_service_data.qr_code_url or "").strip()
+        link_url = (customer_service_data.link_url or "").strip()
+
+        if not _is_valid_http_url(qr_code_url):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "客服二维码地址必须是有效的 http/https 链接"}
+            )
+
+        if not _is_valid_http_url(link_url):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "客服跳转链接必须是有效的 http/https 链接"}
+            )
+
+        logger.info(
+            "管理员更新前台客服模块: enabled=%s has_qr=%s has_link=%s has_text=%s",
+            customer_service_data.enabled,
+            bool(qr_code_url),
+            bool(link_url),
+            bool((customer_service_data.text_content or "").strip())
+        )
+
+        success = await settings_service.update_customer_service_config(
+            db,
+            customer_service_data.enabled,
+            customer_service_data.qr_code_url,
+            customer_service_data.link_url,
+            customer_service_data.link_text,
+            customer_service_data.text_content
+        )
+
+        if success:
+            return JSONResponse(content={"success": True, "message": "前台客服模块已保存"})
+
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": "保存失败"}
+        )
+    except Exception as e:
+        logger.error(f"更新前台客服模块失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"更新失败: {str(e)}"}
+        )
 
 
 @router.get("/warranty-emails", response_class=HTMLResponse)

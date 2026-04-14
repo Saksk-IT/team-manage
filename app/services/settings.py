@@ -17,6 +17,13 @@ class SettingsService:
     """系统设置服务类"""
 
     DEFAULT_TEAM_MAX_MEMBERS_KEY = "default_team_max_members"
+    FRONT_ANNOUNCEMENT_ENABLED_KEY = "front_announcement_enabled"
+    FRONT_ANNOUNCEMENT_CONTENT_KEY = "front_announcement_content"
+    CUSTOMER_SERVICE_ENABLED_KEY = "customer_service_enabled"
+    CUSTOMER_SERVICE_QR_CODE_URL_KEY = "customer_service_qr_code_url"
+    CUSTOMER_SERVICE_LINK_URL_KEY = "customer_service_link_url"
+    CUSTOMER_SERVICE_LINK_TEXT_KEY = "customer_service_link_text"
+    CUSTOMER_SERVICE_TEXT_KEY = "customer_service_text"
     WARRANTY_SERVICE_ENABLED_KEY = "warranty_service_enabled"
     WARRANTY_USAGE_LIMIT_SUPER_CODE_KEY = "warranty_usage_limit_super_code"
     WARRANTY_USAGE_LIMIT_MAX_USES_KEY = "warranty_usage_limit_max_uses"
@@ -29,6 +36,8 @@ class SettingsService:
     DEFAULT_WARRANTY_SERVICE_ENABLED = True
     DEFAULT_WARRANTY_FAKE_SUCCESS_ENABLED = False
     DEFAULT_TEAM_MAX_MEMBERS = 5
+    DEFAULT_FRONT_ANNOUNCEMENT_ENABLED = False
+    DEFAULT_CUSTOMER_SERVICE_ENABLED = False
     WARRANTY_FAKE_SUCCESS_MIN_SPOTS = 60
     WARRANTY_FAKE_SUCCESS_MAX_SPOTS = 100
     TEAM_AUTO_REFRESH_ENABLED_KEY = "team_auto_refresh_enabled"
@@ -176,6 +185,114 @@ class SettingsService:
             return int(str(value).strip())
         except (TypeError, ValueError, AttributeError):
             return default
+
+    async def get_front_announcement_config(self, session: AsyncSession) -> Dict[str, str | bool]:
+        """
+        获取前台公告配置。
+        """
+        enabled_raw = await self.get_setting(
+            session,
+            self.FRONT_ANNOUNCEMENT_ENABLED_KEY,
+            str(self.DEFAULT_FRONT_ANNOUNCEMENT_ENABLED).lower()
+        )
+        content = await self.get_setting(
+            session,
+            self.FRONT_ANNOUNCEMENT_CONTENT_KEY,
+            ""
+        )
+        return {
+            "enabled": self._parse_bool(
+                enabled_raw,
+                self.DEFAULT_FRONT_ANNOUNCEMENT_ENABLED
+            ),
+            "content": (content or "").strip()
+        }
+
+    async def update_front_announcement_config(
+        self,
+        session: AsyncSession,
+        enabled: bool,
+        content: str = ""
+    ) -> bool:
+        """
+        更新前台公告配置。
+        """
+        return await self.update_settings(
+            session,
+            {
+                self.FRONT_ANNOUNCEMENT_ENABLED_KEY: str(bool(enabled)).lower(),
+                self.FRONT_ANNOUNCEMENT_CONTENT_KEY: (content or "").strip()
+            }
+        )
+
+    async def get_customer_service_config(self, session: AsyncSession) -> Dict[str, str | bool]:
+        """
+        获取前台客服配置。
+        """
+        enabled_raw = await self.get_setting(
+            session,
+            self.CUSTOMER_SERVICE_ENABLED_KEY,
+            str(self.DEFAULT_CUSTOMER_SERVICE_ENABLED).lower()
+        )
+        qr_code_url = await self.get_setting(
+            session,
+            self.CUSTOMER_SERVICE_QR_CODE_URL_KEY,
+            ""
+        )
+        link_url = await self.get_setting(
+            session,
+            self.CUSTOMER_SERVICE_LINK_URL_KEY,
+            ""
+        )
+        link_text = await self.get_setting(
+            session,
+            self.CUSTOMER_SERVICE_LINK_TEXT_KEY,
+            ""
+        )
+        text_content = await self.get_setting(
+            session,
+            self.CUSTOMER_SERVICE_TEXT_KEY,
+            ""
+        )
+        normalized_link_url = (link_url or "").strip()
+        normalized_link_text = (link_text or "").strip()
+
+        return {
+            "enabled": self._parse_bool(
+                enabled_raw,
+                self.DEFAULT_CUSTOMER_SERVICE_ENABLED
+            ),
+            "qr_code_url": (qr_code_url or "").strip(),
+            "link_url": normalized_link_url,
+            "link_text": normalized_link_text or ("立即联系" if normalized_link_url else ""),
+            "text_content": (text_content or "").strip()
+        }
+
+    async def update_customer_service_config(
+        self,
+        session: AsyncSession,
+        enabled: bool,
+        qr_code_url: str = "",
+        link_url: str = "",
+        link_text: str = "",
+        text_content: str = ""
+    ) -> bool:
+        """
+        更新前台客服配置。
+        """
+        normalized_link_url = (link_url or "").strip()
+        normalized_link_text = (link_text or "").strip()
+
+        return await self.update_settings(
+            session,
+            {
+                self.CUSTOMER_SERVICE_ENABLED_KEY: str(bool(enabled)).lower(),
+                self.CUSTOMER_SERVICE_QR_CODE_URL_KEY: (qr_code_url or "").strip(),
+                self.CUSTOMER_SERVICE_LINK_URL_KEY: normalized_link_url,
+                self.CUSTOMER_SERVICE_LINK_TEXT_KEY: normalized_link_text or ("立即联系" if normalized_link_url else ""),
+                self.CUSTOMER_SERVICE_TEXT_KEY: (text_content or "").strip()
+            }
+        )
 
     async def get_team_auto_refresh_config(self, session: AsyncSession) -> Dict[str, int | bool]:
         """
