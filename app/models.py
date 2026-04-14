@@ -130,3 +130,23 @@ class Setting(Base):
     __table_args__ = (
         Index("idx_key", "key"),
     )
+
+
+class WarrantyEmailEntry(Base):
+    """质保邮箱资格表"""
+    __tablename__ = "warranty_email_entries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), unique=True, nullable=False, comment="质保邮箱（统一小写）")
+    remaining_claims = Column(Integer, default=0, nullable=False, comment="剩余质保次数")
+    expires_at = Column(DateTime, comment="质保资格到期时间")
+    source = Column(String(20), nullable=False, default="auto_redeem", comment="来源: auto_redeem/manual")
+    last_redeem_code = Column(String(32), ForeignKey("redemption_codes.code"), comment="最近一次普通兑换码")
+    last_warranty_team_id = Column(Integer, ForeignKey("teams.id"), comment="最近一次质保 Team ID")
+    created_at = Column(DateTime, default=get_now, comment="创建时间")
+    updated_at = Column(DateTime, default=get_now, onupdate=get_now, comment="更新时间")
+
+    __table_args__ = (
+        Index("idx_warranty_email_entries_expires_at", "expires_at"),
+        Index("idx_warranty_email_entries_source", "source"),
+    )

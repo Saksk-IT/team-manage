@@ -16,11 +16,7 @@ class WarrantyServiceToggleRouteTests(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaises(HTTPException) as ctx:
                 await claim_warranty(
-                    request=WarrantyClaimRequest(
-                        ordinary_code="CODE-VALID",
-                        email="buyer@example.com",
-                        super_code="SUPER-CODE"
-                    ),
+                    request=WarrantyClaimRequest(email="buyer@example.com"),
                     db_session=db
                 )
 

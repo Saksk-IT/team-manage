@@ -19,6 +19,8 @@ let currentCode = '';
 let availableTeams = [];
 let selectedTeamId = null;
 let currentServiceMode = 'redeem';
+let currentWarrantyEmail = '';
+let currentWarrantyStatus = null;
 const appConfig = window.APP_CONFIG || {};
 const warrantyServiceEnabled = Boolean(appConfig.warrantyServiceEnabled);
 const warrantyFakeSuccessEnabled = warrantyServiceEnabled && Boolean(appConfig.warrantyFakeSuccessEnabled);
@@ -43,7 +45,7 @@ function setVerifyButtonContent(text) {
 function setClaimButtonContent(text) {
     const claimBtn = document.getElementById('claimBtn');
     if (!claimBtn) return;
-    claimBtn.innerHTML = `<i data-lucide="shield"></i> ${escapeHtml(text)}`;
+    claimBtn.innerHTML = `<i data-lucide="search"></i> ${escapeHtml(text)}`;
     if (window.lucide) {
         lucide.createIcons();
     }
@@ -122,6 +124,108 @@ async function syncFakeWarrantySuccessRemainingSpots() {
     const fallbackRemainingSpots = normalizeWarrantyFakeSuccessSpots(currentDisplayedRemainingSpots);
     if (fallbackRemainingSpots !== null) {
         updateRemainingSpotsDisplay(Math.max(fallbackRemainingSpots - 1, WARRANTY_FAKE_SUCCESS_MIN_SPOTS));
+    }
+}
+
+function getWarrantyTeamStatusBadge(status) {
+    const normalizedStatus = String(status || '').toLowerCase();
+    if (normalizedStatus === 'banned') {
+        return { label: '封禁', color: 'var(--danger)', bg: 'rgba(239, 68, 68, 0.12)' };
+    }
+    if (normalizedStatus === 'active') {
+        return { label: '正常', color: 'var(--success)', bg: 'rgba(34, 197, 94, 0.12)' };
+    }
+    if (normalizedStatus === 'full') {
+        return { label: '已满', color: 'var(--warning)', bg: 'rgba(245, 158, 11, 0.12)' };
+    }
+    if (normalizedStatus === 'expired') {
+        return { label: '已过期', color: 'var(--text-muted)', bg: 'rgba(148, 163, 184, 0.14)' };
+    }
+    if (normalizedStatus === 'error') {
+        return { label: '异常', color: 'var(--warning)', bg: 'rgba(245, 158, 11, 0.12)' };
+    }
+    return { label: '未知', color: 'var(--text-muted)', bg: 'rgba(148, 163, 184, 0.14)' };
+}
+
+function resetWarrantyStatusResult() {
+    currentWarrantyEmail = '';
+    currentWarrantyStatus = null;
+
+    const statusContainer = document.getElementById('warrantyStatusResult');
+    if (statusContainer) {
+        statusContainer.style.display = 'none';
+        statusContainer.innerHTML = '';
+    }
+}
+
+function renderWarrantyStatusResult(data, email) {
+    currentWarrantyEmail = email;
+    currentWarrantyStatus = data;
+
+    const statusContainer = document.getElementById('warrantyStatusResult');
+    if (!statusContainer) return;
+
+    const latestTeam = data?.latest_team || {};
+    const warrantyInfo = data?.warranty_info || {};
+    const badge = getWarrantyTeamStatusBadge(latestTeam.status || latestTeam.status_label);
+    const canClaim = Boolean(data?.can_claim);
+
+    statusContainer.style.display = 'block';
+    statusContainer.innerHTML = `
+        <div style="padding: 16px 18px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-base);">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 12px;">
+                <div style="font-size: 1rem; font-weight: 600; color: var(--text-primary);">最近加入 Team 状态</div>
+                <span style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 10px; border-radius: 999px; background: ${badge.bg}; color: ${badge.color}; font-size: 0.875rem; font-weight: 600;">
+                    ${escapeHtml(latestTeam.status_label || badge.label)}
+                </span>
+            </div>
+            <div style="display: grid; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; gap: 1rem;">
+                    <span style="color: var(--text-muted);">邮箱地址</span>
+                    <span style="color: var(--text-primary); text-align: right;">${escapeHtml(email)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; gap: 1rem;">
+                    <span style="color: var(--text-muted);">Team 名称</span>
+                    <span style="color: var(--text-primary); text-align: right;">${escapeHtml(latestTeam.team_name || '-')}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; gap: 1rem;">
+                    <span style="color: var(--text-muted);">Team 账号</span>
+                    <span style="color: var(--text-primary); text-align: right;">${escapeHtml(latestTeam.email || '-')}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; gap: 1rem;">
+                    <span style="color: var(--text-muted);">最近加入时间</span>
+                    <span style="color: var(--text-primary); text-align: right;">${escapeHtml(formatDateTime(latestTeam.redeemed_at))}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; gap: 1rem;">
+                    <span style="color: var(--text-muted);">剩余质保次数</span>
+                    <span style="color: var(--text-primary); text-align: right;">${escapeHtml(String(warrantyInfo.remaining_claims ?? '-'))}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; gap: 1rem;">
+                    <span style="color: var(--text-muted);">剩余质保天数</span>
+                    <span style="color: var(--text-primary); text-align: right;">${escapeHtml(String(warrantyInfo.remaining_days ?? '-'))}</span>
+                </div>
+            </div>
+            <div style="margin-top: 14px; font-size: 0.9rem; color: ${canClaim ? 'var(--success)' : 'var(--warning)'};">
+                ${escapeHtml(data?.message || '')}
+            </div>
+            ${canClaim ? `
+                <div style="margin-top: 16px;">
+                    <button type="button" id="continueWarrantyClaimBtn" class="btn btn-primary" style="width: 100%;">
+                        <i data-lucide="shield"></i> 提交质保
+                    </button>
+                </div>
+            ` : ''}
+        </div>
+    `;
+
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+
+    if (canClaim) {
+        document.getElementById('continueWarrantyClaimBtn')?.addEventListener('click', () => {
+            submitWarrantyClaim(email);
+        });
     }
 }
 
@@ -210,6 +314,9 @@ function switchServiceMode(mode) {
     }
 
     currentServiceMode = mode === 'warranty' ? 'warranty' : 'redeem';
+    if (currentServiceMode !== 'warranty') {
+        resetWarrantyStatusResult();
+    }
 
     const redeemPane = document.getElementById('redeemPane');
     const warrantyPane = document.getElementById('warrantyPane');
@@ -322,27 +429,78 @@ document.addEventListener('keydown', (event) => {
     }
 });
 
+document.getElementById('warrantyEmail')?.addEventListener('input', () => {
+    resetWarrantyStatusResult();
+});
+
 document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const ordinaryCode = document.getElementById('warrantyOrdinaryCode')?.value.trim();
     const emailInput = document.getElementById('warrantyEmail');
     const email = emailInput?.value.trim();
-    const superCode = document.getElementById('superCode')?.value.trim();
     const claimBtn = document.getElementById('claimBtn');
-
-    if (!ordinaryCode || !email || !superCode) {
-        showToast('请填写完整信息', 'error');
-        return;
-    }
 
     if (emailInput && !emailInput.checkValidity()) {
         emailInput.reportValidity();
         return;
     }
 
+    if (!email) {
+        showToast('请填写邮箱地址', 'error');
+        return;
+    }
+
     if (claimBtn) claimBtn.disabled = true;
-    setClaimButtonContent('处理中（15秒）...');
+    setClaimButtonContent('查看中...');
+    resetWarrantyStatusResult();
+
+    try {
+        const response = await fetch('/warranty/check', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                email
+            })
+        });
+
+        const text = await response.text();
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (error) {
+            throw new Error('服务器响应格式错误');
+        }
+
+        if (response.ok && data.success) {
+            renderWarrantyStatusResult(data, email);
+        } else {
+            let errorMessage = '状态查询失败';
+            if (typeof data.detail === 'string') {
+                errorMessage = data.detail;
+            } else if (typeof data.error === 'string') {
+                errorMessage = data.error;
+            }
+            showErrorResult(errorMessage);
+        }
+    } catch (error) {
+        showErrorResult(error.message || '网络错误,请稍后重试');
+    } finally {
+        if (claimBtn) claimBtn.disabled = false;
+        setClaimButtonContent('查看状态');
+    }
+});
+
+async function submitWarrantyClaim(email) {
+    const continueBtn = document.getElementById('continueWarrantyClaimBtn');
+    if (continueBtn) {
+        continueBtn.disabled = true;
+        continueBtn.innerHTML = `<i data-lucide="shield"></i> ${escapeHtml(warrantyFakeSuccessEnabled ? '处理中（15秒）...' : '提交中...')}`;
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+    }
 
     try {
         if (warrantyFakeSuccessEnabled) {
@@ -352,9 +510,7 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    ordinary_code: ordinaryCode,
-                    email,
-                    super_code: superCode
+                    email
                 })
             });
 
@@ -381,7 +537,7 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
 
             await delay(WARRANTY_FAKE_SUCCESS_DELAY_MS);
             await syncFakeWarrantySuccessRemainingSpots();
-            showWarrantyClaimSuccessResult(buildFakeWarrantySuccessPayload(), email, ordinaryCode);
+            showWarrantyClaimSuccessResult(buildFakeWarrantySuccessPayload(), email);
             return;
         }
 
@@ -391,9 +547,7 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                ordinary_code: ordinaryCode,
-                email,
-                super_code: superCode
+                email
             })
         });
 
@@ -406,7 +560,7 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
         }
 
         if (response.ok && data.success) {
-            showWarrantyClaimSuccessResult(data, email, ordinaryCode);
+            showWarrantyClaimSuccessResult(data, email);
         } else {
             let errorMessage = '校验失败或当前无法提供质保服务';
             if (typeof data.detail === 'string') {
@@ -419,10 +573,15 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
     } catch (error) {
         showErrorResult(error.message || '网络错误,请稍后重试');
     } finally {
-        if (claimBtn) claimBtn.disabled = false;
-        setClaimButtonContent('提交质保');
+        if (continueBtn) {
+            continueBtn.disabled = false;
+            continueBtn.innerHTML = `<i data-lucide="shield"></i> 提交质保`;
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+        }
     }
-});
+}
 
 // 兑换前先校验兑换码状态
 async function verifyCodeBeforeRedeem() {
@@ -655,39 +814,28 @@ function showSuccessResult(data) {
     showStep(3);
 }
 
-function showWarrantyClaimSuccessResult(data, email, ordinaryCode) {
+function showWarrantyClaimSuccessResult(data, email) {
     const resultContent = document.getElementById('resultContent');
     const teamInfo = data.team_info || {};
-    const superCodeInfo = data.super_code_info || {};
+    const warrantyInfo = data.warranty_info || {};
+    const remainingDays = warrantyInfo.remaining_days;
+    const remainingClaims = warrantyInfo.remaining_claims;
 
-    let superCodeInfoHtml = '';
-    if (superCodeInfo.type === 'usage_limit') {
-        superCodeInfoHtml = `
+    let warrantyInfoHtml = '';
+    if (remainingClaims !== undefined) {
+        warrantyInfoHtml += `
             <div class="result-detail-item">
-                <span class="result-detail-label">超级兑换码类型</span>
-                <span class="result-detail-value">${escapeHtml(superCodeInfo.type_label || '次数限制超级兑换码')}</span>
-            </div>
-            <div class="result-detail-item">
-                <span class="result-detail-label">剩余次数</span>
-                <span class="result-detail-value">${escapeHtml(String(superCodeInfo.remaining_uses ?? '-'))} / ${escapeHtml(String(superCodeInfo.max_uses ?? '-'))}</span>
+                <span class="result-detail-label">剩余质保次数</span>
+                <span class="result-detail-value">${escapeHtml(String(remainingClaims))}</span>
             </div>
         `;
-    } else if (superCodeInfo.type === 'time_limit') {
-        superCodeInfoHtml = `
+    }
+    if (remainingDays !== undefined && remainingDays !== null) {
+        warrantyInfoHtml += `
             <div class="result-detail-item">
-                <span class="result-detail-label">超级兑换码类型</span>
-                <span class="result-detail-value">${escapeHtml(superCodeInfo.type_label || '时间限制超级兑换码')}</span>
+                <span class="result-detail-label">剩余质保天数</span>
+                <span class="result-detail-value">${escapeHtml(String(remainingDays))}</span>
             </div>
-            <div class="result-detail-item">
-                <span class="result-detail-label">剩余时间</span>
-                <span class="result-detail-value">${escapeHtml(formatRemainingDuration(superCodeInfo.remaining_seconds || 0))}</span>
-            </div>
-            ${superCodeInfo.expires_at ? `
-            <div class="result-detail-item">
-                <span class="result-detail-label">失效时间</span>
-                <span class="result-detail-value">${formatDate(superCodeInfo.expires_at)}</span>
-            </div>
-            ` : ''}
         `;
     }
 
@@ -698,10 +846,6 @@ function showWarrantyClaimSuccessResult(data, email, ordinaryCode) {
             <div class="result-message">${escapeHtml(data.message || '系统已为您发送质保 Team 邀请，请查收邮箱。')}</div>
 
             <div class="result-details">
-                <div class="result-detail-item">
-                    <span class="result-detail-label">普通兑换码</span>
-                    <span class="result-detail-value">${escapeHtml(ordinaryCode)}</span>
-                </div>
                 <div class="result-detail-item">
                     <span class="result-detail-label">邮箱地址</span>
                     <span class="result-detail-value">${escapeHtml(email)}</span>
@@ -716,7 +860,7 @@ function showWarrantyClaimSuccessResult(data, email, ordinaryCode) {
                     <span class="result-detail-value">${escapeHtml(teamInfo.email)}</span>
                 </div>
                 ` : ''}
-                ${superCodeInfoHtml}
+                ${warrantyInfoHtml}
                 ${teamInfo.expires_at ? `
                 <div class="result-detail-item">
                     <span class="result-detail-label">到期时间</span>
@@ -762,6 +906,22 @@ function showErrorResult(errorMessage) {
     if (window.lucide) lucide.createIcons();
 
     showStep(3);
+}
+
+function formatDateTime(dateString) {
+    if (!dateString) return '-';
+
+    try {
+        const date = new Date(dateString);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day} ${hours}:${minutes}`;
+    } catch (e) {
+        return dateString;
+    }
 }
 
 // 格式化日期

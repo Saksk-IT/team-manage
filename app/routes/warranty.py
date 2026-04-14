@@ -25,36 +25,29 @@ async def ensure_warranty_service_enabled(db_session: AsyncSession) -> None:
 
 class WarrantyCheckRequest(BaseModel):
     """质保查询请求"""
-    email: Optional[EmailStr] = None
-    code: Optional[str] = None
+    email: EmailStr
 
 
-class WarrantyCheckRecord(BaseModel):
-    """质保查询单条记录"""
-    code: str
-    has_warranty: bool
-    warranty_valid: bool
-    warranty_expires_at: Optional[str]
-    status: str
-    used_at: Optional[str]
-    team_id: Optional[int]
+class WarrantyLatestTeamInfo(BaseModel):
+    """最近加入 Team 信息"""
+    id: int
     team_name: Optional[str]
-    team_status: Optional[str]
-    team_expires_at: Optional[str]
-    email: Optional[str] = None
-    device_code_auth_enabled: bool = False
+    email: Optional[str]
+    account_id: Optional[str]
+    status: str
+    status_label: str
+    redeemed_at: Optional[str]
+    expires_at: Optional[str]
+    code: Optional[str]
+    is_warranty_redemption: bool = False
 
 
 class WarrantyCheckResponse(BaseModel):
     """质保查询响应"""
     success: bool
-    has_warranty: bool
-    warranty_valid: bool
-    warranty_expires_at: Optional[str]
-    banned_teams: list
-    can_reuse: bool
-    original_code: Optional[str]
-    records: list[WarrantyCheckRecord] = []
+    can_claim: bool
+    latest_team: Optional[WarrantyLatestTeamInfo] = None
+    warranty_info: Optional[dict] = None
     message: Optional[str]
     error: Optional[str]
 
@@ -65,13 +58,24 @@ async def check_warranty(
     db_session: AsyncSession = Depends(get_db)
 ):
     """
-    前台质保查询暂时停用
+    查询质保邮箱最近加入的 Team 状态。
     """
     await ensure_warranty_service_enabled(db_session)
-    raise HTTPException(
-        status_code=503,
-        detail="前台质保查询暂时停用。质保期间如果您使用兑换码加入的 Team 被封号，请在质保期内（一个月）联系客服，再次获取兑换码。"
+    result = await warranty_service.get_warranty_claim_status(
+        db_session=db_session,
+        email=request.email
     )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "状态查询失败")
+
+    return {
+        "success": True,
+        "can_claim": result.get("can_claim", False),
+        "latest_team": result.get("latest_team"),
+        "warranty_info": result.get("warranty_info"),
+        "message": result.get("message"),
+        "error": None,
+    }
 
 
 class EnableDeviceAuthRequest(BaseModel):
@@ -82,9 +86,7 @@ class EnableDeviceAuthRequest(BaseModel):
 
 
 class WarrantyClaimRequest(BaseModel):
-    ordinary_code: str
     email: EmailStr
-    super_code: str
 
 
 @router.post("/claim")
@@ -95,9 +97,7 @@ async def claim_warranty(
     await ensure_warranty_service_enabled(db_session)
     result = await warranty_service.claim_warranty_invite(
         db_session=db_session,
-        ordinary_code=request.ordinary_code,
-        email=request.email,
-        super_code=request.super_code
+        email=request.email
     )
 
     if not result.get("success"):
@@ -140,9 +140,8 @@ async def validate_fake_warranty_success(
 
     result = await warranty_service.validate_warranty_claim_input(
         db_session=db_session,
-        ordinary_code=request.ordinary_code,
         email=request.email,
-        super_code=request.super_code
+        require_latest_team_banned=True
     )
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error") or "校验失败")

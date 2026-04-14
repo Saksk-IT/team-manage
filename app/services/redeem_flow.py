@@ -376,6 +376,11 @@ class RedeemFlowService:
                                 is_warranty_redemption=rc.has_warranty
                             )
                             db_session.add(record)
+                            await self.warranty_service.sync_warranty_email_entry_after_redeem(
+                                db_session=db_session,
+                                email=email,
+                                redeem_code=code
+                            )
                             target_team.current_members += 1
                             if target_team.current_members >= target_team.max_members:
                                 target_team.status = "full"

@@ -68,7 +68,7 @@
                         <div
                             style="padding: 16px 18px; border-radius: 12px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.18); color: var(--text-primary); line-height: 1.7;">
                             <div style="font-size: 0.95rem; color: var(--text-secondary);">
-                                如您已购买的普通兑换码对应 Team 因风控等原因无法使用，可切换到“质保服务”提交普通兑换码、邮箱和超级兑换码，系统会尝试为您发送质保 Team 邀请。
+                                如您已在后台质保邮箱列表中，可切换到“质保服务”先查看该邮箱最近加入的 Team 状态。只有最近加入的 Team 状态为“封禁”时，才可以继续提交质保。
                             </div>
                         </div>
                     </div>
@@ -79,22 +79,15 @@
                 <div id="warrantyPane" style="display: none;">
                     <form id="warrantyClaimForm">
                         <div class="form-group">
-                            <label for="warrantyOrdinaryCode">普通兑换码</label>
-                            <input type="text" id="warrantyOrdinaryCode" name="ordinaryCode" required placeholder="请输入您之前购买或获得的普通兑换码" class="form-input">
-                        </div>
-                        <div class="form-group">
                             <label for="warrantyEmail">邮箱地址</label>
-                            <input type="email" id="warrantyEmail" name="email" required placeholder="请输入该普通兑换码对应的邮箱地址" class="form-input">
-                            <p class="form-help">系统会校验您输入的邮箱是否与该普通兑换码的历史绑定邮箱一致。</p>
-                        </div>
-                        <div class="form-group">
-                            <label for="superCode">超级兑换码</label>
-                            <input type="text" id="superCode" name="superCode" required placeholder="请输入超级兑换码" class="form-input">
+                            <input type="email" id="warrantyEmail" name="email" required placeholder="请输入您的质保邮箱" class="form-input">
+                            <p class="form-help">系统会先校验该邮箱是否具备质保资格，再返回该邮箱最近加入的 Team 信息与状态。</p>
                         </div>
                         <button type="submit" class="btn btn-primary" id="claimBtn">
-                            <i data-lucide="shield"></i> 提交质保
+                            <i data-lucide="search"></i> 查看状态
                         </button>
                     </form>
+                    <div id="warrantyStatusResult" style="display: none; margin-top: 1rem;"></div>
                 </div>
                 {% endif %}
             </div>

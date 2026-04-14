@@ -55,7 +55,10 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("质保服务", html)
         self.assertIn("质保说明", html)
-        self.assertIn("提交质保", html)
+        self.assertIn("查看状态", html)
+        self.assertNotIn("普通兑换码", html)
+        self.assertNotIn("超级兑换码", html)
+        self.assertIn("质保邮箱", html)
         self.assertIn("warrantyServiceEnabled: true", html)
 
 

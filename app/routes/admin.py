@@ -8,11 +8,11 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict, Any, Callable, Awaitable
 from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, RedirectResponse
 import json
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 
 from app.database import get_db
 from app.dependencies.auth import require_admin
@@ -20,6 +20,7 @@ from app.models import Team, RedemptionCode
 from app.services.team import TeamService, TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY
 from app.services.redemption import RedemptionService
 from app.services.settings import settings_service
+from app.services.warranty import warranty_service
 from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,13 @@ class BulkActionRequest(BaseModel):
 class WarrantySuperCodeConfigRequest(BaseModel):
     code: str = Field("", description="超级兑换码")
     limit_value: int = Field(..., description="限制值")
+
+
+class WarrantyEmailSaveRequest(BaseModel):
+    entry_id: Optional[int] = Field(None, description="质保邮箱记录 ID")
+    email: EmailStr = Field(..., description="质保邮箱")
+    remaining_days: Optional[int] = Field(None, description="剩余天数")
+    remaining_claims: int = Field(..., description="剩余次数")
 
 
 @dataclass
@@ -2022,33 +2030,98 @@ class WarrantyFakeSuccessSettingsRequest(BaseModel):
     enabled: bool = Field(..., description="是否启用前台质保模拟成功")
 
 
-@router.get("/warranty-super-codes", response_class=HTMLResponse)
-async def warranty_super_codes_page(
+@router.get("/warranty-emails", response_class=HTMLResponse)
+async def warranty_emails_page(
     request: Request,
+    search: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
     try:
         from app.main import templates
-        from app.services.settings import settings_service
 
-        logger.info("管理员访问超级兑换码管理页")
-        configs = await settings_service.get_warranty_super_code_configs(db)
+        logger.info("管理员访问质保邮箱列表页 search=%s", search)
+        entries = await warranty_service.list_warranty_email_entries(db, search)
         return templates.TemplateResponse(
             request,
-            "admin/warranty_super_codes/index.html",
+            "admin/warranty_emails/index.html",
             {
                 "request": request,
                 "user": current_user,
-                "active_page": "warranty_super_codes",
-                "configs": configs
+                "active_page": "warranty_emails",
+                "entries": entries,
+                "search": search or ""
             }
         )
     except Exception as e:
-        logger.error(f"加载超级兑换码管理页失败: {e}")
+        logger.error(f"加载质保邮箱列表页失败: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"加载超级兑换码管理页失败: {str(e)}"
+            detail=f"加载质保邮箱列表页失败: {str(e)}"
+        )
+
+
+@router.get("/warranty-super-codes")
+async def warranty_super_codes_redirect(
+    current_user: dict = Depends(require_admin)
+):
+    return RedirectResponse(url="/admin/warranty-emails", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/warranty-emails/save")
+async def save_warranty_email(
+    payload: WarrantyEmailSaveRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        entry = await warranty_service.save_warranty_email_entry(
+            db_session=db,
+            entry_id=payload.entry_id,
+            email=payload.email,
+            remaining_days=payload.remaining_days,
+            remaining_claims=payload.remaining_claims,
+            source="manual"
+        )
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": "质保邮箱已保存",
+                "entry": warranty_service.serialize_warranty_email_entry(entry)
+            }
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"success": False, "error": str(e)}
+        )
+    except Exception as e:
+        logger.error(f"保存质保邮箱失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"保存失败: {str(e)}"}
+        )
+
+
+@router.post("/warranty-emails/{entry_id}/delete")
+async def delete_warranty_email(
+    entry_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        deleted = await warranty_service.delete_warranty_email_entry(db, entry_id)
+        if not deleted:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"success": False, "error": "质保邮箱记录不存在"}
+            )
+        return JSONResponse(content={"success": True, "message": "质保邮箱已删除"})
+    except Exception as e:
+        logger.error(f"删除质保邮箱失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"删除失败: {str(e)}"}
         )
 
 
@@ -2059,28 +2132,10 @@ async def save_warranty_super_code(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
-    try:
-        from app.services.settings import settings_service
-
-        normalized_type = _normalize_warranty_super_code_type(code_type)
-        config = await settings_service.save_warranty_super_code_config(
-            db,
-            normalized_type,
-            config_data.code,
-            config_data.limit_value
-        )
-        return JSONResponse(content={"success": True, "message": "超级兑换码已保存", "config": config})
-    except ValueError as e:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"success": False, "error": str(e)}
-        )
-    except Exception as e:
-        logger.error(f"保存超级兑换码失败: {e}")
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"success": False, "error": f"保存失败: {str(e)}"}
-        )
+    return JSONResponse(
+        status_code=status.HTTP_410_GONE,
+        content={"success": False, "error": "超级兑换码功能已下线，请改用质保邮箱列表"}
+    )
 
 
 @router.post("/warranty-super-codes/{code_type}/regenerate")
@@ -2090,34 +2145,10 @@ async def regenerate_warranty_super_code(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
-    try:
-        from app.services.settings import settings_service
-
-        normalized_type = _normalize_warranty_super_code_type(code_type)
-        config = await settings_service.regenerate_warranty_super_code(
-            db,
-            normalized_type,
-            config_data.limit_value
-        )
-        logger.info("管理员重置超级兑换码成功: type=%s", normalized_type)
-        return JSONResponse(
-            content={
-                "success": True,
-                "message": "超级兑换码已重置",
-                "config": config
-            }
-        )
-    except ValueError as e:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"success": False, "error": str(e)}
-        )
-    except Exception as e:
-        logger.error(f"重置超级兑换码失败: {e}")
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"success": False, "error": f"重置失败: {str(e)}"}
-        )
+    return JSONResponse(
+        status_code=status.HTTP_410_GONE,
+        content={"success": False, "error": "超级兑换码功能已下线，请改用质保邮箱列表"}
+    )
 
 
 @router.post("/warranty-super-codes/{code_type}/disable")
@@ -2126,23 +2157,10 @@ async def disable_warranty_super_code(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
-    try:
-        from app.services.settings import settings_service
-
-        normalized_type = _normalize_warranty_super_code_type(code_type)
-        await settings_service.disable_warranty_super_code_config(db, normalized_type)
-        return JSONResponse(content={"success": True, "message": "超级兑换码已停用"})
-    except ValueError as e:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"success": False, "error": str(e)}
-        )
-    except Exception as e:
-        logger.error(f"停用超级兑换码失败: {e}")
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"success": False, "error": f"停用失败: {str(e)}"}
-        )
+    return JSONResponse(
+        status_code=status.HTTP_410_GONE,
+        content={"success": False, "error": "超级兑换码功能已下线，请改用质保邮箱列表"}
+    )
 
 
 @router.post("/settings/proxy")
