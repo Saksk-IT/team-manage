@@ -208,7 +208,6 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
     async def test_get_warranty_claim_status_returns_latest_team_status(self):
         async with self.Session() as session:
             ordinary_team, _ = await self._seed_team_data(session)
-            ordinary_team.status = "banned"
             session.add(
                 WarrantyEmailEntry(
                     email="buyer@example.com",
@@ -226,7 +225,17 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             )
             await session.commit()
 
-            result = await WarrantyService().get_warranty_claim_status(
+            service = WarrantyService()
+
+            async def fake_sync(team_id, db_session, force_refresh=False, progress_callback=None):
+                team = await db_session.get(Team, team_id)
+                team.status = "banned"
+                await db_session.commit()
+                return {"success": True}
+
+            service.team_service.sync_team_info = AsyncMock(side_effect=fake_sync)
+
+            result = await service.get_warranty_claim_status(
                 db_session=session,
                 email="buyer@example.com"
             )
@@ -234,6 +243,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["success"])
         self.assertTrue(result["can_claim"])
         self.assertEqual(result["latest_team"]["status"], "banned")
+        service.team_service.sync_team_info.assert_awaited_once_with(ordinary_team.id, session)
 
     async def test_get_warranty_claim_status_falls_back_to_team_member_snapshot(self):
         async with self.Session() as session:

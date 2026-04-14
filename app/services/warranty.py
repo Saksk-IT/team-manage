@@ -317,6 +317,71 @@ class WarrantyService:
 
         return None, None
 
+    async def _load_latest_team_context_for_email(
+        self,
+        db_session: AsyncSession,
+        email: str
+    ) -> Optional[Dict[str, Any]]:
+        normalized_email = self.normalize_email(email)
+        latest_record, latest_team = await self._get_latest_team_record_for_email(
+            db_session,
+            normalized_email
+        )
+        if latest_record and latest_team:
+            return {
+                "record": latest_record,
+                "team": latest_team,
+                "team_info": self._serialize_latest_team_info(latest_record, latest_team),
+            }
+
+        latest_snapshot, latest_snapshot_team = await self._get_latest_team_snapshot_for_email(
+            db_session,
+            normalized_email
+        )
+        if latest_snapshot and latest_snapshot_team:
+            return {
+                "snapshot": latest_snapshot,
+                "team": latest_snapshot_team,
+                "team_info": self._serialize_snapshot_team_info(latest_snapshot, latest_snapshot_team),
+            }
+
+        return None
+
+    async def _refresh_latest_team_context_for_email(
+        self,
+        db_session: AsyncSession,
+        email: str
+    ) -> Optional[Dict[str, Any]]:
+        latest_context = await self._load_latest_team_context_for_email(db_session, email)
+        if not latest_context:
+            return None
+
+        latest_team = latest_context.get("team")
+        if not latest_team:
+            return latest_context
+
+        try:
+            sync_result = await self.team_service.sync_team_info(latest_team.id, db_session)
+            if not sync_result.get("success"):
+                logger.warning(
+                    "质保状态查询刷新最近 Team 失败，回退到当前缓存状态 email=%s team_id=%s error=%s",
+                    self.normalize_email(email),
+                    latest_team.id,
+                    sync_result.get("error")
+                )
+                return latest_context
+        except Exception as exc:
+            logger.warning(
+                "质保状态查询刷新最近 Team 异常，回退到当前缓存状态 email=%s team_id=%s error=%s",
+                self.normalize_email(email),
+                latest_team.id,
+                exc
+            )
+            return latest_context
+
+        refreshed_context = await self._load_latest_team_context_for_email(db_session, email)
+        return refreshed_context or latest_context
+
     def _serialize_latest_team_info(
         self,
         record: RedemptionRecord,
@@ -372,30 +437,15 @@ class WarrantyService:
 
         normalized_email = validation_result["normalized_email"]
         warranty_entry = validation_result["warranty_entry"]
-        latest_record, latest_team = await self._get_latest_team_record_for_email(
-            db_session,
-            normalized_email
-        )
-        latest_team_info = None
+        latest_context = await self._refresh_latest_team_context_for_email(db_session, normalized_email)
+        if not latest_context:
+            logger.warning("质保状态查询失败: 未找到最近 Team 记录或成员快照 email=%s", normalized_email)
+            return {
+                "success": False,
+                "error": "未找到该邮箱最近加入的 Team 记录，请先手动刷新 Team 或等待系统自动刷新后再试"
+            }
 
-        if latest_record and latest_team:
-            latest_team_info = self._serialize_latest_team_info(latest_record, latest_team)
-        else:
-            latest_snapshot, latest_snapshot_team = await self._get_latest_team_snapshot_for_email(
-                db_session,
-                normalized_email
-            )
-            if latest_snapshot and latest_snapshot_team:
-                latest_team_info = self._serialize_snapshot_team_info(
-                    latest_snapshot,
-                    latest_snapshot_team
-                )
-            else:
-                logger.warning("质保状态查询失败: 未找到最近 Team 记录或成员快照 email=%s", normalized_email)
-                return {
-                    "success": False,
-                    "error": "未找到该邮箱最近加入的 Team 记录，请先手动刷新 Team 或等待系统自动刷新后再试"
-                }
+        latest_team_info = latest_context["team_info"]
 
         can_claim = latest_team_info["status"] == "banned"
         if can_claim:
