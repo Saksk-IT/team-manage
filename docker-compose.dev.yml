@@ -1,0 +1,8 @@
+services:
+  app:
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/team_manage.db
+      - DEBUG=true
+    command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT:-8008} --reload --reload-dir /app/app --proxy-headers --forwarded-allow-ips='*'"

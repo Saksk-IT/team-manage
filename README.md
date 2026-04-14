@@ -17,6 +17,24 @@ docker compose up -d
 git pull && docker compose down && docker compose up -d --build
 ```
 
+### 本机开发模式（Docker 热重载）
+```bash
+git clone https://github.com/tibbar213/team-manage.git
+cd team-manage
+cp .env.example .env
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+停止开发容器：
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+```
+
+说明：
+- `docker-compose.yml` 保持生产部署配置，避免影响服务器。
+- `docker-compose.dev.yml` 仅用于本机开发，会把项目目录挂载进容器，并使用 `uvicorn --reload` 实现 Python 代码热重载。
+- 模板和静态资源也来自本机挂载目录，刷新页面即可看到最新改动。
+
 ## ✨ 功能特性
 
 ### 管理员功能
@@ -188,6 +206,26 @@ python app/main.py
 ```bash
 # 构建并启动容器
 docker compose up -d
+```
+
+### 2.1 本机开发模式（热重载）
+
+本机开发建议使用开发覆盖文件：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+查看日志：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f
+```
+
+停止：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml down
 ```
 
 ### 3. 数据持久化
