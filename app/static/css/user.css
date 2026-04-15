@@ -52,13 +52,88 @@ body.modal-open {
 }
 
 .container {
-    max-width: 480px;
+    max-width: 1160px;
     width: 100%;
 }
 
 .header {
     text-align: center;
     margin-bottom: 2.5rem;
+    max-width: 480px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.page-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.main-column {
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+}
+
+.side-column {
+    width: 100%;
+}
+
+.side-card {
+    padding: 1.5rem;
+}
+
+.side-card--announcement {
+    border-color: rgba(245, 158, 11, 0.18);
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.side-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.9rem;
+    color: var(--text-main);
+    font-weight: 700;
+}
+
+.side-card-content {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.side-card-text {
+    white-space: pre-wrap;
+    color: var(--text-muted);
+    line-height: 1.75;
+}
+
+.support-block {
+    padding: 0.9rem 1rem;
+    border-radius: 12px;
+    border: 1px solid var(--border-base);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.support-block-title {
+    font-size: 0.95rem;
+    color: var(--text-main);
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+}
+
+.support-qr {
+    display: block;
+    width: min(220px, 100%);
+    border-radius: 12px;
+    border: 1px solid var(--border-base);
+    background: #fff;
+}
+
+.support-link-btn {
+    display: inline-flex;
+    width: auto;
 }
 
 .header h1 {
@@ -366,5 +441,50 @@ body.modal-open {
 
     .result-title {
         font-size: 1.25rem;
+    }
+}
+
+@media (min-width: 1040px) {
+    .page-shell--three,
+    .page-shell--with-left,
+    .page-shell--with-right {
+        display: grid;
+        align-items: start;
+        justify-content: center;
+        gap: 1.5rem;
+        grid-template-columns: minmax(220px, 260px) minmax(0, 480px) minmax(220px, 260px);
+    }
+
+    .page-shell--three .announcement-column {
+        grid-column: 1;
+    }
+
+    .page-shell--three .main-column {
+        grid-column: 2;
+    }
+
+    .page-shell--three .support-column {
+        grid-column: 3;
+    }
+
+    .page-shell--with-left .announcement-column {
+        grid-column: 1;
+    }
+
+    .page-shell--with-left .main-column {
+        grid-column: 2;
+    }
+
+    .page-shell--with-right .main-column {
+        grid-column: 2;
+    }
+
+    .page-shell--with-right .support-column {
+        grid-column: 3;
+    }
+
+    .side-column {
+        position: sticky;
+        top: 1.5rem;
     }
 }
