@@ -184,6 +184,39 @@ function updateBatchImportCodes(codes = [], teamType = TEAM_TYPE_STANDARD) {
     }
 }
 
+function buildForcedRefreshUrl() {
+    const url = new URL(window.location.href);
+    url.searchParams.set('_refresh', Date.now().toString());
+    return url.toString();
+}
+
+function refreshAdminListView(delayMs = 0, modalIds = []) {
+    const pathname = window.location.pathname || '';
+    const normalizedPathname = pathname.replace(/\/+$/, '') || '/';
+    const shouldRefresh =
+        normalizedPathname === '/admin' ||
+        normalizedPathname === '/admin/warranty-teams';
+
+    if (!shouldRefresh) {
+        return;
+    }
+
+    const executeRefresh = () => {
+        modalIds.forEach(modalId => hideModal(modalId));
+        window.location.replace(buildForcedRefreshUrl());
+    };
+
+    if (delayMs > 0) {
+        setTimeout(executeRefresh, delayMs);
+    } else {
+        executeRefresh();
+    }
+}
+
+function scheduleImportedTeamListRefresh(delayMs = 1500) {
+    refreshAdminListView(delayMs, ['importTeamModal']);
+}
+
 async function copyBatchImportCodes() {
     const codesBox = document.getElementById('batchImportCodes');
     if (!codesBox || !codesBox.value.trim()) {
@@ -402,6 +435,7 @@ async function handleSingleImport(event) {
             }
             form.reset();
             if (form.teamType) form.teamType.value = teamType;
+            scheduleImportedTeamListRefresh(1500);
         } else {
             showToast(result.error || '导入失败', 'error');
         }
@@ -548,6 +582,9 @@ async function handleBatchImport(event) {
                         } else {
                             const prefix = teamType === TEAM_TYPE_WARRANTY ? '质保 Team 导入完成' : '导入完成';
                             showToast(`${prefix}，成功 ${data.success_count} 条，失败 ${data.failed_count} 条`, 'warning');
+                        }
+                        if (data.success_count > 0) {
+                            scheduleImportedTeamListRefresh(data.failed_count === 0 ? 1500 : 2500);
                         }
                     } else if (data.type === 'error') {
                         showToast(data.error, 'error');
@@ -865,12 +902,10 @@ async function handleAddMember(event) {
         if (result.success) {
             showToast('成员添加成功！', 'success');
             form.reset();
-            // 在模态框模式下，只负载列表
             if (document.getElementById('manageMembersModal').classList.contains('show')) {
                 await loadModalMemberList(teamId);
-            } else {
-                setTimeout(() => location.reload(), 1500);
             }
+            refreshAdminListView(1500, ['manageMembersModal']);
         } else {
             showToast(result.error || '添加失败', 'error');
         }

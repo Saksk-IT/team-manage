@@ -25,6 +25,8 @@ DEFAULT_TEAM_MAX_MEMBERS = 5
 STANDARD_TRANSFER_CODE_COUNT = 4
 TEAM_TYPE_STANDARD = "standard"
 TEAM_TYPE_WARRANTY = "warranty"
+IMPORT_RETRY_ATTEMPTS = 3
+IMPORT_RETRY_DELAYS_SECONDS = (1, 2)
 ProgressCallback = Optional[Callable[[Dict[str, Any]], Awaitable[None]]]
 
 
@@ -38,6 +40,37 @@ class TeamService:
         self.token_parser = TokenParser()
         self.jwt_parser = JWTParser()
         self.redemption_service = RedemptionService()
+
+    def _get_import_retry_identifier(
+        self,
+        access_token: Optional[str],
+        email: Optional[str],
+        account_id: Optional[str]
+    ) -> str:
+        token_email = None
+        if access_token:
+            try:
+                token_email = self.jwt_parser.extract_email(access_token)
+            except Exception:
+                token_email = None
+
+        return email or token_email or account_id or "import"
+
+    @staticmethod
+    def _is_retryable_import_error(error: Optional[str]) -> bool:
+        error_text = str(error or "")
+        retryable_keywords = (
+            "获取账户信息失败",
+            "获取 Team 成员失败",
+            "获取 Team 邀请失败",
+            "初始成员数异常",
+            "导入失败:"
+        )
+        return any(keyword in error_text for keyword in retryable_keywords)
+
+    @staticmethod
+    def _is_invalid_workspace_selected_error(error: Optional[str]) -> bool:
+        return "invalid_workspace_selected" in str(error or "").lower()
 
     async def _clear_bound_codes_for_team(
         self,
@@ -458,6 +491,68 @@ class TeamService:
         client_id: Optional[str] = None,
         team_type: str = TEAM_TYPE_STANDARD
     ) -> Dict[str, Any]:
+        retry_identifier = self._get_import_retry_identifier(access_token, email, account_id)
+        last_result: Optional[Dict[str, Any]] = None
+
+        for attempt in range(1, IMPORT_RETRY_ATTEMPTS + 1):
+            result = await self._import_team_single_once(
+                access_token=access_token,
+                db_session=db_session,
+                email=email,
+                account_id=account_id,
+                refresh_token=refresh_token,
+                session_token=session_token,
+                client_id=client_id,
+                team_type=team_type
+            )
+
+            if result.get("success"):
+                if attempt > 1:
+                    logger.info(
+                        "Team 导入在第 %s 次尝试后成功: email=%s account_id=%s",
+                        attempt,
+                        result.get("email") or email,
+                        account_id
+                    )
+                return result
+
+            last_result = result
+            error_message = result.get("error")
+            retryable = self._is_retryable_import_error(error_message)
+            if not retryable or attempt >= IMPORT_RETRY_ATTEMPTS:
+                return result
+
+            delay_seconds = IMPORT_RETRY_DELAYS_SECONDS[min(attempt - 1, len(IMPORT_RETRY_DELAYS_SECONDS) - 1)]
+            logger.warning(
+                "Team 导入失败，准备重试: attempt=%s/%s email=%s account_id=%s error=%s",
+                attempt,
+                IMPORT_RETRY_ATTEMPTS,
+                result.get("email") or email,
+                account_id,
+                error_message
+            )
+            await self.chatgpt_service.clear_session(retry_identifier)
+            await asyncio.sleep(delay_seconds)
+
+        return last_result or {
+            "success": False,
+            "team_id": None,
+            "email": email,
+            "message": None,
+            "error": "导入失败: 未知错误"
+        }
+
+    async def _import_team_single_once(
+        self,
+        access_token: Optional[str],
+        db_session: AsyncSession,
+        email: Optional[str] = None,
+        account_id: Optional[str] = None,
+        refresh_token: Optional[str] = None,
+        session_token: Optional[str] = None,
+        client_id: Optional[str] = None,
+        team_type: str = TEAM_TYPE_STANDARD
+    ) -> Dict[str, Any]:
         """
         单个导入 Team
 
@@ -553,29 +648,63 @@ class TeamService:
                 team_accounts = account_result["accounts"]
             else:
                 logger.warning(f"导入时获取账户信息失败: {account_result['error']}")
+                if (
+                    session_token
+                    and account_id
+                    and self._is_invalid_workspace_selected_error(account_result.get("error"))
+                ):
+                    logger.info(
+                        "导入时检测到 invalid_workspace_selected，尝试使用 session_token 重新交换 workspace AT: email=%s account_id=%s",
+                        email,
+                        account_id
+                    )
+                    await self.chatgpt_service.clear_session(email or "import")
+                    refresh_result = await self.chatgpt_service.refresh_access_token_with_session_token(
+                        session_token,
+                        db_session,
+                        account_id=account_id,
+                        identifier=email or "import"
+                    )
+                    if refresh_result["success"]:
+                        access_token = refresh_result["access_token"]
+                        if refresh_result.get("session_token"):
+                            session_token = refresh_result["session_token"]
+                        account_result = await self.chatgpt_service.get_account_info(
+                            access_token,
+                            db_session,
+                            identifier=email
+                        )
+                        if account_result["success"]:
+                            team_accounts = account_result["accounts"]
+                            logger.info("导入时通过 session_token 重新换取 workspace AT 后获取账户信息成功")
+                        else:
+                            logger.warning(f"导入时重试获取账户信息仍失败: {account_result['error']}")
 
             # 3. 确定要导入的账户列表
             if account_id:
-                # 3.1 优先处理指定的 account_id 以获取其元数据
+                # 3.1 指定 account_id 时，必须拉到真实元数据，避免“假成功”落库
+                if not account_result["success"]:
+                    return {
+                        "success": False,
+                        "team_id": None,
+                        "email": email,
+                        "message": None,
+                        "error": f"获取账户信息失败，无法校验指定的 Account ID: {account_result['error']}"
+                    }
+
                 found_account = next((acc for acc in team_accounts if acc["account_id"] == account_id), None)
                 
                 if found_account:
                     accounts_to_import.append(found_account)
                     logger.info(f"导入时找到指定的 account_id: {account_id}, 已获取真实元数据")
                 else:
-                    # 如果未找到或 API 失败，保底使用占位符
-                    placeholder = {
-                        "account_id": account_id,
-                        "name": f"Team-{account_id[:8]}",
-                        "plan_type": "team",
-                        "subscription_plan": "unknown",
-                        "expires_at": None,
-                        "has_active_subscription": True
+                    return {
+                        "success": False,
+                        "team_id": None,
+                        "email": email,
+                        "message": None,
+                        "error": f"指定的 Account ID ({account_id}) 未出现在当前 Token 可访问的 Team 列表中，导入已中止。"
                     }
-                    accounts_to_import.append(placeholder)
-                    if not team_accounts:
-                        team_accounts.append(placeholder)
-                    logger.info(f"导入时未找到指定的 account_id: {account_id}, 使用占位符元数据")
             
             # 3.2 自动导入 API 返回的所有其他活跃账号 (多账号支持)
             for acc in team_accounts:
@@ -628,20 +757,46 @@ class TeamService:
                 members_result = await self.chatgpt_service.get_members(
                     access_token,
                     selected_account["account_id"],
-                    db_session
+                    db_session,
+                    identifier=email
                 )
                 
                 invites_result = await self.chatgpt_service.get_invites(
                     access_token,
                     selected_account["account_id"],
-                    db_session
+                    db_session,
+                    identifier=email
                 )
 
+                if not members_result["success"]:
+                    return {
+                        "success": False,
+                        "team_id": None,
+                        "email": email,
+                        "message": None,
+                        "error": f"获取 Team 成员失败: {members_result['error']}"
+                    }
+
+                if not invites_result["success"]:
+                    return {
+                        "success": False,
+                        "team_id": None,
+                        "email": email,
+                        "message": None,
+                        "error": f"获取 Team 邀请失败: {invites_result['error']}"
+                    }
+
                 current_members = 0
-                if members_result["success"]:
-                    current_members += members_result["total"]
-                if invites_result["success"]:
-                    current_members += invites_result["total"]
+                current_members += members_result["total"]
+                if current_members < 1:
+                    return {
+                        "success": False,
+                        "team_id": None,
+                        "email": email,
+                        "message": None,
+                        "error": f"导入校验失败: Team 初始成员数异常 ({current_members})，预期至少为 1"
+                    }
+                current_members += invites_result["total"]
 
                 # 解析过期时间
                 expires_at = None
@@ -1541,7 +1696,8 @@ class TeamService:
             members_result = await self.chatgpt_service.get_members(
                 access_token,
                 team.account_id,
-                db_session
+                db_session,
+                identifier=team.email
             )
 
             if not members_result["success"]:
@@ -1571,7 +1727,8 @@ class TeamService:
             invites_result = await self.chatgpt_service.get_invites(
                 access_token,
                 team.account_id,
-                db_session
+                db_session,
+                identifier=team.email
             )
             
             if not invites_result["success"]:
