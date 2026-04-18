@@ -191,6 +191,30 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(self.service.chatgpt_service.get_account_info.await_count, 2)
 
+    async def test_import_passes_account_id_when_fetching_account_info(self):
+        self._mock_import_dependencies(
+            "header@example.com",
+            "88888888-8888-8888-8888-888888888888",
+            "Header Team",
+        )
+
+        async with self.Session() as session:
+            result = await self.service.import_team_single(
+                access_token="eyJ.header.payload",
+                db_session=session,
+                email="header@example.com",
+                account_id="88888888-8888-8888-8888-888888888888",
+                team_type=TEAM_TYPE_STANDARD,
+            )
+
+        self.assertTrue(result["success"])
+        self.service.chatgpt_service.get_account_info.assert_awaited_once_with(
+            "eyJ.header.payload",
+            unittest.mock.ANY,
+            identifier="header@example.com",
+            account_id="88888888-8888-8888-8888-888888888888",
+        )
+
     async def test_import_uses_email_identifier_for_members_and_invites(self):
         self._mock_import_dependencies(
             "identifier@example.com",

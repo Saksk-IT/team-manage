@@ -5,10 +5,11 @@
 import asyncio
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, List, Dict, Any, Callable, Awaitable
 from urllib.parse import urlparse
 from uuid import uuid4
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, RedirectResponse
 import json
 from sqlalchemy import select, func
@@ -25,6 +26,16 @@ from app.services.warranty import warranty_service
 from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+CUSTOMER_SERVICE_UPLOAD_DIR = BASE_DIR / "static" / "uploads" / "customer-service"
+MAX_CUSTOMER_SERVICE_IMAGE_SIZE = 5 * 1024 * 1024
+ALLOWED_CUSTOMER_SERVICE_IMAGE_TYPES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
 
 # 创建路由器
 router = APIRouter(
@@ -195,6 +206,17 @@ def _is_valid_http_url(value: str) -> bool:
         return False
 
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _is_valid_customer_service_image_url(value: str) -> bool:
+    normalized_value = (value or "").strip()
+    if not normalized_value:
+        return True
+
+    if normalized_value.startswith("/static/"):
+        return True
+
+    return _is_valid_http_url(normalized_value)
 
 
 def _build_batch_item_result(
@@ -2118,10 +2140,10 @@ async def update_customer_service_settings(
         qr_code_url = (customer_service_data.qr_code_url or "").strip()
         link_url = (customer_service_data.link_url or "").strip()
 
-        if not _is_valid_http_url(qr_code_url):
+        if not _is_valid_customer_service_image_url(qr_code_url):
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                content={"success": False, "error": "客服二维码地址必须是有效的 http/https 链接"}
+                content={"success": False, "error": "客服二维码地址必须是有效的 http/https 链接或站内已上传图片路径"}
             )
 
         if not _is_valid_http_url(link_url):
@@ -2159,6 +2181,59 @@ async def update_customer_service_settings(
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"更新失败: {str(e)}"}
+        )
+
+
+@router.post("/settings/customer-service/upload-image")
+async def upload_customer_service_image(
+    image: UploadFile = File(...),
+    current_user: dict = Depends(require_admin)
+):
+    """
+    上传前台客服二维码图片，返回站内静态地址。
+    """
+    try:
+        content_type = (image.content_type or "").lower().strip()
+        if content_type not in ALLOWED_CUSTOMER_SERVICE_IMAGE_TYPES:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "仅支持 PNG、JPG、WEBP、GIF 格式图片"}
+            )
+
+        file_bytes = await image.read()
+        if not file_bytes:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "图片内容不能为空"}
+            )
+
+        if len(file_bytes) > MAX_CUSTOMER_SERVICE_IMAGE_SIZE:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "图片大小不能超过 5MB"}
+            )
+
+        suffix = ALLOWED_CUSTOMER_SERVICE_IMAGE_TYPES[content_type]
+        CUSTOMER_SERVICE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        filename = f"{uuid4().hex}{suffix}"
+        target_path = CUSTOMER_SERVICE_UPLOAD_DIR / filename
+        target_path.write_bytes(file_bytes)
+
+        image_url = f"/static/uploads/customer-service/{filename}"
+        logger.info("管理员上传前台客服二维码图片成功: %s", image_url)
+
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": "图片上传成功",
+                "url": image_url
+            }
+        )
+    except Exception as e:
+        logger.error(f"上传前台客服二维码图片失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"上传失败: {str(e)}"}
         )
 
 

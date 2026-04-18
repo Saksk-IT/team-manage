@@ -288,11 +288,14 @@ class ChatGPTService:
         self,
         access_token: str,
         db_session: DBAsyncSession,
-        identifier: str = "default"
+        identifier: str = "default",
+        account_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """获取账户和订阅信息"""
         url = f"{self.BASE_URL}/accounts/check/v4-2023-04-27"
         headers = {"Authorization": f"Bearer {access_token}"}
+        if account_id:
+            headers["chatgpt-account-id"] = account_id
         result = await self._make_request("GET", url, headers, db_session=db_session, identifier=identifier)
         if not result["success"]:
             return {"success": False, "accounts": [], "error": result["error"]}

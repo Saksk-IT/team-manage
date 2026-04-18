@@ -32,6 +32,10 @@ const emailConfirmModal = document.getElementById('emailConfirmModal');
 const confirmEmailDisplay = document.getElementById('confirmEmailDisplay');
 const cancelConfirmBtn = document.getElementById('cancelConfirmBtn');
 const confirmRedeemBtn = document.getElementById('confirmRedeemBtn');
+const customerServiceWidget = document.getElementById('customerServiceWidget');
+const customerServiceFab = document.getElementById('customerServiceFab');
+const customerServicePanel = document.getElementById('customerServicePanel');
+const customerServiceCloseBtn = document.getElementById('customerServiceCloseBtn');
 
 function setVerifyButtonContent(text) {
     const verifyBtn = document.getElementById('verifyBtn');
@@ -69,6 +73,28 @@ function delay(ms) {
     return new Promise(resolve => {
         setTimeout(resolve, ms);
     });
+}
+
+function setCustomerServiceWidgetOpen(isOpen) {
+    if (!customerServiceWidget || !customerServiceFab || !customerServicePanel) {
+        return;
+    }
+
+    customerServiceWidget.classList.toggle('open', isOpen);
+    customerServiceFab.setAttribute('aria-expanded', String(isOpen));
+    customerServicePanel.setAttribute('aria-hidden', String(!isOpen));
+}
+
+function toggleCustomerServiceWidget(forceOpen) {
+    if (!customerServiceWidget) {
+        return;
+    }
+
+    const nextOpenState = typeof forceOpen === 'boolean'
+        ? forceOpen
+        : !customerServiceWidget.classList.contains('open');
+
+    setCustomerServiceWidgetOpen(nextOpenState);
 }
 
 function normalizeWarrantyFakeSuccessSpots(value) {
@@ -1231,3 +1257,35 @@ async function enableUserDeviceAuth(teamId, code, email) {
 function goToWarrantyFromSuccess() {
     showToast('前台质保查询暂时停用，请联系客服再次获取兑换码', 'info');
 }
+
+customerServiceFab?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    toggleCustomerServiceWidget();
+});
+
+customerServiceCloseBtn?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    toggleCustomerServiceWidget(false);
+});
+
+customerServicePanel?.addEventListener('click', (event) => {
+    event.stopPropagation();
+});
+
+document.addEventListener('click', (event) => {
+    if (!customerServiceWidget || !customerServiceWidget.classList.contains('open')) {
+        return;
+    }
+
+    if (customerServiceWidget.contains(event.target)) {
+        return;
+    }
+
+    toggleCustomerServiceWidget(false);
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        toggleCustomerServiceWidget(false);
+    }
+});

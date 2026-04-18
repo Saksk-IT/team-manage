@@ -250,14 +250,37 @@
         <div class="form-group">
             <label for="customerServiceQrCodeUrl">客服二维码图片地址</label>
             <input
-                type="url"
+                type="text"
                 id="customerServiceQrCodeUrl"
                 name="qr_code_url"
                 value="{{ customer_service_qr_code_url or '' }}"
                 placeholder="https://example.com/qrcode.png"
                 class="form-control"
             >
-            <p class="form-help">填写 http/https 图片链接，前台会显示“扫描二维码联系客服”。</p>
+            <p class="form-help">可填写 http/https 图片链接，或先选择下方本地图片，保存时自动上传并回填地址。</p>
+        </div>
+
+        <div class="form-group">
+            <label for="customerServiceQrCodeFile">直接上传二维码图片</label>
+            <input
+                type="file"
+                id="customerServiceQrCodeFile"
+                name="qr_code_file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                class="form-control"
+            >
+            <p class="form-help">支持 PNG / JPG / WEBP / GIF，单张不超过 5MB。</p>
+            <div
+                id="customerServiceQrPreviewPanel"
+                class="customer-service-preview{% if not customer_service_qr_code_url %} customer-service-preview--hidden{% endif %}"
+            >
+                <img
+                    id="customerServiceQrPreview"
+                    src="{{ customer_service_qr_code_url or '' }}"
+                    alt="客服二维码预览"
+                    class="customer-service-preview-image"
+                >
+            </div>
         </div>
 
         <div class="form-group">
@@ -348,11 +371,118 @@
         color: var(--text-muted);
         margin-top: 0.375rem;
     }
+
+    .customer-service-preview {
+        margin-top: 0.75rem;
+        padding: 0.75rem;
+        border: 1px solid var(--border-base);
+        border-radius: var(--radius-md);
+        background: var(--bg-main);
+        display: inline-flex;
+    }
+
+    .customer-service-preview--hidden {
+        display: none;
+    }
+
+    .customer-service-preview-image {
+        display: block;
+        width: min(220px, 100%);
+        border-radius: 10px;
+        border: 1px solid var(--border-base);
+        background: #fff;
+    }
 </style>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    const customerServiceQrCodeUrlInput = document.getElementById('customerServiceQrCodeUrl');
+    const customerServiceQrCodeFileInput = document.getElementById('customerServiceQrCodeFile');
+    const customerServiceQrPreviewPanel = document.getElementById('customerServiceQrPreviewPanel');
+    const customerServiceQrPreview = document.getElementById('customerServiceQrPreview');
+    let customerServiceQrLocalPreviewUrl = null;
+
+    function setCustomerServiceQrPreview(src) {
+        const normalizedSrc = (src || '').trim();
+
+        if (!customerServiceQrPreviewPanel || !customerServiceQrPreview) {
+            return;
+        }
+
+        if (normalizedSrc) {
+            customerServiceQrPreview.src = normalizedSrc;
+            customerServiceQrPreviewPanel.classList.remove('customer-service-preview--hidden');
+            return;
+        }
+
+        customerServiceQrPreview.removeAttribute('src');
+        customerServiceQrPreviewPanel.classList.add('customer-service-preview--hidden');
+    }
+
+    async function uploadCustomerServiceQrCodeIfNeeded() {
+        const file = customerServiceQrCodeFileInput?.files?.[0];
+        if (!file) {
+            return customerServiceQrCodeUrlInput.value.trim();
+        }
+
+        const formData = new FormData();
+        formData.append('image', file);
+
+        const response = await fetch('/admin/settings/customer-service/upload-image', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || '图片上传失败');
+        }
+
+        const uploadedUrl = (data.url || '').trim();
+        customerServiceQrCodeUrlInput.value = uploadedUrl;
+
+        if (customerServiceQrLocalPreviewUrl) {
+            URL.revokeObjectURL(customerServiceQrLocalPreviewUrl);
+            customerServiceQrLocalPreviewUrl = null;
+        }
+
+        if (customerServiceQrCodeFileInput) {
+            customerServiceQrCodeFileInput.value = '';
+        }
+
+        setCustomerServiceQrPreview(uploadedUrl);
+        return uploadedUrl;
+    }
+
+    customerServiceQrCodeUrlInput?.addEventListener('input', (e) => {
+        if (customerServiceQrCodeFileInput?.files?.length) {
+            return;
+        }
+        setCustomerServiceQrPreview(e.target.value);
+    });
+
+    customerServiceQrCodeFileInput?.addEventListener('change', () => {
+        const file = customerServiceQrCodeFileInput.files?.[0];
+        if (!file) {
+            if (customerServiceQrLocalPreviewUrl) {
+                URL.revokeObjectURL(customerServiceQrLocalPreviewUrl);
+                customerServiceQrLocalPreviewUrl = null;
+            }
+            setCustomerServiceQrPreview(customerServiceQrCodeUrlInput.value);
+            return;
+        }
+
+        if (customerServiceQrLocalPreviewUrl) {
+            URL.revokeObjectURL(customerServiceQrLocalPreviewUrl);
+        }
+
+        customerServiceQrLocalPreviewUrl = URL.createObjectURL(file);
+        setCustomerServiceQrPreview(customerServiceQrLocalPreviewUrl);
+    });
+
+    setCustomerServiceQrPreview(customerServiceQrCodeUrlInput?.value || '');
+
     // 代理配置表单
     document.getElementById('proxyForm').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -612,12 +742,12 @@
         e.preventDefault();
 
         const enabled = document.getElementById('customerServiceEnabled').checked;
-        const qr_code_url = document.getElementById('customerServiceQrCodeUrl').value.trim();
         const link_url = document.getElementById('customerServiceLinkUrl').value.trim();
         const link_text = document.getElementById('customerServiceLinkText').value.trim();
         const text_content = document.getElementById('customerServiceTextContent').value.trim();
 
         try {
+            const qr_code_url = await uploadCustomerServiceQrCodeIfNeeded();
             const response = await fetch('/admin/settings/customer-service', {
                 method: 'POST',
                 headers: {

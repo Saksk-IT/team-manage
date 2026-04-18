@@ -641,7 +641,8 @@ class TeamService:
             account_result = await self.chatgpt_service.get_account_info(
                 access_token,
                 db_session,
-                identifier=email
+                identifier=email,
+                account_id=account_id
             )
             
             if account_result["success"]:
@@ -672,7 +673,8 @@ class TeamService:
                         account_result = await self.chatgpt_service.get_account_info(
                             access_token,
                             db_session,
-                            identifier=email
+                            identifier=email,
+                            account_id=account_id
                         )
                         if account_result["success"]:
                             team_accounts = account_result["accounts"]

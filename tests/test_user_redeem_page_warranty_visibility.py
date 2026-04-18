@@ -46,6 +46,7 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("提交质保", html)
         self.assertNotIn("公告通知", html)
         self.assertNotIn("客服支持", html)
+        self.assertNotIn('id="customerServiceFab"', html)
         self.assertIn("warrantyServiceEnabled: false", html)
         self.assertIn("warrantyFakeSuccessEnabled: false", html)
 
@@ -89,6 +90,9 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("公告通知", html)
         self.assertIn("系统公告：今晚 10 点维护", html)
         self.assertIn("客服支持", html)
+        self.assertIn('id="customerServiceFab"', html)
+        self.assertIn('id="customerServicePanel"', html)
+        self.assertNotIn("support-column", html)
         self.assertIn("扫描二维码联系客服", html)
         self.assertIn("链接跳转联系客服", html)
         self.assertIn("文字客服信息", html)
