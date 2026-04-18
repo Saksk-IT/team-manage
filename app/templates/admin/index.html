@@ -1524,7 +1524,7 @@
             if (response.ok && result.success) {
                 showToast('更新成功', 'success');
                 hideModal('editTeamModal');
-                setTimeout(() => location.reload(), 1000);
+                refreshAdminListView(1000, ['editTeamModal']);
             } else {
                 showToast(result.error || '更新失败', 'error');
             }

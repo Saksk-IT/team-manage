@@ -8,7 +8,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
 from app.models import RedemptionCode, Team
-from app.services.team import TeamService, TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY
+from app.services.team import (
+    TeamService,
+    TEAM_TYPE_STANDARD,
+    TEAM_TYPE_WARRANTY,
+    IMPORT_RETRY_ATTEMPTS,
+)
 
 
 class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
@@ -92,6 +97,223 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(warranty_result["generated_code_count"], 0)
         self.assertEqual(warranty_result["imported_teams"][0]["max_members"], 8)
         self.assertEqual(code_count, 7)
+
+    async def test_import_rejects_specified_account_when_account_info_fetch_fails(self):
+        self.service.jwt_parser.is_token_expired = Mock(return_value=False)
+        self.service.jwt_parser.extract_email = Mock(return_value="owner@example.com")
+        self.service.chatgpt_service.get_account_info = AsyncMock(return_value={
+            "success": False,
+            "accounts": [],
+            "error": "invalid_workspace_selected",
+        })
+        self.service.chatgpt_service.get_members = AsyncMock()
+        self.service.chatgpt_service.get_invites = AsyncMock()
+        self.service.chatgpt_service.get_account_settings = AsyncMock()
+
+        async with self.Session() as session:
+            result = await self.service.import_team_single(
+                access_token="eyJ.owner.payload",
+                db_session=session,
+                email="owner@example.com",
+                account_id="33333333-3333-3333-3333-333333333333",
+                team_type=TEAM_TYPE_STANDARD,
+            )
+
+            team_count_result = await session.execute(select(func.count(Team.id)))
+            team_count = team_count_result.scalar() or 0
+
+        self.assertFalse(result["success"])
+        self.assertIn("获取账户信息失败", result["error"])
+        self.assertEqual(team_count, 0)
+        self.service.chatgpt_service.get_members.assert_not_called()
+        self.service.chatgpt_service.get_invites.assert_not_called()
+
+    async def test_import_recovers_from_invalid_workspace_selected_with_session_token(self):
+        self.service.jwt_parser.is_token_expired = Mock(return_value=False)
+        self.service.jwt_parser.extract_email = Mock(return_value="workspace@example.com")
+        self.service.chatgpt_service.get_account_info = AsyncMock(side_effect=[
+            {
+                "success": False,
+                "accounts": [],
+                "error": '{"error":{"code":"invalid_workspace_selected"}}',
+            },
+            {
+                "success": True,
+                "accounts": [{
+                    "account_id": "77777777-7777-7777-7777-777777777777",
+                    "name": "Workspace Team",
+                    "plan_type": "team",
+                    "subscription_plan": "chatgptteamplan",
+                    "expires_at": None,
+                    "has_active_subscription": True,
+                    "account_user_role": "account-owner"
+                }]
+            }
+        ])
+        self.service.chatgpt_service.refresh_access_token_with_session_token = AsyncMock(return_value={
+            "success": True,
+            "access_token": "eyJ.workspace.refreshed",
+            "session_token": "session-token-new",
+        })
+        self.service.chatgpt_service.get_members = AsyncMock(return_value={
+            "success": True,
+            "total": 1,
+            "members": []
+        })
+        self.service.chatgpt_service.get_invites = AsyncMock(return_value={
+            "success": True,
+            "total": 0,
+            "items": []
+        })
+        self.service.chatgpt_service.get_account_settings = AsyncMock(return_value={
+            "success": True,
+            "data": {"beta_settings": {}}
+        })
+        self.service.chatgpt_service.clear_session = AsyncMock()
+
+        async with self.Session() as session:
+            result = await self.service.import_team_single(
+                access_token="eyJ.workspace.original",
+                db_session=session,
+                email="workspace@example.com",
+                account_id="77777777-7777-7777-7777-777777777777",
+                session_token="session-token-old",
+                team_type=TEAM_TYPE_STANDARD,
+            )
+
+        self.assertTrue(result["success"])
+        self.service.chatgpt_service.clear_session.assert_awaited_once_with("workspace@example.com")
+        self.service.chatgpt_service.refresh_access_token_with_session_token.assert_awaited_once_with(
+            "session-token-old",
+            unittest.mock.ANY,
+            account_id="77777777-7777-7777-7777-777777777777",
+            identifier="workspace@example.com",
+        )
+        self.assertEqual(self.service.chatgpt_service.get_account_info.await_count, 2)
+
+    async def test_import_uses_email_identifier_for_members_and_invites(self):
+        self._mock_import_dependencies(
+            "identifier@example.com",
+            "44444444-4444-4444-4444-444444444444",
+            "Identifier Team",
+        )
+
+        async with self.Session() as session:
+            await self.service.import_team_single(
+                access_token="eyJ.identifier.payload",
+                db_session=session,
+                email="identifier@example.com",
+                account_id="44444444-4444-4444-4444-444444444444",
+                team_type=TEAM_TYPE_STANDARD,
+            )
+
+        self.service.chatgpt_service.get_members.assert_awaited_once_with(
+            "eyJ.identifier.payload",
+            "44444444-4444-4444-4444-444444444444",
+            unittest.mock.ANY,
+            identifier="identifier@example.com",
+        )
+        self.service.chatgpt_service.get_invites.assert_awaited_once_with(
+            "eyJ.identifier.payload",
+            "44444444-4444-4444-4444-444444444444",
+            unittest.mock.ANY,
+            identifier="identifier@example.com",
+        )
+
+    async def test_import_retries_when_initial_member_count_is_zero(self):
+        self.service.jwt_parser.is_token_expired = Mock(return_value=False)
+        self.service.jwt_parser.extract_email = Mock(return_value="retry@example.com")
+        self.service.chatgpt_service.get_account_info = AsyncMock(return_value={
+            "success": True,
+            "accounts": [{
+                "account_id": "55555555-5555-5555-5555-555555555555",
+                "name": "Retry Team",
+                "plan_type": "team",
+                "subscription_plan": "chatgptteamplan",
+                "expires_at": None,
+                "has_active_subscription": True,
+                "account_user_role": "account-owner"
+            }]
+        })
+        self.service.chatgpt_service.get_members = AsyncMock(side_effect=[
+            {"success": True, "total": 0, "members": []},
+            {"success": True, "total": 1, "members": []},
+        ])
+        self.service.chatgpt_service.get_invites = AsyncMock(return_value={
+            "success": True,
+            "total": 0,
+            "items": []
+        })
+        self.service.chatgpt_service.get_account_settings = AsyncMock(return_value={
+            "success": True,
+            "data": {"beta_settings": {}}
+        })
+        self.service.chatgpt_service.clear_session = AsyncMock()
+
+        with patch("app.services.team.asyncio.sleep", new=AsyncMock()):
+            async with self.Session() as session:
+                result = await self.service.import_team_single(
+                    access_token="eyJ.retry.payload",
+                    db_session=session,
+                    email="retry@example.com",
+                    account_id="55555555-5555-5555-5555-555555555555",
+                    team_type=TEAM_TYPE_STANDARD,
+                )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["imported_teams"][0]["current_members"], 1)
+        self.assertEqual(self.service.chatgpt_service.get_members.await_count, 2)
+        self.service.chatgpt_service.clear_session.assert_awaited_once_with("retry@example.com")
+
+    async def test_import_fails_after_retries_when_initial_member_count_remains_zero(self):
+        self.service.jwt_parser.is_token_expired = Mock(return_value=False)
+        self.service.jwt_parser.extract_email = Mock(return_value="zero@example.com")
+        self.service.chatgpt_service.get_account_info = AsyncMock(return_value={
+            "success": True,
+            "accounts": [{
+                "account_id": "66666666-6666-6666-6666-666666666666",
+                "name": "Zero Team",
+                "plan_type": "team",
+                "subscription_plan": "chatgptteamplan",
+                "expires_at": None,
+                "has_active_subscription": True,
+                "account_user_role": "account-owner"
+            }]
+        })
+        self.service.chatgpt_service.get_members = AsyncMock(return_value={
+            "success": True,
+            "total": 0,
+            "members": []
+        })
+        self.service.chatgpt_service.get_invites = AsyncMock(return_value={
+            "success": True,
+            "total": 0,
+            "items": []
+        })
+        self.service.chatgpt_service.get_account_settings = AsyncMock(return_value={
+            "success": True,
+            "data": {"beta_settings": {}}
+        })
+        self.service.chatgpt_service.clear_session = AsyncMock()
+
+        with patch("app.services.team.asyncio.sleep", new=AsyncMock()):
+            async with self.Session() as session:
+                result = await self.service.import_team_single(
+                    access_token="eyJ.zero.payload",
+                    db_session=session,
+                    email="zero@example.com",
+                    account_id="66666666-6666-6666-6666-666666666666",
+                    team_type=TEAM_TYPE_STANDARD,
+                )
+
+                team_count_result = await session.execute(select(func.count(Team.id)))
+                team_count = team_count_result.scalar() or 0
+
+        self.assertFalse(result["success"])
+        self.assertIn("初始成员数异常", result["error"])
+        self.assertEqual(team_count, 0)
+        self.assertEqual(self.service.chatgpt_service.get_members.await_count, IMPORT_RETRY_ATTEMPTS)
+        self.assertEqual(self.service.chatgpt_service.clear_session.await_count, IMPORT_RETRY_ATTEMPTS - 1)
 
     async def test_standard_inventory_queries_exclude_warranty_teams(self):
         async with self.Session() as session:
