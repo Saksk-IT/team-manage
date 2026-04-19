@@ -38,6 +38,51 @@ class RedeemFlowService:
         self.team_service = TeamService()
         self.chatgpt_service = chatgpt_service
 
+    async def _refresh_bound_team(
+        self,
+        bound_team_id: int,
+        db_session: AsyncSession
+    ) -> Dict[str, Any]:
+        """刷新并重新加载绑定的 Team，确保前台兑换前看到的是最新状态。"""
+        stmt = select(Team).where(Team.id == bound_team_id)
+        result = await db_session.execute(stmt)
+        bound_team = result.scalar_one_or_none()
+
+        if not bound_team:
+            return {
+                "success": False,
+                "team": None,
+                "error": "该兑换码绑定的 Team 不存在，请联系管理员处理"
+            }
+
+        sync_result = await self.team_service.sync_team_info(bound_team_id, db_session)
+        if not sync_result.get("success"):
+            logger.warning(
+                "绑定 Team 刷新失败: team_id=%s, error=%s",
+                bound_team_id,
+                sync_result.get("error")
+            )
+            return {
+                "success": False,
+                "team": None,
+                "error": "该兑换码绑定的 Team 刷新失败，请稍后重试"
+            }
+
+        result = await db_session.execute(stmt)
+        refreshed_team = result.scalar_one_or_none()
+        if not refreshed_team:
+            return {
+                "success": False,
+                "team": None,
+                "error": "该兑换码绑定的 Team 不存在，请联系管理员处理"
+            }
+
+        return {
+            "success": True,
+            "team": refreshed_team,
+            "error": None
+        }
+
     async def verify_code_and_get_teams(
         self,
         code: str,
@@ -82,20 +127,27 @@ class RedeemFlowService:
             is_unused_bound_code = redemption_code.get("status") == "unused" and bound_team_id
 
             if is_unused_bound_code:
-                stmt = select(Team).where(Team.id == bound_team_id)
-                result = await db_session.execute(stmt)
-                bound_team = result.scalar_one_or_none()
-
-                if not bound_team:
+                refresh_result = await self._refresh_bound_team(bound_team_id, db_session)
+                if not refresh_result["success"]:
                     return {
                         "success": True,
                         "valid": False,
-                        "reason": "该兑换码绑定的 Team 不存在，请联系管理员处理",
+                        "reason": refresh_result["error"],
                         "teams": [],
                         "error": None
                     }
 
-                if bound_team.status != "active" or bound_team.current_members >= bound_team.max_members:
+                bound_team = refresh_result["team"]
+                if bound_team.current_members >= bound_team.max_members:
+                    return {
+                        "success": True,
+                        "valid": False,
+                        "reason": "该兑换码绑定的 Team 已满，请联系管理员处理",
+                        "teams": [],
+                        "error": None
+                    }
+
+                if bound_team.status != "active":
                     return {
                         "success": True,
                         "valid": False,
@@ -260,7 +312,9 @@ class RedeemFlowService:
                             await db_session.rollback()
 
                         # 1. 前置同步：拉人前确保人数状态绝对实时 (耗时操作)
-                        await self.team_service.sync_team_info(team_id_final, db_session)
+                        sync_result = await self.team_service.sync_team_info(team_id_final, db_session)
+                        if bound_team_locked and not sync_result.get("success"):
+                            raise Exception("该兑换码绑定的 Team 刷新失败，请稍后重试")
                         
                         # 2. 核心校验 (开启短事务)
                         if not db_session.in_transaction():
