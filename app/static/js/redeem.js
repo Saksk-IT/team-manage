@@ -36,6 +36,103 @@ const customerServiceWidget = document.getElementById('customerServiceWidget');
 const customerServiceFab = document.getElementById('customerServiceFab');
 const customerServicePanel = document.getElementById('customerServicePanel');
 const customerServiceCloseBtn = document.getElementById('customerServiceCloseBtn');
+const requestTransitionOverlay = document.getElementById('requestTransitionOverlay');
+const transitionOverlayIcon = document.getElementById('transitionOverlayIcon');
+const transitionOverlayEyebrow = document.getElementById('transitionOverlayEyebrow');
+const transitionOverlayTitle = document.getElementById('transitionOverlayTitle');
+const transitionOverlayMessage = document.getElementById('transitionOverlayMessage');
+const transitionOverlayTimeline = document.getElementById('transitionOverlayTimeline');
+const transitionOverlayHint = document.getElementById('transitionOverlayHint');
+let transitionOverlayState = {
+    flow: null,
+    stageIndex: 0,
+    startedAt: 0
+};
+let transitionOverlayStageTimerId = null;
+let transitionOverlayHintTimerId = null;
+let transitionOverlayCountdownTimerId = null;
+
+const REDEEM_LOADING_FLOW = Object.freeze({
+    icon: 'ticket',
+    eyebrow: '普通兑换',
+    title: '正在为您加入 Team',
+    message: '请稍候，我们正在自动完成兑换。',
+    stages: Object.freeze([
+        Object.freeze({
+            label: '核对兑换资格',
+            message: '正在验证兑换码状态与邮箱信息，请稍候。'
+        }),
+        Object.freeze({
+            label: '锁定可用席位',
+            message: '资格校验通过后，会自动为您匹配可用席位。'
+        }),
+        Object.freeze({
+            label: '发送 Team 邀请',
+            message: '席位锁定完成后，系统会把邀请发到您的邮箱。'
+        })
+    ]),
+    hints: Object.freeze([
+        '结果出来后会自动展示，无需反复刷新页面。',
+        '处理中请勿重复提交，以免生成重复请求。',
+        '如果网络稍慢，请保持当前页面开启，我们会继续处理。'
+    ]),
+    autoStageDelayMs: 2200
+});
+
+const WARRANTY_STATUS_LOADING_FLOW = Object.freeze({
+    icon: 'search',
+    eyebrow: '质保状态查询',
+    title: '正在查询最近 Team 状态',
+    message: '系统正在为您核对质保资格与最近加入记录。',
+    stages: Object.freeze([
+        Object.freeze({
+            label: '核对质保资格',
+            message: '正在验证邮箱与当前质保条件。'
+        }),
+        Object.freeze({
+            label: '查询最近记录',
+            message: '正在读取最近一次加入的 Team 信息。'
+        }),
+        Object.freeze({
+            label: '同步当前状态',
+            message: '正在同步最新 Team 状态并整理结果。'
+        })
+    ]),
+    hints: Object.freeze([
+        '如果等待稍久，多半是在同步最新 Team 状态。',
+        '完成后会自动展示结果，无需重复点击。',
+        '请保持页面开启，避免中途中断查询流程。'
+    ]),
+    autoStageDelayMs: 1800
+});
+
+const WARRANTY_CLAIM_LOADING_FLOW = Object.freeze({
+    icon: 'shield',
+    eyebrow: '质保申请',
+    title: '正在为您处理质保申请',
+    message: '系统会再次复核资格，并为您安排新的质保邀请。',
+    stages: Object.freeze([
+        Object.freeze({
+            label: '复核质保资格',
+            message: '正在确认邮箱、质保次数与最近 Team 状态。'
+        }),
+        Object.freeze({
+            label: '匹配质保 Team',
+            message: '正在为您查找可用的质保席位。'
+        }),
+        Object.freeze({
+            label: '发送新的邀请',
+            message: '资格确认完成后，会自动把新的邀请发到您的邮箱。'
+        })
+    ]),
+    hints: Object.freeze([
+        '您无需离开当前页面，完成后会自动显示结果。',
+        '请勿重复点击提交，系统只会保留当前这次申请。',
+        '如果稍有等待，通常是系统正在匹配可用质保 Team。'
+    ]),
+    countdownHintPrefix: '我们已记录您的申请进度，结果出来后会自动展示。',
+    autoStageDelayMs: 2400
+});
 
 function setVerifyButtonContent(text) {
     const verifyBtn = document.getElementById('verifyBtn');
@@ -53,6 +150,236 @@ function setClaimButtonContent(text) {
     if (window.lucide) {
         lucide.createIcons();
     }
+}
+
+function hasTransitionOverlaySupport() {
+    return Boolean(
+        requestTransitionOverlay &&
+        transitionOverlayIcon &&
+        transitionOverlayEyebrow &&
+        transitionOverlayTitle &&
+        transitionOverlayMessage &&
+        transitionOverlayTimeline &&
+        transitionOverlayHint
+    );
+}
+
+function clearTransitionOverlayTimers() {
+    if (transitionOverlayStageTimerId) {
+        window.clearInterval(transitionOverlayStageTimerId);
+        transitionOverlayStageTimerId = null;
+    }
+
+    if (transitionOverlayHintTimerId) {
+        window.clearInterval(transitionOverlayHintTimerId);
+        transitionOverlayHintTimerId = null;
+    }
+
+    if (transitionOverlayCountdownTimerId) {
+        window.clearInterval(transitionOverlayCountdownTimerId);
+        transitionOverlayCountdownTimerId = null;
+    }
+}
+
+function setTransitionOverlayHint(text) {
+    if (!transitionOverlayHint) return;
+    transitionOverlayHint.textContent = text || '处理中期间请勿关闭页面或重复提交。';
+}
+
+function renderTransitionOverlayIcon(iconName) {
+    if (!transitionOverlayIcon) return;
+
+    transitionOverlayIcon.innerHTML = `<i data-lucide="${iconName}"></i>`;
+}
+
+function renderTransitionOverlayTimeline(flow, activeStageIndex) {
+    if (!transitionOverlayTimeline) return;
+
+    const stages = Array.isArray(flow?.stages) ? flow.stages : [];
+    transitionOverlayTimeline.innerHTML = stages.map((stage, index) => {
+        const isComplete = index < activeStageIndex;
+        const isActive = index === activeStageIndex;
+        const classNames = [
+            'transition-stage',
+            isComplete ? 'transition-stage--complete' : '',
+            isActive ? 'transition-stage--active' : ''
+        ].filter(Boolean).join(' ');
+
+        return `
+            <div class="${classNames}">
+                <div class="transition-stage__dot"></div>
+                <div class="transition-stage__body">
+                    <div class="transition-stage__title">${escapeHtml(stage.label || '')}</div>
+                    <div class="transition-stage__message">${escapeHtml(stage.message || '')}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function setTransitionOverlayStage(stageIndex, overrides = {}) {
+    const flow = transitionOverlayState.flow;
+    if (!flow) return;
+
+    const stages = Array.isArray(flow.stages) ? flow.stages : [];
+    const safeIndex = Math.max(0, Math.min(stageIndex, Math.max(stages.length - 1, 0)));
+    const currentStage = stages[safeIndex] || {};
+
+    transitionOverlayState = {
+        ...transitionOverlayState,
+        stageIndex: safeIndex
+    };
+
+    if (transitionOverlayEyebrow) {
+        transitionOverlayEyebrow.textContent = overrides.eyebrow || flow.eyebrow || '安心处理中';
+    }
+
+    if (transitionOverlayTitle) {
+        transitionOverlayTitle.textContent = overrides.title || flow.title || '正在处理中';
+    }
+
+    if (transitionOverlayMessage) {
+        transitionOverlayMessage.textContent = overrides.message || currentStage.message || flow.message || '请稍候，结果出来后会自动展示。';
+    }
+
+    renderTransitionOverlayTimeline(flow, safeIndex);
+
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+}
+
+function startTransitionOverlayHintRotation(flow) {
+    const hints = Array.isArray(flow?.hints) ? flow.hints : [];
+    if (hints.length === 0) {
+        setTransitionOverlayHint('处理中期间请保持页面开启，我们会自动继续下一步。');
+        return;
+    }
+
+    let nextHintIndex = 0;
+    setTransitionOverlayHint(hints[nextHintIndex]);
+
+    if (hints.length === 1) {
+        return;
+    }
+
+    transitionOverlayHintTimerId = window.setInterval(() => {
+        nextHintIndex = (nextHintIndex + 1) % hints.length;
+        setTransitionOverlayHint(hints[nextHintIndex]);
+    }, 2600);
+}
+
+function startTransitionOverlayCountdown(totalMs) {
+    const startedAt = transitionOverlayState.startedAt;
+    const prefix = transitionOverlayState.flow?.countdownHintPrefix || '我们已记录您的进度，结果出来后会自动展示。';
+
+    const updateCountdownHint = () => {
+        const elapsedMs = Date.now() - startedAt;
+        const remainingMs = Math.max(totalMs - elapsedMs, 0);
+        const remainingSeconds = Math.ceil(remainingMs / 1000);
+
+        if (remainingSeconds > 0) {
+            setTransitionOverlayHint(`${prefix} 预计还需约 ${remainingSeconds} 秒。`);
+            return;
+        }
+
+        setTransitionOverlayHint('马上为您展示结果，请再稍候一下。');
+    };
+
+    updateCountdownHint();
+    transitionOverlayCountdownTimerId = window.setInterval(updateCountdownHint, 1000);
+}
+
+function scheduleTransitionOverlayStageProgression(flow) {
+    const stages = Array.isArray(flow?.stages) ? flow.stages : [];
+    if (stages.length <= 1) {
+        return;
+    }
+
+    const autoStageDelayMs = Number(flow.autoStageDelayMs) > 0 ? Number(flow.autoStageDelayMs) : 2000;
+    transitionOverlayStageTimerId = window.setInterval(() => {
+        const currentFlow = transitionOverlayState.flow;
+        if (!currentFlow || currentFlow !== flow) {
+            clearTransitionOverlayTimers();
+            return;
+        }
+
+        const nextStageIndex = Math.min(transitionOverlayState.stageIndex + 1, stages.length - 1);
+        if (nextStageIndex === transitionOverlayState.stageIndex) {
+            window.clearInterval(transitionOverlayStageTimerId);
+            transitionOverlayStageTimerId = null;
+            return;
+        }
+
+        setTransitionOverlayStage(nextStageIndex);
+    }, autoStageDelayMs);
+}
+
+function isTransitionOverlayOpen() {
+    return Boolean(requestTransitionOverlay?.classList.contains('show'));
+}
+
+function openTransitionOverlay(flow, options = {}) {
+    if (!hasTransitionOverlaySupport() || !flow) {
+        return;
+    }
+
+    clearTransitionOverlayTimers();
+
+    transitionOverlayState = {
+        flow,
+        stageIndex: Number.isInteger(options.stageIndex) ? options.stageIndex : 0,
+        startedAt: Date.now()
+    };
+
+    renderTransitionOverlayIcon(flow.icon || 'sparkles');
+    setTransitionOverlayStage(transitionOverlayState.stageIndex, {
+        title: options.title,
+        message: options.message,
+        eyebrow: options.eyebrow
+    });
+
+    requestTransitionOverlay.classList.add('show');
+    requestTransitionOverlay.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('transition-open');
+
+    const fixedDelayMs = Number.isFinite(options.fixedDelayMs) ? options.fixedDelayMs : null;
+    if (fixedDelayMs && fixedDelayMs > 0) {
+        startTransitionOverlayCountdown(fixedDelayMs);
+    } else {
+        startTransitionOverlayHintRotation(flow);
+    }
+
+    scheduleTransitionOverlayStageProgression(flow);
+
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+}
+
+function advanceTransitionOverlay(stageIndex, overrides = {}) {
+    if (!hasTransitionOverlaySupport() || !transitionOverlayState.flow) {
+        return;
+    }
+
+    setTransitionOverlayStage(stageIndex, overrides);
+}
+
+function closeTransitionOverlay() {
+    if (!hasTransitionOverlaySupport()) {
+        return;
+    }
+
+    clearTransitionOverlayTimers();
+    transitionOverlayState = {
+        flow: null,
+        stageIndex: 0,
+        startedAt: 0
+    };
+
+    requestTransitionOverlay.classList.remove('show');
+    requestTransitionOverlay.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('transition-open');
 }
 
 function formatRemainingDuration(seconds) {
@@ -330,6 +657,7 @@ function showStep(stepNumber) {
 
 // 返回步骤1
 function backToStep1() {
+    closeTransitionOverlay();
     showStep(1);
     selectedTeamId = null;
 }
@@ -390,6 +718,7 @@ async function startRedeemFlow() {
     if (!verifyBtn) return;
 
     verifyBtn.disabled = true;
+    openTransitionOverlay(REDEEM_LOADING_FLOW, { stageIndex: 0 });
 
     try {
         setVerifyButtonContent('正在校验...');
@@ -405,9 +734,16 @@ async function startRedeemFlow() {
             return;
         }
 
+        advanceTransitionOverlay(1, {
+            message: '兑换资格已通过，正在为您锁定可用席位。'
+        });
         setVerifyButtonContent('正在兑换...');
-        await confirmRedeem(null);
+        await confirmRedeem(null, {
+            usesExistingTransition: true,
+            transitionStageIndex: 2
+        });
     } finally {
+        closeTransitionOverlay();
         verifyBtn.disabled = false;
         setVerifyButtonContent('立即兑换');
     }
@@ -479,6 +815,7 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
     if (claimBtn) claimBtn.disabled = true;
     setClaimButtonContent('查看中...');
     resetWarrantyStatusResult();
+    openTransitionOverlay(WARRANTY_STATUS_LOADING_FLOW, { stageIndex: 0 });
 
     try {
         const response = await fetch('/warranty/check', {
@@ -500,6 +837,9 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
         }
 
         if (response.ok && data.success) {
+            advanceTransitionOverlay(2, {
+                message: '查询完成，正在整理最近 Team 状态。'
+            });
             renderWarrantyStatusResult(data, email);
         } else {
             let errorMessage = '状态查询失败';
@@ -513,6 +853,7 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
     } catch (error) {
         showErrorResult(error.message || '网络错误,请稍后重试');
     } finally {
+        closeTransitionOverlay();
         if (claimBtn) claimBtn.disabled = false;
         setClaimButtonContent('查看状态');
     }
@@ -527,6 +868,11 @@ async function submitWarrantyClaim(email) {
             lucide.createIcons();
         }
     }
+
+    openTransitionOverlay(WARRANTY_CLAIM_LOADING_FLOW, {
+        stageIndex: 0,
+        fixedDelayMs: warrantyFakeSuccessEnabled ? WARRANTY_FAKE_SUCCESS_DELAY_MS : null
+    });
 
     try {
         if (warrantyFakeSuccessEnabled) {
@@ -559,14 +905,23 @@ async function submitWarrantyClaim(email) {
                 return;
             }
 
+            advanceTransitionOverlay(1, {
+                message: '资格复核完成，正在为您安排新的质保席位。'
+            });
             showToast('校验通过，正在处理质保请求，请稍候 15 秒...', 'info');
 
             await delay(WARRANTY_FAKE_SUCCESS_DELAY_MS);
+            advanceTransitionOverlay(2, {
+                message: '新的质保邀请已经准备完成，马上为您展示结果。'
+            });
             await syncFakeWarrantySuccessRemainingSpots();
             showWarrantyClaimSuccessResult(buildFakeWarrantySuccessPayload(), email);
             return;
         }
 
+        advanceTransitionOverlay(1, {
+            message: '资格复核完成，正在为您匹配可用的质保 Team。'
+        });
         const response = await fetch('/warranty/claim', {
             method: 'POST',
             headers: {
@@ -586,6 +941,9 @@ async function submitWarrantyClaim(email) {
         }
 
         if (response.ok && data.success) {
+            advanceTransitionOverlay(2, {
+                message: '质保邀请已发送，正在整理结果。'
+            });
             showWarrantyClaimSuccessResult(data, email);
         } else {
             let errorMessage = '校验失败或当前无法提供质保服务';
@@ -599,6 +957,7 @@ async function submitWarrantyClaim(email) {
     } catch (error) {
         showErrorResult(error.message || '网络错误,请稍后重试');
     } finally {
+        closeTransitionOverlay();
         if (continueBtn) {
             continueBtn.disabled = false;
             continueBtn.innerHTML = `<i data-lucide="shield"></i> 提交质保`;
@@ -725,11 +1084,21 @@ function autoSelectTeam() {
 }
 
 // 确认兑换
-async function confirmRedeem(teamId) {
+async function confirmRedeem(teamId, options = {}) {
     console.log('Starting redemption process, teamId:', teamId);
 
     // Safety check: Ensure confirmRedeem doesn't run if already running? 
     // The button disable logic handles that.
+
+    const usesExistingTransition = options.usesExistingTransition === true;
+    const shouldManageTransition = !usesExistingTransition && !isTransitionOverlayOpen();
+    if (shouldManageTransition) {
+        openTransitionOverlay(REDEEM_LOADING_FLOW, { stageIndex: 1 });
+    } else if (Number.isInteger(options.transitionStageIndex)) {
+        advanceTransitionOverlay(options.transitionStageIndex, {
+            message: '可用席位已锁定，正在为您发送 Team 邀请。'
+        });
+    }
 
     try {
         const response = await fetch('/redeem/confirm', {
@@ -784,11 +1153,16 @@ async function confirmRedeem(teamId) {
     } catch (error) {
         console.error('Network or logic error:', error);
         showErrorResult(error.message || '网络错误,请稍后重试');
+    } finally {
+        if (shouldManageTransition) {
+            closeTransitionOverlay();
+        }
     }
 }
 
 // 显示成功结果
 function showSuccessResult(data) {
+    closeTransitionOverlay();
     const resultContent = document.getElementById('resultContent');
     const teamInfo = data.team_info || {};
     const warrantyNoticeHtml = warrantyServiceEnabled ? `
@@ -841,6 +1215,7 @@ function showSuccessResult(data) {
 }
 
 function showWarrantyClaimSuccessResult(data, email) {
+    closeTransitionOverlay();
     const resultContent = document.getElementById('resultContent');
     const teamInfo = data.team_info || {};
     const warrantyInfo = data.warranty_info || {};
@@ -911,6 +1286,7 @@ function showWarrantyClaimSuccessResult(data, email) {
 
 // 显示错误结果
 function showErrorResult(errorMessage) {
+    closeTransitionOverlay();
     const resultContent = document.getElementById('resultContent');
 
     resultContent.innerHTML = `

@@ -209,6 +209,27 @@
     </div>
     {% endif %}
 
+    <div id="requestTransitionOverlay" class="transition-overlay" aria-hidden="true">
+        <div class="transition-overlay__panel" role="status" aria-live="polite" aria-atomic="true">
+            <div class="transition-overlay__glow" aria-hidden="true"></div>
+            <div class="transition-overlay__visual" aria-hidden="true">
+                <div class="transition-overlay__pulse"></div>
+                <div class="transition-overlay__orbit"></div>
+                <div id="transitionOverlayIcon" class="transition-overlay__icon">
+                    <i data-lucide="sparkles"></i>
+                </div>
+            </div>
+            <div id="transitionOverlayEyebrow" class="transition-overlay__eyebrow">安心处理中</div>
+            <h3 id="transitionOverlayTitle" class="transition-overlay__title">正在为您准备结果</h3>
+            <p id="transitionOverlayMessage" class="transition-overlay__message">请稍候，结果出来后会自动展示，无需重复提交。</p>
+            <div class="transition-overlay__progress" aria-hidden="true">
+                <div class="transition-overlay__progress-bar"></div>
+            </div>
+            <div id="transitionOverlayTimeline" class="transition-overlay__timeline"></div>
+            <p id="transitionOverlayHint" class="transition-overlay__hint">处理中期间请保持页面开启，我们会自动继续下一步。</p>
+        </div>
+    </div>
+
     <div id="emailConfirmModal" class="modal-overlay" aria-hidden="true">
         <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="emailConfirmTitle">
             <div class="confirm-modal-icon">
