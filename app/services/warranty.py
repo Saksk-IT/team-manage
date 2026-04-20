@@ -285,6 +285,24 @@ class WarrantyService:
             return None, None
         return latest_row[0], latest_row[1]
 
+    async def _get_latest_team_record_for_email_and_team(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        team_id: int
+    ) -> Optional[RedemptionRecord]:
+        normalized_email = self.normalize_email(email)
+        stmt = (
+            select(RedemptionRecord)
+            .where(
+                func.lower(RedemptionRecord.email) == normalized_email,
+                RedemptionRecord.team_id == team_id
+            )
+            .order_by(RedemptionRecord.redeemed_at.desc(), RedemptionRecord.id.desc())
+        )
+        result = await db_session.execute(stmt)
+        return result.scalars().first()
+
     async def _get_latest_team_snapshot_for_email(
         self,
         db_session: AsyncSession,
@@ -317,11 +335,114 @@ class WarrantyService:
 
         return None, None
 
+    async def _get_latest_team_snapshot_for_email_and_team(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        team_id: int
+    ) -> Optional[TeamMemberSnapshot]:
+        normalized_email = self.normalize_email(email)
+
+        joined_stmt = (
+            select(TeamMemberSnapshot)
+            .where(
+                TeamMemberSnapshot.team_id == team_id,
+                TeamMemberSnapshot.email == normalized_email,
+                TeamMemberSnapshot.member_state == "joined"
+            )
+            .order_by(TeamMemberSnapshot.updated_at.desc(), TeamMemberSnapshot.id.desc())
+        )
+        joined_result = await db_session.execute(joined_stmt)
+        joined_snapshot = joined_result.scalars().first()
+        if joined_snapshot:
+            return joined_snapshot
+
+        invited_stmt = (
+            select(TeamMemberSnapshot)
+            .where(
+                TeamMemberSnapshot.team_id == team_id,
+                TeamMemberSnapshot.email == normalized_email
+            )
+            .order_by(TeamMemberSnapshot.updated_at.desc(), TeamMemberSnapshot.id.desc())
+        )
+        invited_result = await db_session.execute(invited_stmt)
+        return invited_result.scalars().first()
+
+    def _serialize_warranty_entry_team_info(
+        self,
+        entry: WarrantyEmailEntry,
+        team: Team
+    ) -> Dict[str, Any]:
+        team_status = (team.status or "").strip().lower()
+        latest_joined_at = entry.updated_at or entry.created_at
+        return {
+            "id": team.id,
+            "team_name": team.team_name,
+            "email": team.email,
+            "account_id": team.account_id,
+            "status": team_status or "no_record",
+            "status_label": self.get_team_status_label(team_status or "no_record"),
+            "redeemed_at": latest_joined_at.isoformat() if latest_joined_at else None,
+            "expires_at": team.expires_at.isoformat() if team and team.expires_at else None,
+            "code": entry.last_redeem_code,
+            "is_warranty_redemption": False,
+        }
+
+    async def _load_latest_team_context_from_warranty_entry(
+        self,
+        db_session: AsyncSession,
+        entry: Optional[WarrantyEmailEntry]
+    ) -> Optional[Dict[str, Any]]:
+        if not entry or not entry.last_warranty_team_id:
+            return None
+
+        team = await db_session.get(Team, entry.last_warranty_team_id)
+        if not team:
+            return None
+
+        latest_record = await self._get_latest_team_record_for_email_and_team(
+            db_session,
+            entry.email,
+            team.id
+        )
+        if latest_record:
+            return {
+                "record": latest_record,
+                "team": team,
+                "team_info": self._serialize_latest_team_info(latest_record, team),
+            }
+
+        latest_snapshot = await self._get_latest_team_snapshot_for_email_and_team(
+            db_session,
+            entry.email,
+            team.id
+        )
+        if latest_snapshot:
+            return {
+                "snapshot": latest_snapshot,
+                "team": team,
+                "team_info": self._serialize_snapshot_team_info(latest_snapshot, team),
+            }
+
+        return {
+            "warranty_entry": entry,
+            "team": team,
+            "team_info": self._serialize_warranty_entry_team_info(entry, team),
+        }
+
     async def _load_latest_team_context_for_email(
         self,
         db_session: AsyncSession,
-        email: str
+        email: str,
+        warranty_entry: Optional[WarrantyEmailEntry] = None
     ) -> Optional[Dict[str, Any]]:
+        warranty_entry_context = await self._load_latest_team_context_from_warranty_entry(
+            db_session,
+            warranty_entry
+        )
+        if warranty_entry_context:
+            return warranty_entry_context
+
         normalized_email = self.normalize_email(email)
         latest_record, latest_team = await self._get_latest_team_record_for_email(
             db_session,
@@ -350,9 +471,14 @@ class WarrantyService:
     async def _refresh_latest_team_context_for_email(
         self,
         db_session: AsyncSession,
-        email: str
+        email: str,
+        warranty_entry: Optional[WarrantyEmailEntry] = None
     ) -> Optional[Dict[str, Any]]:
-        latest_context = await self._load_latest_team_context_for_email(db_session, email)
+        latest_context = await self._load_latest_team_context_for_email(
+            db_session,
+            email,
+            warranty_entry=warranty_entry
+        )
         if not latest_context:
             return None
 
@@ -379,7 +505,11 @@ class WarrantyService:
             )
             return latest_context
 
-        refreshed_context = await self._load_latest_team_context_for_email(db_session, email)
+        refreshed_context = await self._load_latest_team_context_for_email(
+            db_session,
+            email,
+            warranty_entry=warranty_entry
+        )
         return refreshed_context or latest_context
 
     def _serialize_latest_team_info(
@@ -437,7 +567,11 @@ class WarrantyService:
 
         normalized_email = validation_result["normalized_email"]
         warranty_entry = validation_result["warranty_entry"]
-        latest_context = await self._refresh_latest_team_context_for_email(db_session, normalized_email)
+        latest_context = await self._refresh_latest_team_context_for_email(
+            db_session,
+            normalized_email,
+            warranty_entry=warranty_entry
+        )
         if not latest_context:
             logger.warning("质保状态查询失败: 未找到最近 Team 记录或成员快照 email=%s", normalized_email)
             return {
@@ -805,28 +939,21 @@ class WarrantyService:
         latest_team = None
         latest_team_info = None
         if require_latest_team_banned:
-            latest_record, latest_team = await self._get_latest_team_record_for_email(
+            latest_context = await self._load_latest_team_context_for_email(
                 db_session,
-                normalized_email
+                normalized_email,
+                warranty_entry=warranty_entry
             )
-            if latest_record and latest_team:
-                latest_team_info = self._serialize_latest_team_info(latest_record, latest_team)
-            else:
-                latest_snapshot, latest_snapshot_team = await self._get_latest_team_snapshot_for_email(
-                    db_session,
-                    normalized_email
-                )
-                if latest_snapshot and latest_snapshot_team:
-                    latest_team_info = self._serialize_snapshot_team_info(
-                        latest_snapshot,
-                        latest_snapshot_team
-                    )
-                else:
-                    logger.warning("质保申请失败: 未找到最近 Team 记录或成员快照 email=%s", normalized_email)
-                    return {
-                        "success": False,
-                        "error": "未找到该邮箱最近加入的 Team 记录，请先手动刷新 Team 或等待系统自动刷新后再试"
-                    }
+            if not latest_context:
+                logger.warning("质保申请失败: 未找到最近 Team 记录或成员快照 email=%s", normalized_email)
+                return {
+                    "success": False,
+                    "error": "未找到该邮箱最近加入的 Team 记录，请先手动刷新 Team 或等待系统自动刷新后再试"
+                }
+
+            latest_record = latest_context.get("record")
+            latest_team = latest_context.get("team")
+            latest_team_info = latest_context.get("team_info")
 
             if latest_team_info["status"] != "banned":
                 logger.warning(
