@@ -111,6 +111,30 @@
                             <div id="warrantyStatusResult" style="display: none; margin-top: 1rem;"></div>
                         </div>
                         {% endif %}
+
+                        <div class="preview-entry">
+                            <div class="preview-entry__title">
+                                <i data-lucide="sparkles" style="width: 16px; height: 16px;"></i>
+                                <span>动效预览入口</span>
+                            </div>
+                            <p class="preview-entry__text">如果暂时不方便做真实提交，可以先点下面的按钮直接预览等待动画；仅展示动效，不会发起真实请求。</p>
+                            <div class="preview-entry__actions">
+                                <button type="button" id="previewTransitionRedeemBtn" class="btn btn-secondary preview-entry__button"
+                                    onclick="previewTransitionFlow('redeem')">
+                                    <i data-lucide="ticket"></i> 预览普通兑换
+                                </button>
+                                {% if warranty_service_enabled %}
+                                <button type="button" id="previewTransitionWarrantyStatusBtn" class="btn btn-secondary preview-entry__button"
+                                    onclick="previewTransitionFlow('warranty-status')">
+                                    <i data-lucide="search"></i> 预览状态查询
+                                </button>
+                                <button type="button" id="previewTransitionWarrantyClaimBtn" class="btn btn-secondary preview-entry__button"
+                                    onclick="previewTransitionFlow('warranty-claim')">
+                                    <i data-lucide="shield"></i> 预览质保处理
+                                </button>
+                                {% endif %}
+                            </div>
+                        </div>
                     </div>
                 </div>
 

@@ -51,6 +51,8 @@ let transitionOverlayState = {
 let transitionOverlayStageTimerId = null;
 let transitionOverlayHintTimerId = null;
 let transitionOverlayCountdownTimerId = null;
+let transitionOverlayPreviewTimerId = null;
+const TRANSITION_PREVIEW_DURATION_MS = 5600;
 
 const REDEEM_LOADING_FLOW = Object.freeze({
     icon: 'ticket',
@@ -134,6 +136,22 @@ const WARRANTY_CLAIM_LOADING_FLOW = Object.freeze({
     autoStageDelayMs: 2400
 });
 
+const TRANSITION_PREVIEW_MAP = Object.freeze({
+    redeem: Object.freeze({
+        flow: REDEEM_LOADING_FLOW,
+        durationMs: TRANSITION_PREVIEW_DURATION_MS
+    }),
+    'warranty-status': Object.freeze({
+        flow: WARRANTY_STATUS_LOADING_FLOW,
+        durationMs: TRANSITION_PREVIEW_DURATION_MS
+    }),
+    'warranty-claim': Object.freeze({
+        flow: WARRANTY_CLAIM_LOADING_FLOW,
+        durationMs: TRANSITION_PREVIEW_DURATION_MS,
+        fixedDelayMs: 5000
+    })
+});
+
 function setVerifyButtonContent(text) {
     const verifyBtn = document.getElementById('verifyBtn');
     if (!verifyBtn) return;
@@ -178,6 +196,11 @@ function clearTransitionOverlayTimers() {
     if (transitionOverlayCountdownTimerId) {
         window.clearInterval(transitionOverlayCountdownTimerId);
         transitionOverlayCountdownTimerId = null;
+    }
+
+    if (transitionOverlayPreviewTimerId) {
+        window.clearTimeout(transitionOverlayPreviewTimerId);
+        transitionOverlayPreviewTimerId = null;
     }
 }
 
@@ -380,6 +403,26 @@ function closeTransitionOverlay() {
     requestTransitionOverlay.classList.remove('show');
     requestTransitionOverlay.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('transition-open');
+}
+
+function previewTransitionFlow(mode) {
+    const previewConfig = TRANSITION_PREVIEW_MAP[mode];
+    if (!previewConfig?.flow) {
+        showToast('暂时无法预览该动效，请稍后再试', 'error');
+        return;
+    }
+
+    showToast('当前仅预览等待动效，不会发起真实请求', 'info');
+
+    openTransitionOverlay(previewConfig.flow, {
+        stageIndex: 0,
+        fixedDelayMs: previewConfig.fixedDelayMs || null
+    });
+
+    transitionOverlayPreviewTimerId = window.setTimeout(() => {
+        closeTransitionOverlay();
+        showToast('动效预览结束，可以继续正常操作', 'success');
+    }, previewConfig.durationMs || TRANSITION_PREVIEW_DURATION_MS);
 }
 
 function formatRemainingDuration(seconds) {
