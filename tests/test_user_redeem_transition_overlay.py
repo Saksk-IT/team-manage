@@ -46,10 +46,6 @@ class UserRedeemTransitionOverlayTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="transitionOverlayMessage"', html)
         self.assertIn('id="transitionOverlayTimeline"', html)
         self.assertIn('id="transitionOverlayHint"', html)
-        self.assertIn('id="previewTransitionRedeemBtn"', html)
-        self.assertIn('id="previewTransitionWarrantyStatusBtn"', html)
-        self.assertIn('id="previewTransitionWarrantyClaimBtn"', html)
-        self.assertIn("动效预览入口", html)
 
     def test_redeem_js_defines_three_waiting_flow_configs(self):
         script = Path("app/static/js/redeem.js").read_text(encoding="utf-8")
@@ -57,11 +53,9 @@ class UserRedeemTransitionOverlayTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("const REDEEM_LOADING_FLOW =", script)
         self.assertIn("const WARRANTY_STATUS_LOADING_FLOW =", script)
         self.assertIn("const WARRANTY_CLAIM_LOADING_FLOW =", script)
-        self.assertIn("const TRANSITION_PREVIEW_MAP =", script)
         self.assertIn("openTransitionOverlay(", script)
         self.assertIn("advanceTransitionOverlay(", script)
         self.assertIn("closeTransitionOverlay()", script)
-        self.assertIn("previewTransitionFlow(", script)
 
 
 if __name__ == "__main__":
