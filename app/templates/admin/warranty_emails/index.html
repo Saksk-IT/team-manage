@@ -21,12 +21,12 @@
         </div>
         <div class="form-group">
             <label for="warrantyRemainingDays">剩余天数</label>
-            <input type="number" id="warrantyRemainingDays" class="form-control" min="0" placeholder="0 表示立即过期；留空表示未启用">
+            <input type="number" id="warrantyRemainingDays" class="form-control" min="0" value="30" placeholder="0 表示立即过期；留空表示未启用">
             <p class="form-help">系统按“剩余天数 + 剩余次数”同时满足时才允许质保。</p>
         </div>
         <div class="form-group">
             <label for="warrantyRemainingClaims">剩余次数</label>
-            <input type="number" id="warrantyRemainingClaims" class="form-control" min="0" value="0" required>
+            <input type="number" id="warrantyRemainingClaims" class="form-control" min="0" value="10" required>
         </div>
         <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
             <button type="submit" class="btn btn-primary" id="warrantyEditorSubmitBtn">保存质保邮箱</button>
@@ -174,10 +174,13 @@
     }
 
     function resetWarrantyEmailForm() {
+        const remainingDaysInput = document.getElementById('warrantyRemainingDays');
+        const remainingClaimsInput = document.getElementById('warrantyRemainingClaims');
+
         document.getElementById('warrantyEntryId').value = '';
         document.getElementById('warrantyEmail').value = '';
-        document.getElementById('warrantyRemainingDays').value = '';
-        document.getElementById('warrantyRemainingClaims').value = '0';
+        remainingDaysInput.value = remainingDaysInput.defaultValue;
+        remainingClaimsInput.value = remainingClaimsInput.defaultValue;
         setWarrantyEditorMode(false);
     }
 

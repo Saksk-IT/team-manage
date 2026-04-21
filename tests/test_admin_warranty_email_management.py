@@ -61,6 +61,8 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("质保邮箱列表", html)
         self.assertIn("buyer@example.com", html)
         self.assertIn("CODE-123", html)
+        self.assertIn('id="warrantyRemainingDays" class="form-control" min="0" value="30"', html)
+        self.assertIn('id="warrantyRemainingClaims" class="form-control" min="0" value="10" required', html)
 
     async def test_save_and_delete_warranty_email(self):
         async with self.Session() as session:
