@@ -6,7 +6,7 @@ from datetime import timedelta
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import WarrantyEmailEntry
+from app.models import RedemptionCode, WarrantyEmailEntry
 from app.services.warranty import WarrantyService
 from app.utils.time_utils import get_now
 
@@ -49,6 +49,16 @@ class WarrantyEmailAutoEnqueueTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_sync_warranty_email_entry_after_redeem_skips_non_warranty_code(self):
         async with self.Session() as session:
+            session.add(
+                RedemptionCode(
+                    code="CODE-123",
+                    status="unused",
+                    has_warranty=False,
+                    warranty_days=30,
+                )
+            )
+            await session.commit()
+
             service = WarrantyService()
             await service.sync_warranty_email_entry_after_redeem(
                 db_session=session,
@@ -61,6 +71,34 @@ class WarrantyEmailAutoEnqueueTests(unittest.IsolatedAsyncioTestCase):
             entry = await service.get_warranty_email_entry(session, "buyer@example.com")
 
         self.assertIsNone(entry)
+
+    async def test_sync_warranty_email_entry_after_redeem_uses_code_record_as_source_of_truth(self):
+        async with self.Session() as session:
+            session.add(
+                RedemptionCode(
+                    code="CODE-123",
+                    status="unused",
+                    has_warranty=True,
+                    warranty_days=30,
+                )
+            )
+            await session.commit()
+
+            service = WarrantyService()
+            await service.sync_warranty_email_entry_after_redeem(
+                db_session=session,
+                email="buyer@example.com",
+                redeem_code="CODE-123",
+                has_warranty_code=False,
+            )
+            await session.commit()
+
+            entry = await service.get_warranty_email_entry(session, "buyer@example.com")
+            serialized_entry = service.serialize_warranty_email_entry(entry)
+
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.remaining_claims, 10)
+        self.assertEqual(serialized_entry["remaining_days"], 30)
 
     async def test_sync_warranty_email_entry_after_redeem_does_not_override_manual_limits(self):
         async with self.Session() as session:

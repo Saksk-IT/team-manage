@@ -222,9 +222,19 @@ class WarrantyService:
         db_session: AsyncSession,
         email: str,
         redeem_code: str,
-        has_warranty_code: bool = False
+        has_warranty_code: Optional[bool] = None
     ) -> Optional[WarrantyEmailEntry]:
-        if not has_warranty_code:
+        code_result = await db_session.execute(
+            select(RedemptionCode).where(RedemptionCode.code == redeem_code)
+        )
+        redemption_code = code_result.scalar_one_or_none()
+        resolved_has_warranty_code = (
+            bool(redemption_code.has_warranty)
+            if redemption_code is not None
+            else bool(has_warranty_code)
+        )
+
+        if not resolved_has_warranty_code:
             return None
 
         normalized_email = self.normalize_email(email)
