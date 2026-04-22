@@ -54,7 +54,7 @@ let transitionOverlayCountdownTimerId = null;
 
 const REDEEM_LOADING_FLOW = Object.freeze({
     icon: 'ticket',
-    eyebrow: '普通兑换',
+    eyebrow: '兑换服务',
     title: '正在为您加入 Team',
     message: '请稍候，我们正在自动完成兑换。',
     stages: Object.freeze([

@@ -40,7 +40,7 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
 
         html = response.body.decode("utf-8")
 
-        self.assertIn("普通兑换", html)
+        self.assertIn("兑换服务", html)
         self.assertNotIn("质保服务", html)
         self.assertNotIn("质保说明", html)
         self.assertNotIn("提交质保", html)
