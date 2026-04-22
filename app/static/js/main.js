@@ -272,7 +272,8 @@ function refreshAdminListView(delayMs = 0, modalIds = []) {
     const normalizedPathname = pathname.replace(/\/+$/, '') || '/';
     const shouldRefresh =
         normalizedPathname === '/admin' ||
-        normalizedPathname === '/admin/warranty-teams';
+        normalizedPathname === '/admin/warranty-teams' ||
+        normalizedPathname === '/admin/codes';
 
     if (!shouldRefresh) {
         return;
