@@ -489,7 +489,9 @@ class TeamService:
         refresh_token: Optional[str] = None,
         session_token: Optional[str] = None,
         client_id: Optional[str] = None,
-        team_type: str = TEAM_TYPE_STANDARD
+        team_type: str = TEAM_TYPE_STANDARD,
+        generate_warranty_codes: bool = False,
+        warranty_days: int = 30,
     ) -> Dict[str, Any]:
         retry_identifier = self._get_import_retry_identifier(access_token, email, account_id)
         last_result: Optional[Dict[str, Any]] = None
@@ -503,7 +505,9 @@ class TeamService:
                 refresh_token=refresh_token,
                 session_token=session_token,
                 client_id=client_id,
-                team_type=team_type
+                team_type=team_type,
+                generate_warranty_codes=generate_warranty_codes,
+                warranty_days=warranty_days,
             )
 
             if result.get("success"):
@@ -551,7 +555,9 @@ class TeamService:
         refresh_token: Optional[str] = None,
         session_token: Optional[str] = None,
         client_id: Optional[str] = None,
-        team_type: str = TEAM_TYPE_STANDARD
+        team_type: str = TEAM_TYPE_STANDARD,
+        generate_warranty_codes: bool = False,
+        warranty_days: int = 30,
     ) -> Dict[str, Any]:
         """
         单个导入 Team
@@ -873,11 +879,14 @@ class TeamService:
 
                 remaining_seats = max(max_members - current_members, 0)
                 generated_codes = []
+                normalized_warranty_days = max(int(warranty_days or 30), 1)
                 if team_type == TEAM_TYPE_STANDARD and remaining_seats > 0:
                     generate_result = await self.redemption_service.generate_code_batch(
                         db_session=db_session,
                         count=remaining_seats,
                         bound_team_id=team.id,
+                        has_warranty=generate_warranty_codes,
+                        warranty_days=normalized_warranty_days,
                         commit=False
                     )
                     if not generate_result["success"]:
@@ -896,7 +905,9 @@ class TeamService:
                     "max_members": max_members,
                     "remaining_seats": remaining_seats,
                     "generated_codes": generated_codes,
-                    "generated_code_count": len(generated_codes)
+                    "generated_code_count": len(generated_codes),
+                    "generated_code_has_warranty": bool(generate_warranty_codes and generated_codes),
+                    "generated_code_warranty_days": normalized_warranty_days if generate_warranty_codes and generated_codes else None,
                 })
 
             # 5. 返回结果总结
@@ -925,7 +936,8 @@ class TeamService:
             if team_type == TEAM_TYPE_WARRANTY:
                 message = f"成功导入 {len(imported_ids)} 个质保 Team 账号"
             else:
-                message = f"成功导入 {len(imported_ids)} 个 Team 账号，并自动生成 {total_generated_codes} 个绑定兑换码"
+                code_label = "质保绑定兑换码" if generate_warranty_codes else "绑定兑换码"
+                message = f"成功导入 {len(imported_ids)} 个 Team 账号，并自动生成 {total_generated_codes} 个{code_label}"
             if skipped_ids:
                 message += f" (另有 {len(skipped_ids)} 个已存在)"
 
@@ -1179,7 +1191,9 @@ class TeamService:
         self,
         text: str,
         db_session: AsyncSession,
-        team_type: str = TEAM_TYPE_STANDARD
+        team_type: str = TEAM_TYPE_STANDARD,
+        generate_warranty_codes: bool = False,
+        warranty_days: int = 30,
     ):
         """
         批量导入 Team (流式返回进度)
@@ -1246,7 +1260,9 @@ class TeamService:
                     refresh_token=data.get("refresh_token"),
                     session_token=data.get("session_token"),
                     client_id=data.get("client_id"),
-                    team_type=team_type
+                    team_type=team_type,
+                    generate_warranty_codes=generate_warranty_codes,
+                    warranty_days=warranty_days,
                 )
 
                 if result["success"]:

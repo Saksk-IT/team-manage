@@ -433,7 +433,8 @@ class RedeemFlowService:
                             await self.warranty_service.sync_warranty_email_entry_after_redeem(
                                 db_session=db_session,
                                 email=email,
-                                redeem_code=code
+                                redeem_code=code,
+                                has_warranty_code=bool(rc.has_warranty),
                             )
                             target_team.current_members += 1
                             if target_team.current_members >= target_team.max_members:

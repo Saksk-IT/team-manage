@@ -26,6 +26,9 @@ _query_rate_limit = {}
 class WarrantyService:
     """质保服务类"""
 
+    AUTO_WARRANTY_ENTRY_DEFAULT_DAYS = 30
+    AUTO_WARRANTY_ENTRY_DEFAULT_CLAIMS = 10
+
     TEAM_STATUS_LABELS = {
         "active": "正常",
         "full": "已满",
@@ -100,7 +103,7 @@ class WarrantyService:
             "remaining_days": remaining_days,
             "expires_at": entry.expires_at.isoformat() if entry.expires_at else None,
             "source": entry.source or "auto_redeem",
-            "source_label": "普通兑换自动入列" if (entry.source or "auto_redeem") == "auto_redeem" else "管理员手动维护",
+            "source_label": "质保兑换码自动入列" if (entry.source or "auto_redeem") == "auto_redeem" else "管理员手动维护",
             "last_redeem_code": entry.last_redeem_code,
             "last_warranty_team_id": entry.last_warranty_team_id,
             "status": status,
@@ -218,21 +221,29 @@ class WarrantyService:
         self,
         db_session: AsyncSession,
         email: str,
-        redeem_code: str
-    ) -> WarrantyEmailEntry:
+        redeem_code: str,
+        has_warranty_code: bool = False
+    ) -> Optional[WarrantyEmailEntry]:
+        if not has_warranty_code:
+            return None
+
         normalized_email = self.normalize_email(email)
         result = await db_session.execute(
             select(WarrantyEmailEntry).where(WarrantyEmailEntry.email == normalized_email)
         )
         entry = result.scalar_one_or_none()
+        default_expires_at = self._build_warranty_entry_expires_at(self.AUTO_WARRANTY_ENTRY_DEFAULT_DAYS)
 
         if entry:
             entry.last_redeem_code = redeem_code
+            if (entry.source or "auto_redeem") == "auto_redeem":
+                entry.remaining_claims = self.AUTO_WARRANTY_ENTRY_DEFAULT_CLAIMS
+                entry.expires_at = default_expires_at
         else:
             entry = WarrantyEmailEntry(
                 email=normalized_email,
-                remaining_claims=0,
-                expires_at=None,
+                remaining_claims=self.AUTO_WARRANTY_ENTRY_DEFAULT_CLAIMS,
+                expires_at=default_expires_at,
                 source="auto_redeem",
                 last_redeem_code=redeem_code
             )

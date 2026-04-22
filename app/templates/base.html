@@ -127,6 +127,7 @@
                 <div id="singleImport" class="import-panel">
                     <form id="singleImportForm" onsubmit="handleSingleImport(event)">
                         <input type="hidden" id="singleImportTeamType" name="teamType" value="standard">
+                        <input type="hidden" id="singleImportGenerateWarrantyCodes" name="generateWarrantyCodes" value="false">
                         <div class="form-group">
                             <label>Access Token (AT) <span class="required">*</span></label>
                             <input type="text" name="accessToken" class="form-control"
@@ -159,6 +160,18 @@
                                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
                             <small class="form-text">可选，如果不填写将从 API 自动获取</small>
                         </div>
+                        <div class="form-group" id="singleImportWarrantyOptions">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="checkbox" name="generateWarrantyCodesCheckbox" value="true" style="width: auto; margin: 0;"
+                                    onchange="handleImportWarrantyToggle(this, 'singleImportGenerateWarrantyCodes', 'single-import-warranty-days-group', 'singleImportTeamType')">
+                                <span>自动生成质保兑换码</span>
+                            </label>
+                            <small class="form-text">勾选后，按剩余席位自动生成质保绑定兑换码；用户首次使用后会自动加入质保邮箱列表（默认 30 天 / 10 次）。</small>
+                        </div>
+                        <div class="form-group" id="single-import-warranty-days-group" style="display: none;">
+                            <label>兑换码质保时长 (天) *</label>
+                            <input type="number" name="warrantyDays" class="form-control" value="30" min="1" max="3650">
+                        </div>
                         <div class="form-group">
                             <small id="singleImportHelperText" class="form-text">
                                 导入后会按系统设置中的每个 Team 默认最大人数，自动根据实际剩余席位生成同数量的绑定兑换码。
@@ -179,11 +192,24 @@
                 <div id="batchImport" class="import-panel" style="display: none;">
                     <form id="batchImportForm" onsubmit="handleBatchImport(event)">
                         <input type="hidden" id="batchImportTeamType" name="teamType" value="standard">
+                        <input type="hidden" id="batchImportGenerateWarrantyCodes" name="generateWarrantyCodes" value="false">
                         <div class="form-group">
                             <label>批量导入内容 <span class="required">*</span></label>
                             <textarea name="batchContent" class="form-control" rows="8" placeholder="一行一个 AT Token..."
                                 required></textarea>
                             <small id="batchImportHelperText" class="form-text">支持粘贴一行一个 AT Token，也支持直接粘贴完整的多个 Team 账号 JSON，系统会自动提取 Access Token (AT)。</small>
+                        </div>
+                        <div class="form-group" id="batchImportWarrantyOptions">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="checkbox" name="generateWarrantyCodesCheckbox" value="true" style="width: auto; margin: 0;"
+                                    onchange="handleImportWarrantyToggle(this, 'batchImportGenerateWarrantyCodes', 'batch-import-warranty-days-group', 'batchImportTeamType')">
+                                <span>自动生成质保兑换码</span>
+                            </label>
+                            <small class="form-text">勾选后，导入的普通 Team 会按剩余席位自动生成质保绑定兑换码；用户首次使用后会自动加入质保邮箱列表（默认 30 天 / 10 次）。</small>
+                        </div>
+                        <div class="form-group" id="batch-import-warranty-days-group" style="display: none;">
+                            <label>兑换码质保时长 (天) *</label>
+                            <input type="number" name="warrantyDays" class="form-control" value="30" min="1" max="3650">
                         </div>
                         <div id="batchProgressContainer" style="display: none; margin-bottom: 1.5rem;">
                             <div class="progress-info"

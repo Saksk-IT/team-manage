@@ -98,6 +98,35 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(warranty_result["imported_teams"][0]["max_members"], 8)
         self.assertEqual(code_count, 7)
 
+    async def test_standard_import_can_generate_warranty_bound_codes(self):
+        async with self.Session() as session:
+            with patch(
+                "app.services.team.settings_service.get_default_team_max_members",
+                new=AsyncMock(return_value=8)
+            ):
+                self._mock_import_dependencies(
+                    "warranty-codes@example.com",
+                    "12121212-1212-1212-1212-121212121212",
+                    "Warranty Codes Team",
+                )
+                result = await self.service.import_team_single(
+                    access_token="eyJ.warranty.codes.payload",
+                    db_session=session,
+                    email="warranty-codes@example.com",
+                    account_id="12121212-1212-1212-1212-121212121212",
+                    team_type=TEAM_TYPE_STANDARD,
+                    generate_warranty_codes=True,
+                    warranty_days=45,
+                )
+
+            codes_result = await session.execute(select(RedemptionCode))
+            generated_codes = codes_result.scalars().all()
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["generated_code_count"], 7)
+        self.assertTrue(all(code.has_warranty for code in generated_codes))
+        self.assertTrue(all(code.warranty_days == 45 for code in generated_codes))
+
     async def test_import_rejects_specified_account_when_account_info_fetch_fails(self):
         self.service.jwt_parser.is_token_expired = Mock(return_value=False)
         self.service.jwt_parser.extract_email = Mock(return_value="owner@example.com")

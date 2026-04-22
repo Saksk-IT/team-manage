@@ -53,6 +53,8 @@ class TeamImportRequest(BaseModel):
     """Team 导入请求"""
     import_type: str = Field(..., description="导入类型: single 或 batch")
     team_type: str = Field(TEAM_TYPE_STANDARD, description="Team 类型: standard 或 warranty")
+    generate_warranty_codes: bool = Field(False, description="是否自动生成质保兑换码")
+    warranty_days: int = Field(30, description="自动生成质保兑换码时的质保天数")
     access_token: Optional[str] = Field(None, description="AT Token (单个导入)")
     refresh_token: Optional[str] = Field(None, description="Refresh Token (单个导入)")
     session_token: Optional[str] = Field(None, description="Session Token (单个导入)")
@@ -746,7 +748,9 @@ async def team_import(
                 refresh_token=import_data.refresh_token,
                 session_token=import_data.session_token,
                 client_id=import_data.client_id,
-                team_type=team_type
+                team_type=team_type,
+                generate_warranty_codes=import_data.generate_warranty_codes,
+                warranty_days=import_data.warranty_days,
             )
 
             if not result["success"]:
@@ -763,7 +767,9 @@ async def team_import(
                 async for status_item in team_service.import_team_batch(
                     text=import_data.content,
                     db_session=db,
-                    team_type=team_type
+                    team_type=team_type,
+                    generate_warranty_codes=import_data.generate_warranty_codes,
+                    warranty_days=import_data.warranty_days,
                 ):
                     yield json.dumps(status_item, ensure_ascii=False) + "\n"
 

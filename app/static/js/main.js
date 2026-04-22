@@ -67,11 +67,83 @@ function getImportModeMeta(teamType = TEAM_TYPE_STANDARD) {
 
     return {
         modalTitle: '导入 Team',
-        singleHelper: '导入后会按系统设置中的每个 Team 默认最大人数，自动根据实际剩余席位生成同数量的绑定兑换码。',
-        batchHelper: '支持粘贴一行一个 AT Token，也支持直接粘贴完整的多个 Team 账号 JSON，系统会自动提取 Access Token (AT)。',
+        singleHelper: '导入后会按系统设置中的每个 Team 默认最大人数，自动根据实际剩余席位生成同数量的绑定兑换码；可选择生成普通码或质保码。',
+        batchHelper: '支持粘贴一行一个 AT Token，也支持直接粘贴完整的多个 Team 账号 JSON，系统会自动提取 Access Token (AT)；可选择生成普通码或质保码。',
         singleResultTitle: '自动生成的绑定兑换码',
         batchCodesTitle: '自动生成的绑定兑换码'
     };
+}
+
+function getImportGeneratedCodesTitle(teamType = TEAM_TYPE_STANDARD, generateWarrantyCodes = false) {
+    if (teamType === TEAM_TYPE_WARRANTY) {
+        return '质保 Team 不生成兑换码';
+    }
+
+    return generateWarrantyCodes ? '自动生成的质保绑定兑换码' : '自动生成的绑定兑换码';
+}
+
+function setImportWarrantyOptionsVisibility(teamType = TEAM_TYPE_STANDARD) {
+    const isStandardTeam = teamType === TEAM_TYPE_STANDARD;
+    const optionIds = ['singleImportWarrantyOptions', 'batchImportWarrantyOptions'];
+    const groupIds = ['single-import-warranty-days-group', 'batch-import-warranty-days-group'];
+    const hiddenInputIds = ['singleImportGenerateWarrantyCodes', 'batchImportGenerateWarrantyCodes'];
+    const checkboxSelectors = [
+        '#singleImportForm input[name="generateWarrantyCodesCheckbox"]',
+        '#batchImportForm input[name="generateWarrantyCodesCheckbox"]',
+    ];
+
+    optionIds.forEach((id) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.style.display = isStandardTeam ? 'block' : 'none';
+        }
+    });
+
+    checkboxSelectors.forEach((selector, index) => {
+        const checkbox = document.querySelector(selector);
+        const hiddenInput = document.getElementById(hiddenInputIds[index]);
+        const group = document.getElementById(groupIds[index]);
+        const checked = isStandardTeam ? Boolean(checkbox?.checked) : false;
+
+        if (checkbox && !isStandardTeam) {
+            checkbox.checked = false;
+        }
+
+        if (hiddenInput) {
+            hiddenInput.value = checked ? 'true' : 'false';
+        }
+
+        if (group) {
+            group.style.display = checked ? 'block' : 'none';
+        }
+    });
+
+    updateImportGeneratedCodeTitles(teamType);
+}
+
+function updateImportGeneratedCodeTitles(teamType = TEAM_TYPE_STANDARD) {
+    const singleTitle = document.getElementById('singleImportResultTitle');
+    const batchTitle = document.getElementById('batchImportCodesTitle');
+    const singleWarrantyChecked = Boolean(document.querySelector('#singleImportForm input[name="generateWarrantyCodesCheckbox"]')?.checked);
+    const batchWarrantyChecked = Boolean(document.querySelector('#batchImportForm input[name="generateWarrantyCodesCheckbox"]')?.checked);
+
+    if (singleTitle) {
+        singleTitle.textContent = getImportGeneratedCodesTitle(teamType, singleWarrantyChecked);
+    }
+
+    if (batchTitle) {
+        batchTitle.textContent = getImportGeneratedCodesTitle(teamType, batchWarrantyChecked);
+    }
+}
+
+function handleImportWarrantyToggle(checkbox, hiddenInputId, daysGroupId, teamTypeInputId) {
+    const hiddenInput = document.getElementById(hiddenInputId);
+    const teamType = document.getElementById(teamTypeInputId)?.value || currentImportTeamType;
+    if (hiddenInput) {
+        hiddenInput.value = checkbox.checked ? 'true' : 'false';
+    }
+    toggleWarrantyDays(checkbox, daysGroupId);
+    updateImportGeneratedCodeTitles(teamType);
 }
 
 function showImportTeamModal(teamType = TEAM_TYPE_STANDARD) {
@@ -100,16 +172,17 @@ function showImportTeamModal(teamType = TEAM_TYPE_STANDARD) {
     if (batchResultsContainer) batchResultsContainer.style.display = 'none';
     if (batchProgressContainer) batchProgressContainer.style.display = 'none';
 
-    updateBatchImportCodes([], currentImportTeamType);
+    setImportWarrantyOptionsVisibility(currentImportTeamType);
+    updateBatchImportCodes([], currentImportTeamType, false);
     switchModalTab('importTeamModal', 'singleImport');
     showModal('importTeamModal');
 }
 
-function renderImportedTeamsSummary(importedTeams = [], teamType = TEAM_TYPE_STANDARD) {
+function renderImportedTeamsSummary(importedTeams = [], teamType = TEAM_TYPE_STANDARD, generateWarrantyCodes = false) {
     if (!importedTeams.length) {
         return teamType === TEAM_TYPE_WARRANTY
             ? '<div class="text-muted">本次导入的质保 Team 不会生成兑换码。</div>'
-            : '<div class="text-muted">本次未生成绑定兑换码。</div>';
+            : `<div class="text-muted">本次未生成${generateWarrantyCodes ? '质保' : ''}绑定兑换码。</div>`;
     }
 
     return importedTeams.map(team => `
@@ -121,7 +194,7 @@ function renderImportedTeamsSummary(importedTeams = [], teamType = TEAM_TYPE_STA
                 当前成员 ${team.current_members}/${team.max_members}，剩余席位 ${team.remaining_seats}，
                 ${teamType === TEAM_TYPE_WARRANTY
             ? '质保 Team 不生成兑换码'
-            : `自动生成 ${team.generated_code_count} 个绑定兑换码`}
+            : `自动生成 ${team.generated_code_count} 个${(team.generated_code_has_warranty ?? generateWarrantyCodes) ? '质保绑定兑换码' : '绑定兑换码'}`}
             </div>
         </div>
     `).join('');
@@ -131,18 +204,20 @@ function collectImportedCodes(importedTeams = []) {
     return importedTeams.flatMap(team => Array.isArray(team.generated_codes) ? team.generated_codes : []);
 }
 
-function showSingleImportResult(importedTeams = [], teamType = TEAM_TYPE_STANDARD) {
+function showSingleImportResult(importedTeams = [], teamType = TEAM_TYPE_STANDARD, generateWarrantyCodes = false) {
     const resultBox = document.getElementById('singleImportResult');
     const summaryBox = document.getElementById('singleImportSummary');
     const codesBox = document.getElementById('singleImportCodes');
     const copyBtn = document.getElementById('singleImportCopyBtn');
+    const titleBox = document.getElementById('singleImportResultTitle');
 
-    if (!resultBox || !summaryBox || !codesBox || !copyBtn) {
+    if (!resultBox || !summaryBox || !codesBox || !copyBtn || !titleBox) {
         return;
     }
 
     const codes = collectImportedCodes(importedTeams);
-    summaryBox.innerHTML = renderImportedTeamsSummary(importedTeams, teamType);
+    titleBox.textContent = getImportGeneratedCodesTitle(teamType, generateWarrantyCodes);
+    summaryBox.innerHTML = renderImportedTeamsSummary(importedTeams, teamType, generateWarrantyCodes);
     codesBox.value = codes.join('\n');
     const hasCodes = codes.length > 0;
     codesBox.style.display = hasCodes ? 'block' : 'none';
@@ -160,26 +235,28 @@ async function copySingleImportCodes() {
     await copyToClipboard(codesBox.value.trim());
 }
 
-function updateBatchImportCodes(codes = [], teamType = TEAM_TYPE_STANDARD) {
+function updateBatchImportCodes(codes = [], teamType = TEAM_TYPE_STANDARD, generateWarrantyCodes = false) {
     const codesSection = document.getElementById('batchImportCodesSection');
     const codesSummary = document.getElementById('batchImportCodesSummary');
     const codesBox = document.getElementById('batchImportCodes');
     const copyBtn = document.getElementById('batchImportCodesCopyBtn');
+    const titleBox = document.getElementById('batchImportCodesTitle');
 
-    if (!codesSection || !codesSummary || !codesBox || !copyBtn) {
+    if (!codesSection || !codesSummary || !codesBox || !copyBtn || !titleBox) {
         return;
     }
 
     const normalizedCodes = Array.from(new Set((codes || []).filter(Boolean)));
     codesBox.value = normalizedCodes.join('\n');
+    titleBox.textContent = getImportGeneratedCodesTitle(teamType, generateWarrantyCodes);
 
     if (normalizedCodes.length > 0) {
         codesSection.style.display = 'block';
-        codesSummary.textContent = `已自动汇总 ${normalizedCodes.length} 个绑定兑换码`;
+        codesSummary.textContent = `已自动汇总 ${normalizedCodes.length} 个${generateWarrantyCodes ? '质保' : ''}绑定兑换码`;
         copyBtn.style.display = 'inline-flex';
     } else {
         codesSection.style.display = 'none';
-        codesSummary.textContent = teamType === TEAM_TYPE_WARRANTY ? '质保 Team 不会生成兑换码' : '导入成功后会自动汇总';
+        codesSummary.textContent = teamType === TEAM_TYPE_WARRANTY ? '质保 Team 不会生成兑换码' : `导入成功后会自动汇总${generateWarrantyCodes ? '质保' : ''}绑定兑换码`;
         copyBtn.style.display = teamType === TEAM_TYPE_WARRANTY ? 'none' : 'inline-flex';
     }
 }
@@ -398,6 +475,8 @@ async function handleSingleImport(event) {
     event.preventDefault();
     const form = event.target;
     const teamType = form.teamType?.value || currentImportTeamType;
+    const generateWarrantyCodes = teamType === TEAM_TYPE_STANDARD && Boolean(form.generateWarrantyCodesCheckbox?.checked);
+    const warrantyDays = form.warrantyDays ? parseInt(form.warrantyDays.value || '30', 10) : 30;
     const accessToken = form.accessToken.value.trim();
     const refreshToken = form.refreshToken ? form.refreshToken.value.trim() : null;
     const sessionToken = form.sessionToken ? form.sessionToken.value.trim() : null;
@@ -420,21 +499,24 @@ async function handleSingleImport(event) {
                 session_token: sessionToken || null,
                 client_id: clientId || null,
                 email: email || null,
-                account_id: accountId || null
+                account_id: accountId || null,
+                generate_warranty_codes: generateWarrantyCodes,
+                warranty_days: warrantyDays,
             })
         });
 
         if (result.success) {
             const importedTeams = result.data.imported_teams || [];
             const generatedCodeCount = result.data.generated_code_count || 0;
-            showSingleImportResult(importedTeams, teamType);
+            showSingleImportResult(importedTeams, teamType, generateWarrantyCodes);
             if (teamType === TEAM_TYPE_WARRANTY) {
                 showToast('质保 Team 导入成功', 'success');
             } else {
-                showToast(`Team 导入成功，已自动生成 ${generatedCodeCount} 个绑定兑换码`, 'success');
+                showToast(`Team 导入成功，已自动生成 ${generatedCodeCount} 个${generateWarrantyCodes ? '质保' : ''}绑定兑换码`, 'success');
             }
             form.reset();
             if (form.teamType) form.teamType.value = teamType;
+            setImportWarrantyOptionsVisibility(teamType);
             scheduleImportedTeamListRefresh(1500);
         } else {
             showToast(result.error || '导入失败', 'error');
@@ -451,6 +533,8 @@ async function handleBatchImport(event) {
     event.preventDefault();
     const form = event.target;
     const teamType = form.teamType?.value || currentImportTeamType;
+    const generateWarrantyCodes = teamType === TEAM_TYPE_STANDARD && Boolean(form.generateWarrantyCodesCheckbox?.checked);
+    const warrantyDays = form.warrantyDays ? parseInt(form.warrantyDays.value || '30', 10) : 30;
     const batchContent = form.batchContent.value.trim();
     const submitButton = form.querySelector('button[type="submit"]');
     const importedCodes = [];
@@ -475,7 +559,7 @@ async function handleBatchImport(event) {
     successCountEl.textContent = '0';
     failedCountEl.textContent = '0';
     resultsDiv.innerHTML = '<table class="data-table"><thead><tr><th>邮箱</th><th>状态</th><th>消息</th></tr></thead><tbody id="batchResultsBody"></tbody></table>';
-    updateBatchImportCodes([], teamType);
+    updateBatchImportCodes([], teamType, generateWarrantyCodes);
     const resultsBody = document.getElementById('batchResultsBody');
 
     submitButton.disabled = true;
@@ -490,7 +574,9 @@ async function handleBatchImport(event) {
             body: JSON.stringify({
                 import_type: 'batch',
                 team_type: teamType,
-                content: batchContent
+                content: batchContent,
+                generate_warranty_codes: generateWarrantyCodes,
+                warranty_days: warrantyDays,
             })
         });
 
@@ -535,7 +621,7 @@ async function handleBatchImport(event) {
                             const latestImportedCodes = res.success ? collectImportedCodes(res.imported_teams || []) : [];
                             if (latestImportedCodes.length) {
                                 importedCodes.push(...latestImportedCodes);
-                                updateBatchImportCodes(importedCodes, teamType);
+                                updateBatchImportCodes(importedCodes, teamType, generateWarrantyCodes);
                             }
                             const detailsHtml = res.success && Array.isArray(res.imported_teams) && res.imported_teams.length
                                 ? `
@@ -545,7 +631,9 @@ async function handleBatchImport(event) {
                                                 <strong>${escapeHtml(team.team_name || `Team ${team.team_id}`)}</strong>
                                                 <span style="color: var(--text-muted);">#${team.team_id}</span>
                                                 ：剩余 ${team.remaining_seats} 席，
-                                                ${teamType === TEAM_TYPE_WARRANTY ? '质保 Team 不生成兑换码' : `已生成 ${team.generated_code_count} 个绑定码`}
+                                                ${teamType === TEAM_TYPE_WARRANTY
+                                                    ? '质保 Team 不生成兑换码'
+                                                    : `已生成 ${team.generated_code_count} 个${(team.generated_code_has_warranty ?? generateWarrantyCodes) ? '质保绑定码' : '绑定码'}${(team.generated_code_has_warranty ?? generateWarrantyCodes) ? `（${team.generated_code_warranty_days || warrantyDays} 天）` : ''}`}
                                                 ${team.generated_codes && team.generated_codes.length ? `
                                                     <div style="margin-top: 0.25rem; word-break: break-all;">
                                                         <code>${escapeHtml(team.generated_codes.join(', '))}</code>
@@ -578,7 +666,7 @@ async function handleBatchImport(event) {
                         if (data.failed_count === 0 && teamType === TEAM_TYPE_WARRANTY) {
                             showToast('质保 Team 全部导入成功', 'success');
                         } else if (data.failed_count === 0) {
-                            showToast('全部导入成功，自动生成的绑定兑换码已显示在明细中', 'success');
+                            showToast(`全部导入成功，自动生成的${generateWarrantyCodes ? '质保' : ''}绑定兑换码已显示在明细中`, 'success');
                         } else {
                             const prefix = teamType === TEAM_TYPE_WARRANTY ? '质保 Team 导入完成' : '导入完成';
                             showToast(`${prefix}，成功 ${data.success_count} 条，失败 ${data.failed_count} 条`, 'warning');

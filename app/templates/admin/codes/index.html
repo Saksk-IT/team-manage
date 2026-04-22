@@ -198,12 +198,12 @@
                                 class="btn btn-sm btn-icon btn-minimal btn-secondary" title="复制">
                                 <i data-lucide="copy" style="width: 14px; height: 14px;"></i>
                             </button>
+                            {% if code.status == 'unused' %}
                             <button
                                 onclick="editCode('{{ code.code }}', {{ 'true' if code.has_warranty else 'false' }}, {{ code.warranty_days or 30 }})"
                                 class="btn btn-sm btn-icon btn-minimal btn-info" title="编辑">
                                 <i data-lucide="edit-3" style="width: 14px; height: 14px;"></i>
                             </button>
-                            {% if code.status == 'unused' %}
                             <button onclick="deleteCode('{{ code.code }}')"
                                 class="btn btn-sm btn-icon btn-minimal btn-danger" title="删除">
                                 <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
@@ -347,6 +347,7 @@
             <div class="alert alert-info" style="margin-bottom: 1rem;">
                 您正在批量修改 <strong id="bulk-selected-count-display">0</strong> 个兑换码的质保信息。
             </div>
+            <div class="form-text" style="margin-bottom: 1rem;">仅支持修改未使用的兑换码，已使用/已过期的历史兑换码不会被改写。</div>
             <form id="bulkEditCodeForm" onsubmit="handleBulkEditCode(event)">
                 <div class="form-group">
                     <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-top: 1rem;">
@@ -382,6 +383,7 @@
                     <input type="text" id="edit-code-display" class="form-control" readonly
                         style="background: rgba(0,0,0,0.05);">
                 </div>
+                <div class="form-text" style="margin-bottom: 1rem;">仅未使用的兑换码支持切换为质保兑换码或取消质保。</div>
                 <div class="form-group">
                     <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-top: 1rem;">
                         <input type="checkbox" id="edit-has-warranty" name="hasWarranty" style="width: auto; margin: 0;"

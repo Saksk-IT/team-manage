@@ -881,6 +881,27 @@ class RedemptionService:
             if not codes:
                 return {"success": True, "message": "没有需要更新的兑换码"}
 
+            stmt = select(RedemptionCode).where(RedemptionCode.code.in_(codes))
+            result = await db_session.execute(stmt)
+            existing_codes = result.scalars().all()
+            existing_code_map = {code.code: code for code in existing_codes}
+
+            missing_codes = [code for code in codes if code not in existing_code_map]
+            if missing_codes:
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": f"以下兑换码不存在: {', '.join(missing_codes[:5])}"
+                }
+
+            non_unused_codes = [code.code for code in existing_codes if code.status != "unused"]
+            if non_unused_codes:
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": "仅允许修改未使用的兑换码"
+                }
+
             # 构建更新语句
             values = {}
             if has_warranty is not None:

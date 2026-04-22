@@ -27,23 +27,40 @@ class WarrantyEmailAutoEnqueueTests(unittest.IsolatedAsyncioTestCase):
         if os.path.exists(self.db_path):
             os.remove(self.db_path)
 
-    async def test_sync_warranty_email_entry_after_redeem_creates_default_disabled_entry(self):
+    async def test_sync_warranty_email_entry_after_redeem_creates_default_entry_for_warranty_code(self):
         async with self.Session() as session:
             service = WarrantyService()
             await service.sync_warranty_email_entry_after_redeem(
                 db_session=session,
                 email="buyer@example.com",
-                redeem_code="CODE-123"
+                redeem_code="CODE-123",
+                has_warranty_code=True,
+            )
+            await session.commit()
+
+            entry = await service.get_warranty_email_entry(session, "buyer@example.com")
+            serialized_entry = service.serialize_warranty_email_entry(entry)
+
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.remaining_claims, 10)
+        self.assertEqual(serialized_entry["remaining_days"], 30)
+        self.assertEqual(entry.last_redeem_code, "CODE-123")
+        self.assertEqual(entry.source, "auto_redeem")
+
+    async def test_sync_warranty_email_entry_after_redeem_skips_non_warranty_code(self):
+        async with self.Session() as session:
+            service = WarrantyService()
+            await service.sync_warranty_email_entry_after_redeem(
+                db_session=session,
+                email="buyer@example.com",
+                redeem_code="CODE-123",
+                has_warranty_code=False,
             )
             await session.commit()
 
             entry = await service.get_warranty_email_entry(session, "buyer@example.com")
 
-        self.assertIsNotNone(entry)
-        self.assertEqual(entry.remaining_claims, 0)
-        self.assertIsNone(entry.expires_at)
-        self.assertEqual(entry.last_redeem_code, "CODE-123")
-        self.assertEqual(entry.source, "auto_redeem")
+        self.assertIsNone(entry)
 
     async def test_sync_warranty_email_entry_after_redeem_does_not_override_manual_limits(self):
         async with self.Session() as session:
@@ -62,7 +79,8 @@ class WarrantyEmailAutoEnqueueTests(unittest.IsolatedAsyncioTestCase):
             await service.sync_warranty_email_entry_after_redeem(
                 db_session=session,
                 email="buyer@example.com",
-                redeem_code="NEW-CODE"
+                redeem_code="NEW-CODE",
+                has_warranty_code=True,
             )
             await session.commit()
 
@@ -72,6 +90,36 @@ class WarrantyEmailAutoEnqueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(entry.expires_at)
         self.assertEqual(entry.last_redeem_code, "NEW-CODE")
         self.assertEqual(entry.source, "manual")
+
+    async def test_sync_warranty_email_entry_after_redeem_refreshes_auto_limits_for_new_warranty_code(self):
+        async with self.Session() as session:
+            session.add(
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=1,
+                    expires_at=get_now() + timedelta(days=1),
+                    source="auto_redeem",
+                    last_redeem_code="OLD-CODE"
+                )
+            )
+            await session.commit()
+
+            service = WarrantyService()
+            await service.sync_warranty_email_entry_after_redeem(
+                db_session=session,
+                email="buyer@example.com",
+                redeem_code="NEW-CODE",
+                has_warranty_code=True,
+            )
+            await session.commit()
+
+            entry = await service.get_warranty_email_entry(session, "buyer@example.com")
+            serialized_entry = service.serialize_warranty_email_entry(entry)
+
+        self.assertEqual(entry.remaining_claims, 10)
+        self.assertEqual(serialized_entry["remaining_days"], 30)
+        self.assertEqual(entry.last_redeem_code, "NEW-CODE")
+        self.assertEqual(entry.source, "auto_redeem")
 
 
 if __name__ == "__main__":
