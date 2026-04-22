@@ -190,8 +190,8 @@
 
         document.getElementById('warrantyEntryId').value = entry.id || '';
         document.getElementById('warrantyEmail').value = entry.email || '';
-        remainingDaysInput.value = entry.remaining_days ?? remainingDaysInput.defaultValue;
-        remainingClaimsInput.value = entry.remaining_claims ?? remainingClaimsInput.defaultValue;
+        remainingDaysInput.value = remainingDaysInput.defaultValue;
+        remainingClaimsInput.value = remainingClaimsInput.defaultValue;
         setWarrantyEditorMode(true, entry);
         document.getElementById('warrantyEmail')?.focus();
         window.scrollTo({ top: 0, behavior: 'smooth' });
