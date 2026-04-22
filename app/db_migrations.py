@@ -196,6 +196,29 @@ def run_auto_migration():
             WHERE team_type IS NULL OR TRIM(team_type) = ''
         """)
 
+        if not column_exists(cursor, "teams", "bound_code_type"):
+            logger.info("添加 teams.bound_code_type 字段")
+            cursor.execute("ALTER TABLE teams ADD COLUMN bound_code_type VARCHAR(20) DEFAULT 'standard'")
+            migrations_applied.append("teams.bound_code_type")
+
+        cursor.execute("""
+            UPDATE teams
+            SET bound_code_type = 'standard'
+            WHERE bound_code_type IS NULL OR TRIM(bound_code_type) = ''
+        """)
+
+        if table_exists(cursor, "redemption_codes"):
+            cursor.execute("""
+                UPDATE teams
+                SET bound_code_type = 'warranty'
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM redemption_codes
+                    WHERE redemption_codes.bound_team_id = teams.id
+                      AND COALESCE(redemption_codes.has_warranty, 0) = 1
+                )
+            """)
+
         if not column_exists(cursor, "teams", "error_count"):
             logger.info("添加 teams.error_count 字段")
             cursor.execute("ALTER TABLE teams ADD COLUMN error_count INTEGER DEFAULT 0")

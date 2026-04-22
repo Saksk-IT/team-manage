@@ -22,6 +22,7 @@ class Team(Base):
     encryption_key_id = Column(String(50), comment="加密密钥 ID")
     account_id = Column(String(100), comment="当前使用的 account-id")
     team_type = Column(String(20), nullable=False, default="standard", comment="Team 类型: standard/warranty")
+    bound_code_type = Column(String(20), nullable=False, default="standard", comment="绑定兑换码类型: standard/warranty")
     team_name = Column(String(255), comment="Team 名称")
     plan_type = Column(String(50), comment="计划类型")
     subscription_plan = Column(String(100), comment="订阅计划")

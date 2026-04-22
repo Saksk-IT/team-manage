@@ -124,6 +124,7 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual(result["generated_code_count"], 7)
+        self.assertEqual(result["imported_teams"][0]["bound_code_type"], TEAM_TYPE_WARRANTY)
         self.assertTrue(all(code.has_warranty for code in generated_codes))
         self.assertTrue(all(code.warranty_days == 45 for code in generated_codes))
 

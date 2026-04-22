@@ -198,7 +198,19 @@
                     </div>
                 </td>
                 <td><span class="text-muted small">{{ team.account_id or '-' }}</span></td>
-                <td>{{ team.team_name or '-' }}</td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                        <span>{{ team.team_name or '-' }}</span>
+                        {% if not is_warranty_mode %}
+                        <span
+                            class="status-badge team-bound-code-type-badge {{ 'status-info' if team.bound_code_type == 'warranty' else 'status-banned' }}"
+                            data-bound-code-type="{{ team.bound_code_type }}"
+                            title="绑定兑换码类型">
+                            {{ team.bound_code_type_label }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </td>
                 <td>
                     <span class="member-count">
                         {{ team.current_members }}/{{ team.max_members }}

@@ -845,6 +845,7 @@ class TeamService:
                     encryption_key_id="default",
                     account_id=selected_account["account_id"],
                     team_type=team_type,
+                    bound_code_type=TEAM_TYPE_WARRANTY if team_type == TEAM_TYPE_STANDARD and generate_warranty_codes else TEAM_TYPE_STANDARD,
                     team_name=selected_account["name"],
                     plan_type=selected_account["plan_type"],
                     subscription_plan=selected_account["subscription_plan"],
@@ -893,6 +894,7 @@ class TeamService:
                     "team_id": team.id,
                     "account_id": team.account_id,
                     "team_type": team.team_type,
+                    "bound_code_type": team.bound_code_type,
                     "team_name": team.team_name,
                     "current_members": current_members,
                     "max_members": max_members,
@@ -1124,6 +1126,7 @@ class TeamService:
 
             cleanup_result = await self._clear_bound_codes_for_team(team.id, db_session)
             team.team_type = normalized_target_type
+            team.bound_code_type = TEAM_TYPE_STANDARD
 
             generated_codes: List[str] = []
             generated_code_count = 0
@@ -2495,6 +2498,8 @@ class TeamService:
                     "email": team.email,
                     "account_id": team.account_id,
                     "team_type": team.team_type,
+                    "bound_code_type": team.bound_code_type or TEAM_TYPE_STANDARD,
+                    "bound_code_type_label": "质保" if (team.bound_code_type or TEAM_TYPE_STANDARD) == TEAM_TYPE_WARRANTY else "普通",
                     "team_name": team.team_name,
                     "plan_type": team.plan_type,
                     "subscription_plan": team.subscription_plan,
