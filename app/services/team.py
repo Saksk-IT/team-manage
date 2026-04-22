@@ -33,6 +33,15 @@ ProgressCallback = Optional[Callable[[Dict[str, Any]], Awaitable[None]]]
 class TeamService:
     """Team 管理服务类"""
 
+    BANNED_ERROR_CODES = {
+        "account_deactivated",
+        "token_invalidated",
+        "account_suspended",
+        "account_not_found",
+        "user_not_found",
+        "deactivated_workspace",
+    }
+
     def __init__(self):
         """初始化 Team 管理服务"""
         from app.services.chatgpt import chatgpt_service
@@ -218,15 +227,7 @@ class TeamService:
         
         # 1. 判定是否为“封号/永久失效”类致命错误
         # 明确的错误码匹配
-        ban_codes = {
-            "account_deactivated", 
-            "token_invalidated", 
-            "account_suspended", 
-            "account_not_found",
-            "user_not_found",
-            "deactivated_workspace"
-        }
-        is_banned = error_code in ban_codes
+        is_banned = error_code in self.BANNED_ERROR_CODES
         
         # 关键词匹配 (针对不同接口返回的文本差异，尤其是刷新 Token 时 descripton 里的信息)
         if not is_banned:
@@ -349,15 +350,7 @@ class TeamService:
         error_code = result.get("error_code")
         error_msg = str(result.get("error", "")).lower()
 
-        fatal_codes = {
-            "account_deactivated",
-            "token_invalidated",
-            "account_suspended",
-            "account_not_found",
-            "user_not_found",
-            "deactivated_workspace",
-        }
-        if error_code in fatal_codes:
+        if error_code in self.BANNED_ERROR_CODES:
             return True
 
         fatal_keywords = [
@@ -1347,12 +1340,14 @@ class TeamService:
                     return {
                         "success": False,
                         "message": None,
-                        "error": "Team 账号已封禁/失效 (token_invalidated)"
+                        "error": "Team 账号已封禁/失效 (token_invalidated)",
+                        "error_code": "token_invalidated"
                     }
                 return {
                     "success": False,
                     "message": None,
-                    "error": "Token 已过期且无法刷新"
+                    "error": "Token 已过期且无法刷新",
+                    "error_code": "token_refresh_failed"
                 }
 
             # 2.5 校验 Token 所属用户是否正确 (安全兜底)
@@ -1392,7 +1387,8 @@ class TeamService:
                             return {
                                 "success": False,
                                 "message": None,
-                                "error": f"刷新出的账号身份 ({new_token_email}) 与原账号 ({team.email}) 不符。同步已中止。"
+                                "error": f"刷新出的账号身份 ({new_token_email}) 与原账号 ({team.email}) 不符。同步已中止。",
+                                "error_code": "token_identity_mismatch"
                             }
 
                         # 使用新 Token 再次尝试
@@ -1408,7 +1404,8 @@ class TeamService:
                             return {
                                 "success": False,
                                 "message": None,
-                                "error": f"Token 刷新成功但获取账户信息仍失败 (status 401)"
+                                "error": f"Token 刷新成功但获取账户信息仍失败 (status 401)",
+                                "error_code": account_result.get("error_code") or "account_info_failed_after_refresh"
                             }
                     else:
                         # 刷新失败，标记为过期
@@ -1419,7 +1416,8 @@ class TeamService:
                         return {
                             "success": False,
                             "message": None,
-                            "error": "Token 已过期且无法刷新"
+                            "error": "Token 已过期且无法刷新",
+                            "error_code": "token_refresh_failed"
                         }
                 else:
                     # 其他非 Token 过期导致的错误
@@ -1434,7 +1432,8 @@ class TeamService:
                     return {
                         "success": False,
                         "message": None,
-                        "error": error_msg
+                        "error": error_msg,
+                        "error_code": account_result.get("error_code")
                     }
 
             # 4. 查找当前使用的 account
@@ -1512,7 +1511,8 @@ class TeamService:
                     return {
                         "success": False,
                         "message": None,
-                        "error": error_msg
+                        "error": error_msg,
+                        "error_code": invites_result.get("error_code")
                     }
                 
                 # 其他错误, 累加错误次数
@@ -1524,7 +1524,8 @@ class TeamService:
                 return {
                     "success": False,
                     "message": None,
-                    "error": f"获取成员列表失败: {members_result['error']} (错误次数: {team.error_count})"
+                    "error": f"获取成员列表失败: {members_result['error']} (错误次数: {team.error_count})",
+                    "error_code": invites_result.get("error_code") or members_result.get("error_code")
                 }
 
             # 6. 解析过期时间

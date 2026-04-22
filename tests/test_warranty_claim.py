@@ -280,6 +280,54 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["error"], "上游接口超时")
         service.team_service.sync_team_info.assert_awaited_once_with(ordinary_team.id, session)
 
+    async def test_get_warranty_claim_status_treats_deactivated_workspace_as_banned(self):
+        async with self.Session() as session:
+            ordinary_team, _ = await self._seed_team_data(session)
+            ordinary_team.status = "active"
+            team_id = ordinary_team.id
+            session.add(
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=5),
+                    source="manual",
+                    last_redeem_code="CODE-BANNED"
+                )
+            )
+            await self._add_latest_team_record(
+                session=session,
+                team=ordinary_team,
+                email="buyer@example.com",
+                code="CODE-BANNED"
+            )
+            await session.commit()
+
+            service = WarrantyService()
+
+            async def fake_sync(team_id, db_session, force_refresh=False, progress_callback=None):
+                team = await db_session.get(Team, team_id)
+                team.status = "banned"
+                return {
+                    "success": False,
+                    "error": "workspace 已停用",
+                    "error_code": "deactivated_workspace"
+                }
+
+            service.team_service.sync_team_info = AsyncMock(side_effect=fake_sync)
+
+            result = await service.get_warranty_claim_status(
+                db_session=session,
+                email="buyer@example.com"
+            )
+
+        async with self.Session() as verify_session:
+            persisted_team = await verify_session.get(Team, team_id)
+
+        self.assertTrue(result["success"])
+        self.assertTrue(result["can_claim"])
+        self.assertEqual(result["latest_team"]["status"], "banned")
+        self.assertEqual(persisted_team.status, "banned")
+
     async def test_get_warranty_claim_status_prefers_latest_team_from_warranty_entry(self):
         async with self.Session() as session:
             ordinary_team, warranty_team = await self._seed_team_data(session)
