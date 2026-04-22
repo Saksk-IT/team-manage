@@ -185,10 +185,13 @@
     }
 
     function fillWarrantyEmailForm(entry) {
+        const remainingDaysInput = document.getElementById('warrantyRemainingDays');
+        const remainingClaimsInput = document.getElementById('warrantyRemainingClaims');
+
         document.getElementById('warrantyEntryId').value = entry.id || '';
         document.getElementById('warrantyEmail').value = entry.email || '';
-        document.getElementById('warrantyRemainingDays').value = entry.remaining_days ?? '';
-        document.getElementById('warrantyRemainingClaims').value = entry.remaining_claims ?? 0;
+        remainingDaysInput.value = entry.remaining_days ?? remainingDaysInput.defaultValue;
+        remainingClaimsInput.value = entry.remaining_claims ?? remainingClaimsInput.defaultValue;
         setWarrantyEditorMode(true, entry);
         document.getElementById('warrantyEmail')?.focus();
         window.scrollTo({ top: 0, behavior: 'smooth' });

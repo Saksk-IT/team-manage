@@ -63,6 +63,8 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("CODE-123", html)
         self.assertIn('id="warrantyRemainingDays" class="form-control" min="0" value="30"', html)
         self.assertIn('id="warrantyRemainingClaims" class="form-control" min="0" value="10" required', html)
+        self.assertIn("remainingDaysInput.value = entry.remaining_days ?? remainingDaysInput.defaultValue;", html)
+        self.assertIn("remainingClaimsInput.value = entry.remaining_claims ?? remainingClaimsInput.defaultValue;", html)
 
     async def test_warranty_emails_page_supports_search_by_redeem_code(self):
         async with self.Session() as session:
