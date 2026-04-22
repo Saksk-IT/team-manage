@@ -888,10 +888,10 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
             } else if (typeof data.error === 'string') {
                 errorMessage = data.error;
             }
-            showErrorResult(errorMessage);
+            showErrorResult(errorMessage, '状态查询失败');
         }
     } catch (error) {
-        showErrorResult(error.message || '网络错误,请稍后重试');
+        showErrorResult(error.message || '网络错误,请稍后重试', '状态查询失败');
     } finally {
         closeTransitionOverlay();
         if (claimBtn) claimBtn.disabled = false;
@@ -941,7 +941,7 @@ async function submitWarrantyClaim(email) {
                 } else if (typeof validateData?.error === 'string') {
                     errorMessage = validateData.error;
                 }
-                showErrorResult(errorMessage);
+                showErrorResult(errorMessage, '质保申请失败');
                 return;
             }
 
@@ -992,10 +992,10 @@ async function submitWarrantyClaim(email) {
             } else if (typeof data.error === 'string') {
                 errorMessage = data.error;
             }
-            showErrorResult(errorMessage);
+            showErrorResult(errorMessage, '质保申请失败');
         }
     } catch (error) {
-        showErrorResult(error.message || '网络错误,请稍后重试');
+        showErrorResult(error.message || '网络错误,请稍后重试', '质保申请失败');
     } finally {
         closeTransitionOverlay();
         if (continueBtn) {
@@ -1327,14 +1327,14 @@ function showWarrantyClaimSuccessResult(data, email) {
 }
 
 // 显示错误结果
-function showErrorResult(errorMessage) {
+function showErrorResult(errorMessage, title = '兑换失败') {
     closeTransitionOverlay();
     const resultContent = document.getElementById('resultContent');
 
     resultContent.innerHTML = `
         <div class="result-error">
             <div class="result-icon"><i data-lucide="x-circle" style="width: 64px; height: 64px; color: var(--danger);"></i></div>
-            <div class="result-title">兑换失败</div>
+            <div class="result-title">${escapeHtml(title)}</div>
             <div class="result-message">${escapeHtml(errorMessage)}</div>
 
             <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 2rem;">

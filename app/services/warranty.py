@@ -552,17 +552,29 @@ class WarrantyService:
         if not latest_team:
             return latest_context
 
+        previous_team_status = (latest_team.status or "").strip().lower()
         try:
             sync_result = await self.team_service.sync_team_info(latest_team.id, db_session)
             if not sync_result.get("success"):
-                if sync_result.get("error_code") in self.team_service.BANNED_ERROR_CODES:
+                latest_team_status = (latest_team.status or "").strip().lower()
+                team_became_banned_during_refresh = (
+                    previous_team_status != "banned"
+                    and latest_team_status == "banned"
+                )
+                if (
+                    sync_result.get("error_code") in self.team_service.BANNED_ERROR_CODES
+                    or team_became_banned_during_refresh
+                ):
                     logger.info(
-                        "质保状态查询识别到 Team 已不可用，按封禁处理 email=%s team_id=%s error_code=%s",
+                        "质保状态查询识别到 Team 已不可用，按封禁处理 email=%s team_id=%s error_code=%s previous_status=%s current_status=%s",
                         self.normalize_email(email),
                         latest_team.id,
-                        sync_result.get("error_code")
+                        sync_result.get("error_code"),
+                        previous_team_status,
+                        latest_team_status
                     )
-                    latest_team.status = "banned"
+                    if latest_team_status != "banned":
+                        latest_team.status = "banned"
                     await db_session.commit()
                     refreshed_context = await self._load_latest_team_context_for_email(
                         db_session,

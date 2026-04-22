@@ -62,6 +62,56 @@ class ChatGPTService:
             self._sessions[identifier] = await self._create_session(db_session)
         return self._sessions[identifier]
 
+    def _extract_error_code(self, error_data: Any) -> Optional[str]:
+        if not isinstance(error_data, dict):
+            return None
+
+        candidates = [
+            error_data,
+            error_data.get("error"),
+            error_data.get("detail"),
+        ]
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            for key in ("code", "error_code"):
+                value = candidate.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        return None
+
+    def _extract_error_message(self, error_data: Any, fallback_error: str) -> str:
+        def extract_from_candidate(candidate: Any) -> Optional[str]:
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+            if not isinstance(candidate, dict):
+                return None
+            for key in ("message", "msg", "detail", "error", "error_description", "code"):
+                value = candidate.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            return str(candidate)
+
+        if isinstance(error_data, dict):
+            for candidate in (
+                error_data.get("detail"),
+                error_data.get("error"),
+                error_data,
+            ):
+                extracted = extract_from_candidate(candidate)
+                if extracted:
+                    return extracted
+
+        return str(fallback_error)
+
+    def _build_failed_result(self, result: Dict[str, Any], **payload: Any) -> Dict[str, Any]:
+        return {
+            "success": False,
+            **payload,
+            "error": result.get("error"),
+            "error_code": result.get("error_code"),
+        }
+
     async def _make_request(
         self,
         method: str,
@@ -135,12 +185,8 @@ class ChatGPTService:
                     error_code = None
                     try:
                         error_data = response.json()
-                        detail = error_data.get("detail", error_msg)
-                        # 确保 error_msg 是字符串，避免前端显示 [object Object]
-                        error_msg = str(detail) if not isinstance(detail, str) else detail
-                        if isinstance(error_data, dict):
-                            error_info = error_data.get("error")
-                            error_code = error_info.get("code") if isinstance(error_info, dict) else error_data.get("code")
+                        error_msg = self._extract_error_message(error_data, error_msg)
+                        error_code = self._extract_error_code(error_data)
                     except Exception:
                         pass
                     
@@ -198,7 +244,7 @@ class ChatGPTService:
             headers = {"Authorization": f"Bearer {access_token}"}
             result = await self._make_request("GET", url, headers, db_session=db_session, identifier=identifier)
             if not result["success"]:
-                return {"success": False, "members": [], "total": 0, "error": result["error"]}
+                return self._build_failed_result(result, members=[], total=0)
             data = result["data"]
             items = data.get("items", [])
             total = data.get("total", 0)
@@ -223,7 +269,7 @@ class ChatGPTService:
         }
         result = await self._make_request("GET", url, headers, db_session=db_session, identifier=identifier)
         if not result["success"]:
-            return {"success": False, "items": [], "total": 0, "error": result["error"]}
+            return self._build_failed_result(result, items=[], total=0)
         data = result["data"]
         items = data.get("items", [])
         return {"success": True, "items": items, "total": len(items), "error": None}
@@ -298,7 +344,7 @@ class ChatGPTService:
             headers["chatgpt-account-id"] = account_id
         result = await self._make_request("GET", url, headers, db_session=db_session, identifier=identifier)
         if not result["success"]:
-            return {"success": False, "accounts": [], "error": result["error"]}
+            return self._build_failed_result(result, accounts=[])
         
         data = result["data"]
         accounts_data = data.get("accounts", {})
