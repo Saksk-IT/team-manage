@@ -11,7 +11,7 @@ from sqlalchemy import select, update, delete, and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import RedemptionCode, RedemptionRecord, Team
+from app.models import RedemptionCode, RedemptionRecord, Team, WarrantyEmailEntry
 from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
@@ -495,10 +495,34 @@ class RedemptionService:
                 team_result = await db_session.execute(team_stmt)
                 team_map = {team.id: team for team in team_result.scalars().all()}
 
+            warranty_entry_map = {}
+            used_emails = {
+                (code.used_by_email or "").strip().lower()
+                for code in codes
+                if code.used_by_email
+            }
+            if used_emails:
+                warranty_stmt = select(WarrantyEmailEntry).where(
+                    WarrantyEmailEntry.email.in_(used_emails)
+                )
+                warranty_result = await db_session.execute(warranty_stmt)
+                warranty_entry_map = {
+                    entry.email: entry for entry in warranty_result.scalars().all()
+                }
+
+            from app.services.warranty import warranty_service
+
             # 构建返回数据
             code_list = []
             for code in codes:
                 bound_team = team_map.get(code.bound_team_id)
+                normalized_used_email = (code.used_by_email or "").strip().lower()
+                warranty_entry = warranty_entry_map.get(normalized_used_email)
+                serialized_warranty_entry = (
+                    warranty_service.serialize_warranty_email_entry(warranty_entry)
+                    if warranty_entry and code.has_warranty
+                    else {}
+                )
                 code_list.append({
                     "id": code.id,
                     "code": code.code,
@@ -514,7 +538,9 @@ class RedemptionService:
                     "used_at": code.used_at.isoformat() if code.used_at else None,
                     "has_warranty": code.has_warranty,
                     "warranty_days": code.warranty_days,
-                    "warranty_expires_at": code.warranty_expires_at.isoformat() if code.warranty_expires_at else None
+                    "warranty_expires_at": code.warranty_expires_at.isoformat() if code.warranty_expires_at else None,
+                    "warranty_remaining_days": serialized_warranty_entry.get("remaining_days"),
+                    "warranty_remaining_claims": serialized_warranty_entry.get("remaining_claims"),
                 })
 
             logger.info(f"获取所有兑换码成功: 第 {page} 页, 共 {len(code_list)} 个 / 总数 {total}")

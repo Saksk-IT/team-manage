@@ -138,8 +138,10 @@
                     <th>过期时间</th>
                     <th>使用者邮箱</th>
                     <th>使用时间</th>
-                    <th>质保</th>
+                    <th>兑换码类型</th>
                     <th>质保时长</th>
+                    <th>剩余天数</th>
+                    <th>剩余次数</th>
                     <th style="text-align: right;">操作</th>
                 </tr>
             </thead>
@@ -180,14 +182,36 @@
                     <td>{{ code.used_at if code.used_at else '-' }}</td>
                     <td>
                         {% if code.has_warranty %}
-                        <span class="status-badge status-info">是</span>
+                        <span class="status-badge status-info">质保兑换码</span>
                         {% else %}
-                        <span class="status-badge" style="background: #f3f4f6; color: #6b7280;">否</span>
+                        <span class="status-badge" style="background: #f3f4f6; color: #6b7280;">普通兑换码</span>
                         {% endif %}
                     </td>
                     <td>
                         {% if code.has_warranty %}
                         <span style="font-size: 0.875rem;">{{ code.warranty_days }} 天</span>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if code.has_warranty %}
+                            {% if code.used_by_email %}
+                                {{ code.warranty_remaining_days if code.warranty_remaining_days is not none else '-' }}
+                            {% else %}
+                                待兑换
+                            {% endif %}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if code.has_warranty %}
+                            {% if code.used_by_email %}
+                                {{ code.warranty_remaining_claims if code.warranty_remaining_claims is not none else '-' }}
+                            {% else %}
+                                待兑换
+                            {% endif %}
                         {% else %}
                         -
                         {% endif %}
