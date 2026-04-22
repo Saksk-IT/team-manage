@@ -57,6 +57,8 @@ class AdminTeamListBoundCodeTypeBadgeTests(unittest.IsolatedAsyncioTestCase):
             )
 
         html = response.body.decode("utf-8")
+        self.assertIn("账号类型", html)
+        self.assertRegex(html, r"<td>\s*Warranty Badge Team\s*</td>\s*<td>\s*<span[^>]*data-bound-code-type=\"warranty\"")
         self.assertRegex(html, r'data-bound-code-type="warranty"[^>]*>\s*质保\s*<')
 
     async def test_team_list_renders_standard_badge_for_standard_bound_code_team(self):
@@ -85,6 +87,8 @@ class AdminTeamListBoundCodeTypeBadgeTests(unittest.IsolatedAsyncioTestCase):
             )
 
         html = response.body.decode("utf-8")
+        self.assertIn("账号类型", html)
+        self.assertRegex(html, r"<td>\s*Standard Badge Team\s*</td>\s*<td>\s*<span[^>]*data-bound-code-type=\"standard\"")
         self.assertRegex(html, r'data-bound-code-type="standard"[^>]*>\s*普通\s*<')
 
 
