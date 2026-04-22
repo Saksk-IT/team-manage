@@ -556,27 +556,31 @@ class WarrantyService:
             sync_result = await self.team_service.sync_team_info(latest_team.id, db_session)
             if not sync_result.get("success"):
                 logger.warning(
-                    "质保状态查询刷新最近 Team 失败，回退到当前缓存状态 email=%s team_id=%s error=%s",
+                    "质保状态查询刷新最近 Team 失败 email=%s team_id=%s error=%s",
                     self.normalize_email(email),
                     latest_team.id,
                     sync_result.get("error")
                 )
-                return latest_context
+                raise RuntimeError(sync_result.get("error") or "实时刷新最近 Team 状态失败，请稍后重试")
         except Exception as exc:
             logger.warning(
-                "质保状态查询刷新最近 Team 异常，回退到当前缓存状态 email=%s team_id=%s error=%s",
+                "质保状态查询刷新最近 Team 异常 email=%s team_id=%s error=%s",
                 self.normalize_email(email),
                 latest_team.id,
                 exc
             )
-            return latest_context
+            error_message = str(exc) or "实时刷新最近 Team 状态失败，请稍后重试"
+            raise RuntimeError(error_message) from exc
 
         refreshed_context = await self._load_latest_team_context_for_email(
             db_session,
             email,
             warranty_entry=warranty_entry
         )
-        return refreshed_context or latest_context
+        if refreshed_context:
+            return refreshed_context
+
+        raise RuntimeError("实时刷新成功，但未找到最新 Team 状态，请稍后重试")
 
     def _serialize_latest_team_info(
         self,
@@ -633,11 +637,18 @@ class WarrantyService:
 
         normalized_email = validation_result["normalized_email"]
         warranty_entry = validation_result["warranty_entry"]
-        latest_context = await self._refresh_latest_team_context_for_email(
-            db_session,
-            normalized_email,
-            warranty_entry=warranty_entry
-        )
+        try:
+            latest_context = await self._refresh_latest_team_context_for_email(
+                db_session,
+                normalized_email,
+                warranty_entry=warranty_entry
+            )
+        except RuntimeError as exc:
+            return {
+                "success": False,
+                "error": str(exc) or "实时刷新最近 Team 状态失败，请稍后重试"
+            }
+
         if not latest_context:
             logger.warning("质保状态查询失败: 未找到最近 Team 记录或成员快照 email=%s", normalized_email)
             return {
