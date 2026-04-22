@@ -64,6 +64,40 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="warrantyRemainingDays" class="form-control" min="0" value="30"', html)
         self.assertIn('id="warrantyRemainingClaims" class="form-control" min="0" value="10" required', html)
 
+    async def test_warranty_emails_page_supports_search_by_redeem_code(self):
+        async with self.Session() as session:
+            session.add_all(
+                [
+                    WarrantyEmailEntry(
+                        email="buyer@example.com",
+                        remaining_claims=2,
+                        expires_at=get_now() + timedelta(days=5),
+                        source="manual",
+                        last_redeem_code="CODE-123"
+                    ),
+                    WarrantyEmailEntry(
+                        email="other@example.com",
+                        remaining_claims=1,
+                        expires_at=get_now() + timedelta(days=3),
+                        source="manual",
+                        last_redeem_code="OTHER-456"
+                    ),
+                ]
+            )
+            await session.commit()
+
+            response = await warranty_emails_page(
+                request=self._build_request(),
+                search="CODE-123",
+                db=session,
+                current_user={"username": "admin"}
+            )
+
+        html = response.body.decode("utf-8")
+        self.assertIn("buyer@example.com", html)
+        self.assertNotIn("other@example.com", html)
+        self.assertIn('placeholder="搜索邮箱或兑换码"', html)
+
     async def test_save_and_delete_warranty_email(self):
         async with self.Session() as session:
             save_response = await save_warranty_email(

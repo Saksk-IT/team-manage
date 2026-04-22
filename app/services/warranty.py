@@ -129,9 +129,15 @@ class WarrantyService:
         search: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         stmt = select(WarrantyEmailEntry)
-        normalized_search = self.normalize_email(search or "")
+        normalized_search = (search or "").strip()
         if normalized_search:
-            stmt = stmt.where(WarrantyEmailEntry.email.ilike(f"%{normalized_search}%"))
+            search_pattern = f"%{normalized_search}%"
+            stmt = stmt.where(
+                or_(
+                    WarrantyEmailEntry.email.ilike(search_pattern),
+                    WarrantyEmailEntry.last_redeem_code.ilike(search_pattern),
+                )
+            )
 
         stmt = stmt.order_by(WarrantyEmailEntry.updated_at.desc(), WarrantyEmailEntry.created_at.desc())
         result = await db_session.execute(stmt)
