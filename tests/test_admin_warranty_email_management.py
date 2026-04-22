@@ -8,7 +8,7 @@ from starlette.requests import Request
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import WarrantyEmailEntry
+from app.models import RedemptionCode, RedemptionRecord, WarrantyEmailEntry
 from app.routes.admin import (
     WarrantyEmailSaveRequest,
     delete_warranty_email,
@@ -99,6 +99,53 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("buyer@example.com", html)
         self.assertNotIn("other@example.com", html)
         self.assertIn('placeholder="搜索邮箱或兑换码"', html)
+
+    async def test_warranty_emails_page_supports_search_by_historical_redeem_code(self):
+        async with self.Session() as session:
+            session.add_all(
+                [
+                    WarrantyEmailEntry(
+                        email="buyer@example.com",
+                        remaining_claims=2,
+                        expires_at=get_now() + timedelta(days=5),
+                        source="manual",
+                        last_redeem_code="LATEST-999"
+                    ),
+                    WarrantyEmailEntry(
+                        email="other@example.com",
+                        remaining_claims=1,
+                        expires_at=get_now() + timedelta(days=3),
+                        source="manual",
+                        last_redeem_code="OTHER-456"
+                    ),
+                    RedemptionCode(
+                        code="HISTORY-123",
+                        status="used",
+                        has_warranty=True,
+                        used_by_email="buyer@example.com",
+                        used_at=get_now(),
+                    ),
+                    RedemptionRecord(
+                        email="buyer@example.com",
+                        code="HISTORY-123",
+                        team_id=1,
+                        account_id="account-1",
+                        redeemed_at=get_now(),
+                    ),
+                ]
+            )
+            await session.commit()
+
+            response = await warranty_emails_page(
+                request=self._build_request(),
+                search="HISTORY-123",
+                db=session,
+                current_user={"username": "admin"}
+            )
+
+        html = response.body.decode("utf-8")
+        self.assertIn("buyer@example.com", html)
+        self.assertNotIn("other@example.com", html)
 
     async def test_save_and_delete_warranty_email(self):
         async with self.Session() as session:

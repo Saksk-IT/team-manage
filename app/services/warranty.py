@@ -135,16 +135,55 @@ class WarrantyService:
         normalized_search = (search or "").strip()
         if normalized_search:
             search_pattern = f"%{normalized_search}%"
+            matched_emails = await self._find_warranty_entry_emails_by_redeem_code(
+                db_session=db_session,
+                search_pattern=search_pattern
+            )
+            search_filters = [
+                WarrantyEmailEntry.email.ilike(search_pattern),
+                WarrantyEmailEntry.last_redeem_code.ilike(search_pattern),
+            ]
+            if matched_emails:
+                search_filters.append(func.lower(WarrantyEmailEntry.email).in_(matched_emails))
             stmt = stmt.where(
-                or_(
-                    WarrantyEmailEntry.email.ilike(search_pattern),
-                    WarrantyEmailEntry.last_redeem_code.ilike(search_pattern),
-                )
+                or_(*search_filters)
             )
 
         stmt = stmt.order_by(WarrantyEmailEntry.updated_at.desc(), WarrantyEmailEntry.created_at.desc())
         result = await db_session.execute(stmt)
         return [self.serialize_warranty_email_entry(entry) for entry in result.scalars().all()]
+
+    async def _find_warranty_entry_emails_by_redeem_code(
+        self,
+        db_session: AsyncSession,
+        search_pattern: str
+    ) -> set[str]:
+        matched_emails: set[str] = set()
+
+        code_result = await db_session.execute(
+            select(RedemptionCode.used_by_email).where(
+                RedemptionCode.used_by_email.is_not(None),
+                RedemptionCode.code.ilike(search_pattern),
+            )
+        )
+        matched_emails.update(
+            self.normalize_email(email)
+            for email in code_result.scalars().all()
+            if email
+        )
+
+        record_result = await db_session.execute(
+            select(RedemptionRecord.email).where(
+                RedemptionRecord.code.ilike(search_pattern)
+            )
+        )
+        matched_emails.update(
+            self.normalize_email(email)
+            for email in record_result.scalars().all()
+            if email
+        )
+
+        return matched_emails
 
     async def save_warranty_email_entry(
         self,
