@@ -233,6 +233,106 @@ body.transition-open {
     margin: 0 auto;
 }
 
+.customer-service-reminder {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.9rem 1rem;
+    border-radius: 14px;
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    background: rgba(99, 102, 241, 0.08);
+}
+
+.customer-service-reminder-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(99, 102, 241, 0.14);
+    color: var(--primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.customer-service-reminder-body {
+    min-width: 0;
+}
+
+.customer-service-reminder-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.customer-service-reminder-text {
+    margin-top: 0.2rem;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--text-muted);
+}
+
+.customer-service-modal-overlay {
+    z-index: 130;
+}
+
+.customer-service-modal {
+    position: relative;
+    width: min(100%, 420px);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-base);
+    border-radius: 24px;
+    box-shadow: var(--shadow-lg);
+    padding: 1.25rem;
+    display: grid;
+    gap: 1rem;
+}
+
+.customer-service-modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--border-base);
+    border-radius: 50%;
+    background: #fff;
+    color: var(--text-main);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition-base);
+}
+
+.customer-service-modal-close:hover {
+    background: var(--bg-main);
+}
+
+.customer-service-modal-qr {
+    display: block;
+    width: min(260px, 100%);
+    margin: 0 auto;
+    border-radius: 18px;
+    border: 1px solid var(--border-base);
+    background: #fff;
+}
+
+.customer-service-modal-text {
+    padding: 0.9rem 1rem;
+    border-radius: 14px;
+    background: var(--bg-main);
+    color: var(--text-muted);
+    line-height: 1.65;
+    white-space: pre-wrap;
+    text-align: left;
+}
+
+.customer-service-modal-actions {
+    display: grid;
+    gap: 0.75rem;
+}
+
 .header h1 {
     font-size: 2rem;
     font-weight: 800;
@@ -816,6 +916,11 @@ body.transition-open {
     .customer-service-panel {
         width: min(340px, calc(100vw - 1rem));
         max-height: min(68vh, 520px);
+    }
+
+    .customer-service-modal {
+        width: min(100%, 360px);
+        padding: 1rem;
     }
 }
 

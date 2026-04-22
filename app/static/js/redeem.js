@@ -36,6 +36,9 @@ const customerServiceWidget = document.getElementById('customerServiceWidget');
 const customerServiceFab = document.getElementById('customerServiceFab');
 const customerServicePanel = document.getElementById('customerServicePanel');
 const customerServiceCloseBtn = document.getElementById('customerServiceCloseBtn');
+const customerServicePromptModal = document.getElementById('customerServicePromptModal');
+const customerServicePromptCloseBtn = document.getElementById('customerServicePromptCloseBtn');
+const customerServicePromptConfirmBtn = document.getElementById('customerServicePromptConfirmBtn');
 const requestTransitionOverlay = document.getElementById('requestTransitionOverlay');
 const transitionOverlayIcon = document.getElementById('transitionOverlayIcon');
 const transitionOverlayEyebrow = document.getElementById('transitionOverlayEyebrow');
@@ -424,6 +427,42 @@ function toggleCustomerServiceWidget(forceOpen) {
     setCustomerServiceWidgetOpen(nextOpenState);
 }
 
+function syncBodyModalState() {
+    const hasOpenModal = Boolean(
+        emailConfirmModal?.classList.contains('show') ||
+        customerServicePromptModal?.classList.contains('show')
+    );
+
+    document.body.classList.toggle('modal-open', hasOpenModal);
+}
+
+function setCustomerServicePromptOpen(isOpen) {
+    if (!customerServicePromptModal) {
+        return;
+    }
+
+    customerServicePromptModal.classList.toggle('show', isOpen);
+    customerServicePromptModal.setAttribute('aria-hidden', String(!isOpen));
+    syncBodyModalState();
+
+    if (isOpen && window.lucide) {
+        lucide.createIcons();
+    }
+}
+
+function showCustomerServiceQrReminder() {
+    if (!customerServicePromptModal) {
+        return;
+    }
+
+    const qrImage = customerServicePromptModal.querySelector('.customer-service-modal-qr');
+    if (!qrImage) {
+        return;
+    }
+
+    setCustomerServicePromptOpen(true);
+}
+
 function normalizeWarrantyFakeSuccessSpots(value) {
     const numericValue = Number(value);
     if (!Number.isFinite(numericValue)) {
@@ -658,6 +697,7 @@ function showStep(stepNumber) {
 // 返回步骤1
 function backToStep1() {
     closeTransitionOverlay();
+    setCustomerServicePromptOpen(false);
     showStep(1);
     selectedTeamId = null;
 }
@@ -698,7 +738,7 @@ function showEmailConfirmModal(email) {
     confirmEmailDisplay.textContent = email;
     emailConfirmModal.classList.add('show');
     emailConfirmModal.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('modal-open');
+    syncBodyModalState();
 
     if (window.lucide) {
         lucide.createIcons();
@@ -710,7 +750,7 @@ function hideEmailConfirmModal() {
 
     emailConfirmModal.classList.remove('show');
     emailConfirmModal.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('modal-open');
+    syncBodyModalState();
 }
 
 async function startRedeemFlow() {
@@ -1212,6 +1252,7 @@ function showSuccessResult(data) {
     if (window.lucide) lucide.createIcons();
 
     showStep(3);
+    showCustomerServiceQrReminder();
 }
 
 function showWarrantyClaimSuccessResult(data, email) {
@@ -1282,6 +1323,7 @@ function showWarrantyClaimSuccessResult(data, email) {
     `;
     if (window.lucide) lucide.createIcons();
     showStep(3);
+    showCustomerServiceQrReminder();
 }
 
 // 显示错误结果
@@ -1308,6 +1350,7 @@ function showErrorResult(errorMessage) {
     if (window.lucide) lucide.createIcons();
 
     showStep(3);
+    showCustomerServiceQrReminder();
 }
 
 function formatDateTime(dateString) {
@@ -1648,6 +1691,20 @@ customerServicePanel?.addEventListener('click', (event) => {
     event.stopPropagation();
 });
 
+customerServicePromptCloseBtn?.addEventListener('click', () => {
+    setCustomerServicePromptOpen(false);
+});
+
+customerServicePromptConfirmBtn?.addEventListener('click', () => {
+    setCustomerServicePromptOpen(false);
+});
+
+customerServicePromptModal?.addEventListener('click', (event) => {
+    if (event.target === customerServicePromptModal) {
+        setCustomerServicePromptOpen(false);
+    }
+});
+
 document.addEventListener('click', (event) => {
     if (!customerServiceWidget || !customerServiceWidget.classList.contains('open')) {
         return;
@@ -1662,6 +1719,9 @@ document.addEventListener('click', (event) => {
 
 document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
+        if (customerServicePromptModal?.classList.contains('show')) {
+            setCustomerServicePromptOpen(false);
+        }
         toggleCustomerServiceWidget(false);
     }
 });

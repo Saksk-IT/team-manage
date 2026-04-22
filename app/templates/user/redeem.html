@@ -173,6 +173,16 @@
             </div>
 
             <div class="side-card-content">
+                <div class="customer-service-reminder" id="customerServiceGroupReminder">
+                    <div class="customer-service-reminder-icon">
+                        <i data-lucide="users" style="width: 18px; height: 18px;"></i>
+                    </div>
+                    <div class="customer-service-reminder-body">
+                        <div class="customer-service-reminder-title">建议扫码加群</div>
+                        <div class="customer-service-reminder-text">兑换或质保完成后，建议扫码进群，方便后续接收通知与联系客服协助处理。</div>
+                    </div>
+                </div>
+
                 {% if customer_service.qr_code_url %}
                 <div class="support-block">
                     <div class="support-block-title">扫描二维码联系客服</div>
@@ -207,6 +217,57 @@
             </div>
         </div>
     </div>
+
+    {% if customer_service.qr_code_url %}
+    <div id="customerServicePromptModal" class="modal-overlay customer-service-modal-overlay" aria-hidden="true">
+        <div class="customer-service-modal" role="dialog" aria-modal="true" aria-labelledby="customerServicePromptTitle">
+            <button
+                type="button"
+                class="customer-service-modal-close"
+                id="customerServicePromptCloseBtn"
+                aria-label="关闭加群提醒"
+            >
+                <i data-lucide="x" style="width: 18px; height: 18px;"></i>
+            </button>
+
+            <div class="customer-service-reminder">
+                <div class="customer-service-reminder-icon">
+                    <i data-lucide="users" style="width: 18px; height: 18px;"></i>
+                </div>
+                <div class="customer-service-reminder-body">
+                    <div class="customer-service-reminder-title" id="customerServicePromptTitle">建议扫码加群</div>
+                    <div class="customer-service-reminder-text">兑换或质保结果出来后，建议扫码进群，方便后续接收通知与联系客服协助处理。</div>
+                </div>
+            </div>
+
+            <img
+                src="{{ customer_service.qr_code_url }}"
+                alt="客服群二维码"
+                class="customer-service-modal-qr"
+            >
+
+            {% if customer_service.text_content %}
+            <div class="customer-service-modal-text">{{ customer_service.text_content }}</div>
+            {% endif %}
+
+            <div class="customer-service-modal-actions">
+                {% if customer_service.link_url %}
+                <a
+                    href="{{ customer_service.link_url }}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="btn btn-secondary"
+                >
+                    <i data-lucide="external-link"></i> {{ customer_service.link_text or '立即联系' }}
+                </a>
+                {% endif %}
+                <button type="button" class="btn btn-primary" id="customerServicePromptConfirmBtn">
+                    <i data-lucide="check"></i> 我知道了
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
     {% endif %}
 
     <div id="requestTransitionOverlay" class="transition-overlay" aria-hidden="true">
