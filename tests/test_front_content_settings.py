@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -77,6 +78,40 @@ class FrontContentSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(config["link_url"], "https://example.com/contact")
         self.assertEqual(config["link_text"], "立即联系")
         self.assertEqual(config["text_content"], "微信：support001")
+
+    async def test_get_customer_service_config_hides_missing_uploaded_image(self):
+        async with self.Session() as session:
+            success = await settings_service.update_customer_service_config(
+                session,
+                True,
+                "/uploads/customer-service/missing.png",
+                "",
+                "",
+                ""
+            )
+            config = await settings_service.get_customer_service_config(session)
+
+        self.assertTrue(success)
+        self.assertEqual(config["qr_code_url"], "")
+
+    async def test_get_customer_service_config_prefers_persistent_uploaded_image_url(self):
+        with patch(
+            "app.services.settings.resolve_customer_service_upload_display_url",
+            return_value="/uploads/customer-service/qrcode.png"
+        ):
+            async with self.Session() as session:
+                success = await settings_service.update_customer_service_config(
+                    session,
+                    True,
+                    "/static/uploads/customer-service/qrcode.png",
+                    "",
+                    "",
+                    ""
+                )
+                config = await settings_service.get_customer_service_config(session)
+
+        self.assertTrue(success)
+        self.assertEqual(config["qr_code_url"], "/uploads/customer-service/qrcode.png")
 
 
 if __name__ == "__main__":

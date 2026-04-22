@@ -4,6 +4,7 @@
 """
 import logging
 import sqlite3
+import shutil
 from pathlib import Path
 from datetime import datetime
 
@@ -31,6 +32,73 @@ def table_exists(cursor, table_name):
         (table_name,)
     )
     return cursor.fetchone() is not None
+
+
+def migrate_customer_service_upload_assets(cursor) -> list[str]:
+    """
+    将旧版客服二维码图片迁移到持久化目录，并更新配置地址。
+    """
+    from app.services.settings import SettingsService
+    from app.utils.storage import (
+        LEGACY_CUSTOMER_SERVICE_UPLOAD_ROUTE_PREFIX,
+        build_customer_service_upload_url,
+        get_customer_service_upload_dir,
+        get_legacy_customer_service_upload_dir,
+    )
+
+    if not table_exists(cursor, "settings"):
+        return []
+
+    legacy_dir = get_legacy_customer_service_upload_dir()
+    persistent_dir = get_customer_service_upload_dir()
+    persistent_dir.mkdir(parents=True, exist_ok=True)
+
+    copied_count = 0
+    if legacy_dir.exists():
+        for source_path in legacy_dir.iterdir():
+            if not source_path.is_file():
+                continue
+
+            target_path = persistent_dir / source_path.name
+            if target_path.exists():
+                continue
+
+            shutil.copy2(source_path, target_path)
+            copied_count += 1
+
+    cursor.execute(
+        "SELECT value FROM settings WHERE key = ?",
+        (SettingsService.CUSTOMER_SERVICE_QR_CODE_URL_KEY,)
+    )
+    qr_code_row = cursor.fetchone()
+    if not qr_code_row:
+        return [f"customer_service_assets_copied:{copied_count}"] if copied_count else []
+
+    qr_code_url = (qr_code_row[0] or "").strip()
+    if not qr_code_url.startswith(LEGACY_CUSTOMER_SERVICE_UPLOAD_ROUTE_PREFIX):
+        return [f"customer_service_assets_copied:{copied_count}"] if copied_count else []
+
+    filename = qr_code_url[len(LEGACY_CUSTOMER_SERVICE_UPLOAD_ROUTE_PREFIX):].strip()
+    if not filename:
+        return [f"customer_service_assets_copied:{copied_count}"] if copied_count else []
+
+    persistent_path = persistent_dir / Path(filename).name
+    if not persistent_path.exists():
+        return [f"customer_service_assets_copied:{copied_count}"] if copied_count else []
+
+    normalized_url = build_customer_service_upload_url(persistent_path.name)
+    if normalized_url == qr_code_url:
+        return [f"customer_service_assets_copied:{copied_count}"] if copied_count else []
+
+    cursor.execute(
+        "UPDATE settings SET value = ? WHERE key = ?",
+        (normalized_url, SettingsService.CUSTOMER_SERVICE_QR_CODE_URL_KEY)
+    )
+
+    migration_names = ["customer_service_qr_code_url_persisted"]
+    if copied_count:
+        migration_names.insert(0, f"customer_service_assets_copied:{copied_count}")
+    return migration_names
 
 
 def run_auto_migration():
@@ -165,6 +233,8 @@ def run_auto_migration():
                 ON team_member_snapshots (email)
             """)
             migrations_applied.append("team_member_snapshots")
+
+        migrations_applied.extend(migrate_customer_service_upload_assets(cursor))
         
         # 提交更改
         conn.commit()

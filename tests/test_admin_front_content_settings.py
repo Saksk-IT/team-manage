@@ -72,17 +72,23 @@ class AdminFrontContentSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["success"])
 
-    async def test_update_customer_service_settings_accepts_uploaded_static_path(self):
+    async def test_update_customer_service_settings_accepts_uploaded_local_path(self):
         db = AsyncMock()
 
         with patch(
+            "app.routes.admin.customer_service_upload_exists",
+            return_value=True
+        ), patch(
+            "app.routes.admin.resolve_customer_service_upload_display_url",
+            return_value="/uploads/customer-service/qrcode.png"
+        ), patch(
             "app.routes.admin.settings_service.update_customer_service_config",
             new=AsyncMock(return_value=True)
         ) as mocked_update:
             response = await update_customer_service_settings(
                 customer_service_data=CustomerServiceSettingsRequest(
                     enabled=True,
-                    qr_code_url="/static/uploads/customer-service/qrcode.png",
+                    qr_code_url="/uploads/customer-service/qrcode.png",
                     link_url="https://example.com/contact",
                     link_text="联系客服",
                     text_content=""
@@ -116,7 +122,7 @@ class AdminFrontContentSettingsTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertFalse(payload["success"])
-        self.assertEqual(payload["error"], "客服二维码地址必须是有效的 http/https 链接或站内已上传图片路径")
+        self.assertEqual(payload["error"], "客服二维码地址必须是有效的 http/https 链接或站内已上传且可访问的图片路径")
 
     async def test_upload_customer_service_image_returns_static_url(self):
         upload_file = UploadFile(
@@ -126,8 +132,8 @@ class AdminFrontContentSettingsTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with tempfile.TemporaryDirectory() as temp_dir, patch(
-            "app.routes.admin.CUSTOMER_SERVICE_UPLOAD_DIR",
-            Path(temp_dir)
+            "app.routes.admin.get_customer_service_upload_dir",
+            return_value=Path(temp_dir)
         ):
             response = await upload_customer_service_image(
                 image=upload_file,
@@ -138,7 +144,7 @@ class AdminFrontContentSettingsTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["success"])
-        self.assertTrue(payload["url"].startswith("/static/uploads/customer-service/"))
+        self.assertTrue(payload["url"].startswith("/uploads/customer-service/"))
 
     async def test_upload_customer_service_image_rejects_invalid_content_type(self):
         upload_file = UploadFile(

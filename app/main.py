@@ -18,6 +18,7 @@ from app.config import settings
 from app.database import init_db, close_db, AsyncSessionLocal
 from app.services.auth import auth_service
 from app.services.team_auto_refresh import team_auto_refresh_service
+from app.utils.storage import get_uploads_root_dir
 
 # 获取项目根目录
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -95,7 +96,11 @@ app.add_middleware(
 )
 
 # 配置静态文件
+UPLOADS_ROOT_DIR = get_uploads_root_dir()
+UPLOADS_ROOT_DIR.mkdir(parents=True, exist_ok=True)
+
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
+app.mount("/uploads", StaticFiles(directory=str(UPLOADS_ROOT_DIR)), name="uploads")
 
 # 配置模板引擎
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))

@@ -5,7 +5,6 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional, List, Dict, Any, Callable, Awaitable
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -24,11 +23,16 @@ from app.services.redemption import RedemptionService
 from app.services.settings import settings_service
 from app.services.warranty import warranty_service
 from app.utils.time_utils import get_now
+from app.utils.storage import (
+    build_customer_service_upload_url,
+    customer_service_upload_exists,
+    get_customer_service_upload_dir,
+    is_customer_service_upload_url,
+    resolve_customer_service_upload_display_url,
+)
 
 logger = logging.getLogger(__name__)
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-CUSTOMER_SERVICE_UPLOAD_DIR = BASE_DIR / "static" / "uploads" / "customer-service"
 MAX_CUSTOMER_SERVICE_IMAGE_SIZE = 5 * 1024 * 1024
 ALLOWED_CUSTOMER_SERVICE_IMAGE_TYPES = {
     "image/png": ".png",
@@ -215,8 +219,8 @@ def _is_valid_customer_service_image_url(value: str) -> bool:
     if not normalized_value:
         return True
 
-    if normalized_value.startswith("/static/"):
-        return True
+    if is_customer_service_upload_url(normalized_value):
+        return customer_service_upload_exists(normalized_value)
 
     return _is_valid_http_url(normalized_value)
 
@@ -2145,11 +2149,12 @@ async def update_customer_service_settings(
     try:
         qr_code_url = (customer_service_data.qr_code_url or "").strip()
         link_url = (customer_service_data.link_url or "").strip()
+        normalized_qr_code_url = resolve_customer_service_upload_display_url(qr_code_url)
 
         if not _is_valid_customer_service_image_url(qr_code_url):
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                content={"success": False, "error": "客服二维码地址必须是有效的 http/https 链接或站内已上传图片路径"}
+                content={"success": False, "error": "客服二维码地址必须是有效的 http/https 链接或站内已上传且可访问的图片路径"}
             )
 
         if not _is_valid_http_url(link_url):
@@ -2169,7 +2174,7 @@ async def update_customer_service_settings(
         success = await settings_service.update_customer_service_config(
             db,
             customer_service_data.enabled,
-            customer_service_data.qr_code_url,
+            normalized_qr_code_url if normalized_qr_code_url != qr_code_url else customer_service_data.qr_code_url,
             customer_service_data.link_url,
             customer_service_data.link_text,
             customer_service_data.text_content
@@ -2220,12 +2225,13 @@ async def upload_customer_service_image(
             )
 
         suffix = ALLOWED_CUSTOMER_SERVICE_IMAGE_TYPES[content_type]
-        CUSTOMER_SERVICE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        upload_dir = get_customer_service_upload_dir()
+        upload_dir.mkdir(parents=True, exist_ok=True)
         filename = f"{uuid4().hex}{suffix}"
-        target_path = CUSTOMER_SERVICE_UPLOAD_DIR / filename
+        target_path = upload_dir / filename
         target_path.write_bytes(file_bytes)
 
-        image_url = f"/static/uploads/customer-service/{filename}"
+        image_url = build_customer_service_upload_url(filename)
         logger.info("管理员上传前台客服二维码图片成功: %s", image_url)
 
         return JSONResponse(

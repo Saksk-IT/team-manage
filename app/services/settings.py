@@ -8,6 +8,7 @@ from typing import Optional, Dict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Setting
+from app.utils.storage import is_customer_service_upload_url, resolve_customer_service_upload_display_url
 import logging
 
 logger = logging.getLogger(__name__)
@@ -254,6 +255,11 @@ class SettingsService:
             self.CUSTOMER_SERVICE_TEXT_KEY,
             ""
         )
+        normalized_qr_code_url = (qr_code_url or "").strip()
+        if is_customer_service_upload_url(normalized_qr_code_url):
+            normalized_qr_code_url = resolve_customer_service_upload_display_url(normalized_qr_code_url)
+            if not normalized_qr_code_url:
+                logger.warning("客服二维码图片路径不存在，已跳过展示")
         normalized_link_url = (link_url or "").strip()
         normalized_link_text = (link_text or "").strip()
 
@@ -262,7 +268,7 @@ class SettingsService:
                 enabled_raw,
                 self.DEFAULT_CUSTOMER_SERVICE_ENABLED
             ),
-            "qr_code_url": (qr_code_url or "").strip(),
+            "qr_code_url": normalized_qr_code_url,
             "link_url": normalized_link_url,
             "link_text": normalized_link_text or ("立即联系" if normalized_link_url else ""),
             "text_content": (text_content or "").strip()
