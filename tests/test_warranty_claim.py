@@ -170,6 +170,118 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entry.last_warranty_team_id, warranty_team.id)
         self.assertEqual(record_count_result.scalar(), 1)
 
+    async def test_claim_warranty_prefers_smallest_available_team_id(self):
+        async with self.Session() as session:
+            ordinary_team, smallest_warranty_team = await self._seed_team_data(session)
+            ordinary_team.status = "banned"
+
+            larger_warranty_team = Team(
+                email="warranty-owner-2@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-warranty-2",
+                team_type=TEAM_TYPE_WARRANTY,
+                team_name="Warranty Team 2",
+                status="active",
+                current_members=1,
+                max_members=5
+            )
+            session.add(larger_warranty_team)
+            await session.flush()
+
+            smallest_warranty_team.created_at = get_now() + timedelta(minutes=1)
+            larger_warranty_team.created_at = get_now() - timedelta(minutes=1)
+
+            session.add(
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=5),
+                    source="manual",
+                    last_redeem_code="CODE-SMALL-ID"
+                )
+            )
+            await self._add_latest_team_record(
+                session=session,
+                team=ordinary_team,
+                email="buyer@example.com",
+                code="CODE-SMALL-ID"
+            )
+            await session.commit()
+
+            service = WarrantyService()
+            service._find_existing_warranty_team_for_email = AsyncMock(return_value=None)
+            service.team_service.add_team_member = AsyncMock(return_value={"success": True, "message": "邀请已发送"})
+
+            result = await service.claim_warranty_invite(
+                db_session=session,
+                email="buyer@example.com"
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["team_info"]["id"], smallest_warranty_team.id)
+        service.team_service.add_team_member.assert_awaited_once_with(
+            smallest_warranty_team.id,
+            "buyer@example.com",
+            session
+        )
+
+    async def test_claim_warranty_does_not_fallback_to_other_available_team(self):
+        async with self.Session() as session:
+            ordinary_team, smallest_warranty_team = await self._seed_team_data(session)
+            ordinary_team.status = "banned"
+
+            larger_warranty_team = Team(
+                email="warranty-owner-2@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-warranty-2",
+                team_type=TEAM_TYPE_WARRANTY,
+                team_name="Warranty Team 2",
+                status="active",
+                current_members=1,
+                max_members=5
+            )
+            session.add(larger_warranty_team)
+            await session.flush()
+
+            session.add(
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=5),
+                    source="manual",
+                    last_redeem_code="CODE-NO-FALLBACK"
+                )
+            )
+            await self._add_latest_team_record(
+                session=session,
+                team=ordinary_team,
+                email="buyer@example.com",
+                code="CODE-NO-FALLBACK"
+            )
+            await session.commit()
+
+            service = WarrantyService()
+            service._find_existing_warranty_team_for_email = AsyncMock(return_value=None)
+            service.team_service.add_team_member = AsyncMock(
+                return_value={"success": False, "error": "发送邀请失败: upstream timeout"}
+            )
+
+            result = await service.claim_warranty_invite(
+                db_session=session,
+                email="buyer@example.com"
+            )
+            entry = await service.get_warranty_email_entry(session, "buyer@example.com")
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "发送邀请失败: upstream timeout")
+        self.assertEqual(entry.remaining_claims, 2)
+        self.assertIsNone(entry.last_warranty_team_id)
+        service.team_service.add_team_member.assert_awaited_once_with(
+            smallest_warranty_team.id,
+            "buyer@example.com",
+            session
+        )
+
     async def test_claim_warranty_rejects_when_latest_team_is_not_banned(self):
         async with self.Session() as session:
             ordinary_team, _ = await self._seed_team_data(session)
