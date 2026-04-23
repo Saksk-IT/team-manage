@@ -621,6 +621,117 @@ function renderWarrantyStatusResult(data, email) {
     }
 }
 
+function resetBoundEmailLookupResult() {
+    const resultContainer = document.getElementById('boundEmailLookupResult');
+    if (!resultContainer) return;
+
+    resultContainer.style.display = 'none';
+    resultContainer.className = 'lookup-result';
+    resultContainer.innerHTML = '';
+}
+
+function renderBoundEmailLookupResult(data, code) {
+    const resultContainer = document.getElementById('boundEmailLookupResult');
+    if (!resultContainer) return;
+
+    const found = Boolean(data?.found);
+    const bound = Boolean(data?.bound);
+    const variantClass = bound
+        ? 'lookup-result lookup-result--success'
+        : found
+            ? 'lookup-result lookup-result--info'
+            : 'lookup-result lookup-result--error';
+
+    const title = bound
+        ? '已查询到绑定邮箱'
+        : found
+            ? '该兑换码暂未绑定邮箱'
+            : '未找到该兑换码';
+    const detailItems = [];
+
+    detailItems.push(`
+        <div class="lookup-result__item">
+            <span class="lookup-result__label">兑换码</span>
+            <span class="lookup-result__value">${escapeHtml(code)}</span>
+        </div>
+    `);
+
+    if (data?.code_status_label) {
+        detailItems.push(`
+            <div class="lookup-result__item">
+                <span class="lookup-result__label">兑换码状态</span>
+                <span class="lookup-result__value">${escapeHtml(data.code_status_label)}</span>
+            </div>
+        `);
+    }
+
+    if (bound && data?.masked_email) {
+        detailItems.push(`
+            <div class="lookup-result__item">
+                <span class="lookup-result__label">绑定邮箱</span>
+                <span class="lookup-result__value">${escapeHtml(data.masked_email)}</span>
+            </div>
+        `);
+    }
+
+    if (bound && data?.used_at) {
+        detailItems.push(`
+            <div class="lookup-result__item">
+                <span class="lookup-result__label">绑定时间</span>
+                <span class="lookup-result__value">${escapeHtml(formatDateTime(data.used_at))}</span>
+            </div>
+        `);
+    }
+
+    resultContainer.className = variantClass;
+    resultContainer.style.display = 'block';
+    resultContainer.innerHTML = `
+        <div class="lookup-result__title">${escapeHtml(title)}</div>
+        <div class="lookup-result__message">${escapeHtml(data?.message || '')}</div>
+        <div class="lookup-result__list">${detailItems.join('')}</div>
+    `;
+
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+}
+
+async function lookupBoundEmailByCode(code) {
+    try {
+        const response = await fetch('/redeem/bound-email', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                code
+            })
+        });
+
+        const text = await response.text();
+        let data;
+        try {
+            data = text ? JSON.parse(text) : {};
+        } catch (error) {
+            throw new Error('服务器响应格式错误');
+        }
+
+        if (!response.ok) {
+            let errorMessage = '查询绑定邮箱失败';
+            if (typeof data?.detail === 'string') {
+                errorMessage = data.detail;
+            } else if (typeof data?.error === 'string') {
+                errorMessage = data.error;
+            }
+            throw new Error(errorMessage);
+        }
+
+        return data;
+    } catch (error) {
+        throw new Error(error.message || '网络错误,请稍后重试');
+    }
+}
+
 if (warrantyFakeSuccessEnabled) {
     updateRemainingSpotsDisplay(currentDisplayedRemainingSpots);
 }
@@ -807,6 +918,56 @@ document.getElementById('verifyForm').addEventListener('submit', async (e) => {
     currentCode = code;
 
     showEmailConfirmModal(email);
+});
+
+document.getElementById('boundEmailLookupCode')?.addEventListener('input', () => {
+    resetBoundEmailLookupResult();
+});
+
+document.getElementById('boundEmailLookupForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const lookupCodeInput = document.getElementById('boundEmailLookupCode');
+    const lookupBtn = document.getElementById('boundEmailLookupBtn');
+    const code = lookupCodeInput?.value.trim() || '';
+
+    if (!code) {
+        showToast('请输入兑换码', 'error');
+        lookupCodeInput?.focus();
+        return;
+    }
+
+    resetBoundEmailLookupResult();
+    if (lookupBtn) {
+        lookupBtn.disabled = true;
+        lookupBtn.innerHTML = '<i data-lucide="loader" class="spinning"></i> 查询中...';
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+    }
+
+    try {
+        const data = await lookupBoundEmailByCode(code);
+        renderBoundEmailLookupResult(data, code);
+    } catch (error) {
+        const resultContainer = document.getElementById('boundEmailLookupResult');
+        if (resultContainer) {
+            resultContainer.className = 'lookup-result lookup-result--error';
+            resultContainer.style.display = 'block';
+            resultContainer.innerHTML = `
+                <div class="lookup-result__title">查询失败</div>
+                <div class="lookup-result__message">${escapeHtml(error.message || '网络错误,请稍后重试')}</div>
+            `;
+        }
+    } finally {
+        if (lookupBtn) {
+            lookupBtn.disabled = false;
+            lookupBtn.innerHTML = '<i data-lucide="search"></i> 查询绑定邮箱';
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+        }
+    }
 });
 
 cancelConfirmBtn?.addEventListener('click', () => {

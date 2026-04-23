@@ -631,6 +631,87 @@ class RedemptionService:
                 "error": f"查询兑换码失败: {str(e)}"
             }
 
+    async def lookup_code_binding_email(
+        self,
+        code: str,
+        db_session: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        根据兑换码查询当前绑定邮箱信息（前台公开查询使用）。
+
+        Args:
+            code: 兑换码
+            db_session: 数据库会话
+
+        Returns:
+            结果字典，包含 success、found、bound、used_by_email、status、used_at、message、error
+        """
+        normalized_code = (code or "").strip()
+        if not normalized_code:
+            return {
+                "success": False,
+                "found": False,
+                "bound": False,
+                "used_by_email": None,
+                "status": None,
+                "used_at": None,
+                "message": None,
+                "error": "兑换码不能为空"
+            }
+
+        try:
+            stmt = select(RedemptionCode).where(RedemptionCode.code == normalized_code)
+            result = await db_session.execute(stmt)
+            redemption_code = result.scalar_one_or_none()
+
+            if not redemption_code:
+                return {
+                    "success": True,
+                    "found": False,
+                    "bound": False,
+                    "used_by_email": None,
+                    "status": None,
+                    "used_at": None,
+                    "message": "未找到该兑换码",
+                    "error": None
+                }
+
+            used_by_email = (redemption_code.used_by_email or "").strip() or None
+            bound = bool(used_by_email)
+
+            if bound:
+                message = "已查询到该兑换码绑定邮箱"
+            elif redemption_code.status == "unused":
+                message = "该兑换码当前未绑定邮箱"
+            elif redemption_code.status == "expired":
+                message = "该兑换码已过期，当前未绑定邮箱"
+            else:
+                message = "该兑换码暂无可展示的绑定邮箱信息"
+
+            return {
+                "success": True,
+                "found": True,
+                "bound": bound,
+                "used_by_email": used_by_email,
+                "status": redemption_code.status,
+                "used_at": redemption_code.used_at.isoformat() if redemption_code.used_at else None,
+                "message": message,
+                "error": None
+            }
+
+        except Exception as e:
+            logger.error(f"查询兑换码绑定邮箱失败: {e}")
+            return {
+                "success": False,
+                "found": False,
+                "bound": False,
+                "used_by_email": None,
+                "status": None,
+                "used_at": None,
+                "message": None,
+                "error": f"查询兑换码绑定邮箱失败: {str(e)}"
+            }
+
     async def get_unused_codes(
         self,
         db_session: AsyncSession

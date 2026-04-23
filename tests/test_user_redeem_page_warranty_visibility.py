@@ -41,6 +41,9 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         html = response.body.decode("utf-8")
 
         self.assertIn("兑换服务", html)
+        self.assertIn("查询绑定邮箱", html)
+        self.assertIn('id="boundEmailLookupForm"', html)
+        self.assertIn("前台仅展示脱敏结果", html)
         self.assertNotIn("质保服务", html)
         self.assertNotIn("质保说明", html)
         self.assertNotIn("提交质保", html)
@@ -84,6 +87,9 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         html = response.body.decode("utf-8")
 
         self.assertIn("质保服务", html)
+        self.assertIn("查询绑定邮箱", html)
+        self.assertIn('id="boundEmailLookupForm"', html)
+        self.assertIn("前台仅展示脱敏结果", html)
         self.assertIn("质保说明", html)
         self.assertIn("如您购买了质保服务", html)
         self.assertIn("查看状态", html)

@@ -27,6 +27,11 @@ class VerifyCodeRequest(BaseModel):
     code: str = Field(..., description="兑换码", min_length=1)
 
 
+class BoundEmailLookupRequest(BaseModel):
+    """前台查询绑定邮箱请求"""
+    code: str = Field(..., description="兑换码", min_length=1)
+
+
 class RedeemRequest(BaseModel):
     """兑换请求"""
     email: EmailStr = Field(..., description="用户邮箱")
@@ -60,6 +65,61 @@ class RedeemResponse(BaseModel):
     message: Optional[str] = None
     team_info: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+
+
+class BoundEmailLookupResponse(BaseModel):
+    """前台查询绑定邮箱响应"""
+    success: bool
+    found: bool
+    bound: bool
+    masked_email: Optional[str] = None
+    code_status: Optional[str] = None
+    code_status_label: Optional[str] = None
+    used_at: Optional[str] = None
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+CODE_STATUS_LABELS = {
+    "unused": "未使用",
+    "used": "已使用",
+    "expired": "已过期",
+    "warranty_active": "质保中",
+}
+
+
+def _mask_email(email: str) -> str:
+    normalized_email = (email or "").strip()
+    if "@" not in normalized_email:
+        return normalized_email
+
+    local_part, domain_part = normalized_email.split("@", 1)
+    if "." in domain_part:
+        domain_name, suffix = domain_part.split(".", 1)
+        masked_domain_name = (
+            f"{domain_name[:1]}{'*' * max(len(domain_name) - 1, 1)}"
+            if domain_name
+            else "*"
+        )
+        masked_domain = f"{masked_domain_name}.{suffix}"
+    else:
+        masked_domain = (
+            f"{domain_part[:1]}{'*' * max(len(domain_part) - 1, 1)}"
+            if domain_part
+            else "*"
+        )
+
+    visible_local_length = 2 if len(local_part) > 2 else 1
+    visible_local = local_part[:visible_local_length]
+    masked_local = f"{visible_local}{'*' * max(len(local_part) - visible_local_length, 1)}"
+
+    return f"{masked_local}@{masked_domain}"
+
+
+def _get_code_status_label(code_status: Optional[str]) -> Optional[str]:
+    if not code_status:
+        return None
+    return CODE_STATUS_LABELS.get(code_status, code_status)
 
 
 @router.post("/verify", response_model=VerifyCodeResponse)
@@ -106,6 +166,59 @@ async def verify_code(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"验证失败: {str(e)}"
+        )
+
+
+@router.post("/bound-email", response_model=BoundEmailLookupResponse)
+async def lookup_bound_email(
+    request: BoundEmailLookupRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    根据兑换码查询当前绑定邮箱（前台仅返回脱敏邮箱）。
+    """
+    code = (request.code or "").strip()
+    if not code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="兑换码不能为空"
+        )
+
+    try:
+        logger.info("前台查询兑换码绑定邮箱: %s", code)
+
+        result = await redemption_service.lookup_code_binding_email(
+            code=code,
+            db_session=db
+        )
+
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.get("error") or "查询绑定邮箱失败"
+            )
+
+        used_by_email = result.get("used_by_email")
+
+        return BoundEmailLookupResponse(
+            success=True,
+            found=bool(result.get("found")),
+            bound=bool(result.get("bound")),
+            masked_email=_mask_email(used_by_email) if used_by_email else None,
+            code_status=result.get("status"),
+            code_status_label=_get_code_status_label(result.get("status")),
+            used_at=result.get("used_at"),
+            message=result.get("message"),
+            error=None
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"前台查询绑定邮箱失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"查询绑定邮箱失败: {str(e)}"
         )
 
 

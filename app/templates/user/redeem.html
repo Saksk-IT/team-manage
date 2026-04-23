@@ -79,6 +79,30 @@
                                 </button>
                             </form>
 
+                            <div class="lookup-section">
+                                <div class="lookup-section__header">
+                                    <h3>查询绑定邮箱</h3>
+                                    <p>输入兑换码后，可查询当前绑定邮箱；前台仅展示脱敏结果。</p>
+                                </div>
+                                <form id="boundEmailLookupForm" class="lookup-form">
+                                    <div class="form-group">
+                                        <label for="boundEmailLookupCode">兑换码</label>
+                                        <input
+                                            type="text"
+                                            id="boundEmailLookupCode"
+                                            name="code"
+                                            required
+                                            placeholder="请输入要查询的兑换码"
+                                            class="form-input"
+                                        >
+                                    </div>
+                                    <button type="submit" class="btn btn-secondary" id="boundEmailLookupBtn">
+                                        <i data-lucide="search"></i> 查询绑定邮箱
+                                    </button>
+                                </form>
+                                <div id="boundEmailLookupResult" class="lookup-result" style="display: none;"></div>
+                            </div>
+
                             {% if warranty_service_enabled %}
                             <div class="warranty-section"
                                 style="margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--border-base);">
