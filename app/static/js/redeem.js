@@ -665,11 +665,11 @@ function renderBoundEmailLookupResult(data, code) {
         `);
     }
 
-    if (bound && data?.masked_email) {
+    if (bound && data?.email) {
         detailItems.push(`
             <div class="lookup-result__item">
                 <span class="lookup-result__label">绑定邮箱</span>
-                <span class="lookup-result__value">${escapeHtml(data.masked_email)}</span>
+                <span class="lookup-result__value">${escapeHtml(data.email)}</span>
             </div>
         `);
     }

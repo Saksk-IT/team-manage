@@ -7,7 +7,7 @@ from app.routes.redeem import BoundEmailLookupRequest, lookup_bound_email
 
 
 class RedeemBoundEmailLookupRouteTests(unittest.IsolatedAsyncioTestCase):
-    async def test_lookup_bound_email_returns_masked_email(self):
+    async def test_lookup_bound_email_returns_full_email(self):
         db = AsyncMock()
 
         with patch(
@@ -32,7 +32,7 @@ class RedeemBoundEmailLookupRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.success)
         self.assertTrue(result.found)
         self.assertTrue(result.bound)
-        self.assertEqual(result.masked_email, "bu***@e******.com")
+        self.assertEqual(result.email, "buyer@example.com")
         self.assertEqual(result.code_status_label, "已使用")
 
     async def test_lookup_bound_email_returns_unbound_status(self):
@@ -59,7 +59,7 @@ class RedeemBoundEmailLookupRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.success)
         self.assertTrue(result.found)
         self.assertFalse(result.bound)
-        self.assertIsNone(result.masked_email)
+        self.assertIsNone(result.email)
         self.assertEqual(result.code_status_label, "未使用")
 
     async def test_lookup_bound_email_raises_when_service_fails(self):

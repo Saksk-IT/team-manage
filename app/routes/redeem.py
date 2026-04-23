@@ -72,7 +72,7 @@ class BoundEmailLookupResponse(BaseModel):
     success: bool
     found: bool
     bound: bool
-    masked_email: Optional[str] = None
+    email: Optional[str] = None
     code_status: Optional[str] = None
     code_status_label: Optional[str] = None
     used_at: Optional[str] = None
@@ -86,34 +86,6 @@ CODE_STATUS_LABELS = {
     "expired": "已过期",
     "warranty_active": "质保中",
 }
-
-
-def _mask_email(email: str) -> str:
-    normalized_email = (email or "").strip()
-    if "@" not in normalized_email:
-        return normalized_email
-
-    local_part, domain_part = normalized_email.split("@", 1)
-    if "." in domain_part:
-        domain_name, suffix = domain_part.split(".", 1)
-        masked_domain_name = (
-            f"{domain_name[:1]}{'*' * max(len(domain_name) - 1, 1)}"
-            if domain_name
-            else "*"
-        )
-        masked_domain = f"{masked_domain_name}.{suffix}"
-    else:
-        masked_domain = (
-            f"{domain_part[:1]}{'*' * max(len(domain_part) - 1, 1)}"
-            if domain_part
-            else "*"
-        )
-
-    visible_local_length = 2 if len(local_part) > 2 else 1
-    visible_local = local_part[:visible_local_length]
-    masked_local = f"{visible_local}{'*' * max(len(local_part) - visible_local_length, 1)}"
-
-    return f"{masked_local}@{masked_domain}"
 
 
 def _get_code_status_label(code_status: Optional[str]) -> Optional[str]:
@@ -175,7 +147,7 @@ async def lookup_bound_email(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    根据兑换码查询当前绑定邮箱（前台仅返回脱敏邮箱）。
+    根据兑换码查询当前绑定邮箱（前台返回完整邮箱）。
     """
     code = (request.code or "").strip()
     if not code:
@@ -204,7 +176,7 @@ async def lookup_bound_email(
             success=True,
             found=bool(result.get("found")),
             bound=bool(result.get("bound")),
-            masked_email=_mask_email(used_by_email) if used_by_email else None,
+            email=used_by_email,
             code_status=result.get("status"),
             code_status_label=_get_code_status_label(result.get("status")),
             used_at=result.get("used_at"),
