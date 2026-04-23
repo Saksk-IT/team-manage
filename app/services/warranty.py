@@ -11,7 +11,14 @@ from sqlalchemy import select, and_, or_, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import RedemptionCode, RedemptionRecord, Team, TeamMemberSnapshot, WarrantyEmailEntry
+from app.models import (
+    RedemptionCode,
+    RedemptionRecord,
+    Team,
+    TeamMemberSnapshot,
+    WarrantyClaimRecord,
+    WarrantyEmailEntry,
+)
 from app.services.settings import settings_service
 from app.services.team import TEAM_TYPE_WARRANTY
 from app.utils.time_utils import get_now
@@ -36,6 +43,11 @@ class WarrantyService:
         "error": "异常",
         "banned": "封禁",
         "no_record": "暂无记录",
+    }
+
+    CLAIM_STATUS_LABELS = {
+        "success": "质保成功",
+        "failed": "质保失败",
     }
 
     def __init__(self):
@@ -113,6 +125,168 @@ class WarrantyService:
             "status_label": status_label,
             "created_at": entry.created_at.isoformat() if entry.created_at else None,
             "updated_at": entry.updated_at.isoformat() if entry.updated_at else None
+        }
+
+    def _serialize_warranty_claim_team_snapshot(
+        self,
+        team_info: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        if not team_info:
+            return {
+                "team_id": None,
+                "team_name": None,
+                "team_email": None,
+                "team_account_id": None,
+                "team_status": None,
+                "team_recorded_at": None,
+            }
+
+        return {
+            "team_id": team_info.get("id"),
+            "team_name": team_info.get("team_name"),
+            "team_email": team_info.get("email"),
+            "team_account_id": team_info.get("account_id"),
+            "team_status": team_info.get("status"),
+            "team_recorded_at": team_info.get("redeemed_at"),
+        }
+
+    def serialize_warranty_claim_record(self, record: WarrantyClaimRecord) -> Dict[str, Any]:
+        claim_status = (record.claim_status or "").strip().lower()
+        return {
+            "id": record.id,
+            "email": record.email,
+            "before_team_id": record.before_team_id,
+            "before_team_name": record.before_team_name,
+            "before_team_email": record.before_team_email,
+            "before_team_account_id": record.before_team_account_id,
+            "before_team_status": record.before_team_status,
+            "before_team_status_label": self.get_team_status_label(record.before_team_status),
+            "before_team_recorded_at": record.before_team_recorded_at.isoformat() if record.before_team_recorded_at else None,
+            "claim_status": claim_status,
+            "claim_status_label": self.CLAIM_STATUS_LABELS.get(claim_status, "未知"),
+            "failure_reason": record.failure_reason,
+            "after_team_id": record.after_team_id,
+            "after_team_name": record.after_team_name,
+            "after_team_email": record.after_team_email,
+            "after_team_account_id": record.after_team_account_id,
+            "after_team_recorded_at": record.after_team_recorded_at.isoformat() if record.after_team_recorded_at else None,
+            "submitted_at": record.submitted_at.isoformat() if record.submitted_at else None,
+            "completed_at": record.completed_at.isoformat() if record.completed_at else None,
+        }
+
+    async def _record_warranty_claim_result(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        submitted_at: datetime,
+        claim_status: str,
+        before_team_info: Optional[Dict[str, Any]] = None,
+        failure_reason: Optional[str] = None,
+        after_team: Optional[Team] = None,
+        after_team_recorded_at: Optional[datetime] = None,
+    ) -> None:
+        try:
+            normalized_email = self.normalize_email(email)
+            before_snapshot = self._serialize_warranty_claim_team_snapshot(before_team_info)
+            completed_at = get_now()
+            effective_after_recorded_at = after_team_recorded_at or completed_at
+
+            db_session.add(
+                WarrantyClaimRecord(
+                    email=normalized_email,
+                    before_team_id=before_snapshot["team_id"],
+                    before_team_name=before_snapshot["team_name"],
+                    before_team_email=before_snapshot["team_email"],
+                    before_team_account_id=before_snapshot["team_account_id"],
+                    before_team_status=before_snapshot["team_status"],
+                    before_team_recorded_at=(
+                        datetime.fromisoformat(before_snapshot["team_recorded_at"])
+                        if before_snapshot["team_recorded_at"]
+                        else None
+                    ),
+                    claim_status=claim_status,
+                    failure_reason=failure_reason,
+                    after_team_id=after_team.id if after_team else None,
+                    after_team_name=after_team.team_name if after_team else None,
+                    after_team_email=after_team.email if after_team else None,
+                    after_team_account_id=after_team.account_id if after_team else None,
+                    after_team_recorded_at=effective_after_recorded_at if after_team else None,
+                    submitted_at=submitted_at,
+                    completed_at=completed_at,
+                )
+            )
+            await db_session.commit()
+        except Exception as exc:
+            await db_session.rollback()
+            logger.error(
+                "写入质保提交记录失败 email=%s status=%s error=%s",
+                self.normalize_email(email),
+                claim_status,
+                exc
+            )
+
+    async def list_warranty_claim_records(
+        self,
+        db_session: AsyncSession,
+        search: Optional[str] = None,
+        claim_status: Optional[str] = None,
+        page: int = 1,
+        per_page: int = 20,
+    ) -> Dict[str, Any]:
+        normalized_status = (claim_status or "").strip().lower()
+        normalized_search = (search or "").strip()
+
+        stmt = select(WarrantyClaimRecord)
+        count_stmt = select(func.count(WarrantyClaimRecord.id))
+
+        filters = []
+        if normalized_search:
+            search_pattern = f"%{normalized_search}%"
+            filters.append(
+                or_(
+                    WarrantyClaimRecord.email.ilike(search_pattern),
+                    WarrantyClaimRecord.before_team_name.ilike(search_pattern),
+                    WarrantyClaimRecord.before_team_email.ilike(search_pattern),
+                    WarrantyClaimRecord.before_team_account_id.ilike(search_pattern),
+                    WarrantyClaimRecord.after_team_name.ilike(search_pattern),
+                    WarrantyClaimRecord.after_team_email.ilike(search_pattern),
+                    WarrantyClaimRecord.after_team_account_id.ilike(search_pattern),
+                    WarrantyClaimRecord.failure_reason.ilike(search_pattern),
+                )
+            )
+
+        if normalized_status in self.CLAIM_STATUS_LABELS:
+            filters.append(WarrantyClaimRecord.claim_status == normalized_status)
+
+        if filters:
+            stmt = stmt.where(and_(*filters))
+            count_stmt = count_stmt.where(and_(*filters))
+
+        safe_page = max(int(page or 1), 1)
+        safe_per_page = max(int(per_page or 20), 1)
+        offset = (safe_page - 1) * safe_per_page
+
+        stmt = (
+            stmt.order_by(WarrantyClaimRecord.submitted_at.desc(), WarrantyClaimRecord.id.desc())
+            .offset(offset)
+            .limit(safe_per_page)
+        )
+
+        total_result = await db_session.execute(count_stmt)
+        total = total_result.scalar() or 0
+
+        records_result = await db_session.execute(stmt)
+        records = [self.serialize_warranty_claim_record(record) for record in records_result.scalars().all()]
+
+        total_pages = max(math.ceil(total / safe_per_page), 1) if total else 1
+        return {
+            "records": records,
+            "pagination": {
+                "current_page": safe_page,
+                "per_page": safe_per_page,
+                "total": total,
+                "total_pages": total_pages,
+            }
         }
 
     async def get_warranty_email_entry(
@@ -931,17 +1105,38 @@ class WarrantyService:
         db_session: AsyncSession,
         email: str
     ) -> Dict[str, Any]:
+        submitted_at = get_now()
+        normalized_email = self.normalize_email(email)
+        before_team_info = None
+
         try:
+            if normalized_email:
+                latest_context = await self._load_latest_team_context_for_email(
+                    db_session,
+                    normalized_email
+                )
+                if latest_context:
+                    before_team_info = latest_context.get("team_info")
+
             validation_result = await self.validate_warranty_claim_input(
                 db_session=db_session,
                 email=email,
                 require_latest_team_banned=True
             )
             if not validation_result.get("success"):
+                await self._record_warranty_claim_result(
+                    db_session=db_session,
+                    email=normalized_email or (email or "").strip(),
+                    submitted_at=submitted_at,
+                    claim_status="failed",
+                    before_team_info=before_team_info or validation_result.get("latest_team_info"),
+                    failure_reason=validation_result.get("error"),
+                )
                 return validation_result
 
             normalized_email = validation_result["normalized_email"]
             warranty_entry = validation_result["warranty_entry"]
+            before_team_info = validation_result.get("latest_team_info") or before_team_info
 
             existing_team = await self._find_existing_warranty_team_from_entry(db_session, warranty_entry)
             if not existing_team:
@@ -958,6 +1153,14 @@ class WarrantyService:
                     await db_session.commit()
                     await db_session.refresh(warranty_entry)
 
+                await self._record_warranty_claim_result(
+                    db_session=db_session,
+                    email=normalized_email,
+                    submitted_at=submitted_at,
+                    claim_status="success",
+                    before_team_info=before_team_info,
+                    after_team=existing_team,
+                )
                 return {
                     "success": True,
                     "message": "质保邀请已存在，请直接查收邮箱中的邀请邮件。",
@@ -973,6 +1176,14 @@ class WarrantyService:
             warranty_teams = await self._get_available_warranty_teams(db_session)
             if not warranty_teams:
                 logger.warning("质保申请失败: 没有可用的质保 Team")
+                await self._record_warranty_claim_result(
+                    db_session=db_session,
+                    email=normalized_email,
+                    submitted_at=submitted_at,
+                    claim_status="failed",
+                    before_team_info=before_team_info,
+                    failure_reason="当前没有可用的质保 Team，请稍后再试",
+                )
                 return {"success": False, "error": "当前没有可用的质保 Team，请稍后再试"}
 
             last_error = None
@@ -984,6 +1195,14 @@ class WarrantyService:
                         entry=warranty_entry,
                         email=normalized_email,
                         team=team
+                    )
+                    await self._record_warranty_claim_result(
+                        db_session=db_session,
+                        email=normalized_email,
+                        submitted_at=submitted_at,
+                        claim_status="success",
+                        before_team_info=before_team_info,
+                        after_team=team,
                     )
                     return {
                         "success": True,
@@ -1011,12 +1230,36 @@ class WarrantyService:
                     team.id,
                     last_error
                 )
+                await self._record_warranty_claim_result(
+                    db_session=db_session,
+                    email=normalized_email,
+                    submitted_at=submitted_at,
+                    claim_status="failed",
+                    before_team_info=before_team_info,
+                    failure_reason=last_error or "当前质保 Team 邀请失败，请稍后再试",
+                )
                 return {"success": False, "error": last_error or "当前质保 Team 邀请失败，请稍后再试"}
 
+            await self._record_warranty_claim_result(
+                db_session=db_session,
+                email=normalized_email,
+                submitted_at=submitted_at,
+                claim_status="failed",
+                before_team_info=before_team_info,
+                failure_reason=last_error or "当前质保 Team 邀请失败，请稍后再试",
+            )
             return {"success": False, "error": last_error or "当前质保 Team 邀请失败，请稍后再试"}
 
         except Exception as e:
             logger.error(f"质保邀请申请失败: {e}")
+            await self._record_warranty_claim_result(
+                db_session=db_session,
+                email=normalized_email or (email or "").strip(),
+                submitted_at=submitted_at,
+                claim_status="failed",
+                before_team_info=before_team_info,
+                failure_reason=f"质保申请失败: {str(e)}",
+            )
             return {"success": False, "error": f"质保申请失败: {str(e)}"}
 
     async def validate_warranty_claim_input(

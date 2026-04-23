@@ -257,6 +257,45 @@ def run_auto_migration():
             """)
             migrations_applied.append("team_member_snapshots")
 
+        if not table_exists(cursor, "warranty_claim_records"):
+            logger.info("创建 warranty_claim_records 表")
+            cursor.execute("""
+                CREATE TABLE warranty_claim_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email VARCHAR(255) NOT NULL,
+                    before_team_id INTEGER,
+                    before_team_name VARCHAR(255),
+                    before_team_email VARCHAR(255),
+                    before_team_account_id VARCHAR(100),
+                    before_team_status VARCHAR(20),
+                    before_team_recorded_at DATETIME,
+                    claim_status VARCHAR(20) NOT NULL,
+                    failure_reason TEXT,
+                    after_team_id INTEGER,
+                    after_team_name VARCHAR(255),
+                    after_team_email VARCHAR(255),
+                    after_team_account_id VARCHAR(100),
+                    after_team_recorded_at DATETIME,
+                    submitted_at DATETIME NOT NULL,
+                    completed_at DATETIME,
+                    FOREIGN KEY(before_team_id) REFERENCES teams(id),
+                    FOREIGN KEY(after_team_id) REFERENCES teams(id)
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_warranty_claim_records_email
+                ON warranty_claim_records (email)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_warranty_claim_records_status
+                ON warranty_claim_records (claim_status)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_warranty_claim_records_submitted_at
+                ON warranty_claim_records (submitted_at)
+            """)
+            migrations_applied.append("warranty_claim_records")
+
         migrations_applied.extend(migrate_customer_service_upload_assets(cursor))
         
         # 提交更改

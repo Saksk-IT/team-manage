@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}质保提交记录 - GPT Team 管理系统{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>质保提交记录</h2>
+</div>
+
+<div class="content-section sticky-toolbar-section">
+    <div class="section-header">
+        <h3>搜索筛选</h3>
+    </div>
+
+    <form method="get" action="/admin/warranty-claim-records" class="search-form-grid">
+        <div class="form-group">
+            <label for="search">关键词</label>
+            <input
+                type="text"
+                id="search"
+                name="search"
+                value="{{ search or '' }}"
+                placeholder="搜索邮箱、Team、Account ID、失败原因"
+                class="form-control"
+            >
+        </div>
+        <div class="form-group">
+            <label for="claim_status">状态</label>
+            <select id="claim_status" name="claim_status" class="form-control">
+                <option value="">全部</option>
+                <option value="success" {% if claim_status == 'success' %}selected{% endif %}>质保成功</option>
+                <option value="failed" {% if claim_status == 'failed' %}selected{% endif %}>质保失败</option>
+            </select>
+        </div>
+        <div class="form-actions" style="display: flex; gap: 0.5rem;">
+            <button type="submit" class="btn btn-primary" style="flex: 1;">
+                <i data-lucide="search" style="width: 16px; height: 16px;"></i> 搜索
+            </button>
+            <a href="/admin/warranty-claim-records" class="btn btn-secondary">
+                <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i> 重置
+            </a>
+        </div>
+    </form>
+</div>
+
+<div class="content-section sticky-toolbar-section">
+    <div class="section-header">
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <h3>记录列表</h3>
+            <span class="badge badge-info">{{ pagination.total }} 条记录</span>
+        </div>
+    </div>
+
+    {% if records %}
+    <div class="table-container table-sticky-edges">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>质保邮箱</th>
+                    <th>提交前 Team</th>
+                    <th>提交结果</th>
+                    <th>失败原因</th>
+                    <th>质保后 Team</th>
+                    <th>提交时间</th>
+                    <th>完成时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in records %}
+                <tr>
+                    <td><span class="text-muted">{{ record.id }}</span></td>
+                    <td><strong>{{ record.email }}</strong></td>
+                    <td>
+                        {% if record.before_team_id %}
+                        <div class="record-stack">
+                            <div><strong>{{ record.before_team_name or '-' }}</strong></div>
+                            <div class="record-muted">Team ID：{{ record.before_team_id }}</div>
+                            <div class="record-muted">账号：{{ record.before_team_email or '-' }}</div>
+                            <div class="record-muted">Account ID：{{ record.before_team_account_id or '-' }}</div>
+                            <div class="record-muted">状态：{{ record.before_team_status_label or '-' }}</div>
+                            <div class="record-muted">最近时间：{{ record.before_team_recorded_at|format_datetime }}</div>
+                        </div>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="status-badge {{ 'status-active' if record.claim_status == 'success' else 'status-banned' }}">
+                            {{ record.claim_status_label }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="failure-reason-cell">{{ record.failure_reason or '-' }}</div>
+                    </td>
+                    <td>
+                        {% if record.after_team_id %}
+                        <div class="record-stack">
+                            <div><strong>{{ record.after_team_name or '-' }}</strong></div>
+                            <div class="record-muted">Team ID：{{ record.after_team_id }}</div>
+                            <div class="record-muted">账号：{{ record.after_team_email or '-' }}</div>
+                            <div class="record-muted">Account ID：{{ record.after_team_account_id or '-' }}</div>
+                            <div class="record-muted">成功时间：{{ record.after_team_recorded_at|format_datetime }}</div>
+                        </div>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ record.submitted_at|format_datetime }}</td>
+                    <td>{{ record.completed_at|format_datetime }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if pagination.total_pages > 1 %}
+    {% set query_params = [] %}
+    {% if search %}{% set _ = query_params.append('search=' + search|urlencode) %}{% endif %}
+    {% if claim_status %}{% set _ = query_params.append('claim_status=' + claim_status|urlencode) %}{% endif %}
+    {% if pagination.per_page != 20 %}{% set _ = query_params.append('per_page=' + pagination.per_page|string) %}{% endif %}
+    {% set base_query = '&' + query_params|join('&') if query_params else '' %}
+
+    <div class="pagination">
+        <div class="per-page-selector">
+            每页
+            <select class="per-page-select" onchange="changePerPage(this.value)">
+                <option value="20" {% if pagination.per_page == 20 %}selected{% endif %}>20</option>
+                <option value="50" {% if pagination.per_page == 50 %}selected{% endif %}>50</option>
+                <option value="100" {% if pagination.per_page == 100 %}selected{% endif %}>100</option>
+            </select>
+        </div>
+
+        <div class="pagination-controls">
+            <a href="?page=1{{ base_query }}"
+                class="btn btn-sm btn-secondary {% if pagination.current_page == 1 %}disabled{% endif %}">
+                <i data-lucide="chevrons-left" style="width: 14px; height: 14px;"></i>
+            </a>
+
+            {% if pagination.current_page > 1 %}
+            <a href="?page={{ pagination.current_page - 1 }}{{ base_query }}" class="btn btn-sm btn-secondary">
+                <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+            </a>
+            {% else %}
+            <button class="btn btn-sm btn-secondary" disabled>
+                <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+            </button>
+            {% endif %}
+
+            <div class="pagination-numbers">
+                {% for p in range(1, pagination.total_pages + 1) %}
+                    {% if p == pagination.current_page %}
+                    <span class="page-number active">{{ p }}</span>
+                    {% elif p <= 2 or p > pagination.total_pages - 2 or (p >= pagination.current_page - 1 and p <= pagination.current_page + 1) %}
+                    <a href="?page={{ p }}{{ base_query }}" class="page-number">{{ p }}</a>
+                    {% elif p == 3 and pagination.current_page > 4 %}
+                    <span class="page-dots">...</span>
+                    {% elif p == pagination.total_pages - 2 and pagination.current_page < pagination.total_pages - 3 %}
+                    <span class="page-dots">...</span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+
+            {% if pagination.current_page < pagination.total_pages %}
+            <a href="?page={{ pagination.current_page + 1 }}{{ base_query }}" class="btn btn-sm btn-secondary">
+                <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+            </a>
+            {% else %}
+            <button class="btn btn-sm btn-secondary" disabled>
+                <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+            </button>
+            {% endif %}
+
+            <a href="?page={{ pagination.total_pages }}{{ base_query }}"
+                class="btn btn-sm btn-secondary {% if pagination.current_page == pagination.total_pages %}disabled{% endif %}">
+                <i data-lucide="chevrons-right" style="width: 14px; height: 14px;"></i>
+            </a>
+        </div>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="empty-state">
+        <i data-lucide="clipboard-list" style="width: 48px; height: 48px; margin-bottom: 1rem; opacity: 0.2;"></i>
+        <p>暂无质保提交记录</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .record-stack {
+        display: grid;
+        gap: 0.2rem;
+        min-width: 180px;
+    }
+
+    .record-muted {
+        color: var(--text-muted);
+        font-size: 0.8125rem;
+        line-height: 1.4;
+    }
+
+    .failure-reason-cell {
+        min-width: 220px;
+        white-space: normal;
+        word-break: break-word;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function changePerPage(value) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('per_page', value);
+        url.searchParams.set('page', '1');
+        window.location.href = url.toString();
+    }
+</script>
+{% endblock %}

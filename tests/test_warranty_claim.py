@@ -8,7 +8,14 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import RedemptionCode, RedemptionRecord, Team, TeamMemberSnapshot, WarrantyEmailEntry
+from app.models import (
+    RedemptionCode,
+    RedemptionRecord,
+    Team,
+    TeamMemberSnapshot,
+    WarrantyClaimRecord,
+    WarrantyEmailEntry,
+)
 from app.services.team import TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY
 from app.services.warranty import WarrantyService
 from app.utils.time_utils import get_now
@@ -164,11 +171,60 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
                     RedemptionRecord.is_warranty_redemption.is_(True)
                 )
             )
+            claim_record_result = await session.execute(
+                select(WarrantyClaimRecord).where(WarrantyClaimRecord.email == "buyer@example.com")
+            )
+            claim_record = claim_record_result.scalar_one()
 
         self.assertTrue(result["success"])
         self.assertEqual(entry.remaining_claims, 1)
         self.assertEqual(entry.last_warranty_team_id, warranty_team.id)
         self.assertEqual(record_count_result.scalar(), 1)
+        self.assertEqual(claim_record.claim_status, "success")
+        self.assertEqual(claim_record.before_team_id, ordinary_team.id)
+        self.assertEqual(claim_record.after_team_id, warranty_team.id)
+        self.assertIsNone(claim_record.failure_reason)
+
+    async def test_claim_warranty_failure_creates_failed_claim_record(self):
+        async with self.Session() as session:
+            ordinary_team, _ = await self._seed_team_data(session)
+            session.add(
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=5),
+                    source="manual",
+                    last_redeem_code="CODE-FAILED"
+                )
+            )
+            await self._add_latest_team_record(
+                session=session,
+                team=ordinary_team,
+                email="buyer@example.com",
+                code="CODE-FAILED"
+            )
+            await session.commit()
+
+            service = WarrantyService()
+            result = await service.claim_warranty_invite(
+                db_session=session,
+                email="buyer@example.com"
+            )
+
+            claim_record_result = await session.execute(
+                select(WarrantyClaimRecord).where(WarrantyClaimRecord.email == "buyer@example.com")
+            )
+            claim_record = claim_record_result.scalar_one()
+
+        self.assertFalse(result["success"])
+        self.assertEqual(claim_record.claim_status, "failed")
+        self.assertEqual(claim_record.before_team_id, ordinary_team.id)
+        self.assertEqual(claim_record.before_team_status, "active")
+        self.assertEqual(
+            claim_record.failure_reason,
+            "该邮箱最近加入的 Team 当前状态为「正常」，仅封禁后可提交质保"
+        )
+        self.assertIsNone(claim_record.after_team_id)
 
     async def test_claim_warranty_prefers_smallest_available_team_id(self):
         async with self.Session() as session:

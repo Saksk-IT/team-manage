@@ -2280,6 +2280,61 @@ async def warranty_emails_page(
         )
 
 
+@router.get("/warranty-claim-records", response_class=HTMLResponse)
+async def warranty_claim_records_page(
+    request: Request,
+    search: Optional[str] = None,
+    claim_status: Optional[str] = None,
+    page: Optional[str] = "1",
+    per_page: int = 20,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        from app.main import templates
+
+        try:
+            page_int = int(page) if page and page.strip() else 1
+        except (ValueError, TypeError):
+            page_int = 1
+
+        logger.info(
+            "管理员访问质保提交记录页 search=%s claim_status=%s page=%s per_page=%s",
+            search,
+            claim_status,
+            page_int,
+            per_page
+        )
+
+        result = await warranty_service.list_warranty_claim_records(
+            db_session=db,
+            search=search,
+            claim_status=claim_status,
+            page=page_int,
+            per_page=per_page,
+        )
+
+        return templates.TemplateResponse(
+            request,
+            "admin/warranty_claim_records/index.html",
+            {
+                "request": request,
+                "user": current_user,
+                "active_page": "warranty_claim_records",
+                "records": result["records"],
+                "search": search or "",
+                "claim_status": (claim_status or "").strip().lower(),
+                "pagination": result["pagination"],
+            }
+        )
+    except Exception as e:
+        logger.error(f"加载质保提交记录页失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"加载质保提交记录页失败: {str(e)}"
+        )
+
+
 @router.get("/warranty-super-codes")
 async def warranty_super_codes_redirect(
     current_user: dict = Depends(require_admin)

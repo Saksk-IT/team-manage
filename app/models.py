@@ -168,3 +168,32 @@ class WarrantyEmailEntry(Base):
         Index("idx_warranty_email_entries_expires_at", "expires_at"),
         Index("idx_warranty_email_entries_source", "source"),
     )
+
+
+class WarrantyClaimRecord(Base):
+    """质保提交记录表"""
+    __tablename__ = "warranty_claim_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), nullable=False, comment="质保邮箱（统一小写）")
+    before_team_id = Column(Integer, ForeignKey("teams.id"), comment="提交前所在 Team ID")
+    before_team_name = Column(String(255), comment="提交前所在 Team 名称快照")
+    before_team_email = Column(String(255), comment="提交前所在 Team 管理员邮箱快照")
+    before_team_account_id = Column(String(100), comment="提交前所在 Team Account ID 快照")
+    before_team_status = Column(String(20), comment="提交前所在 Team 状态")
+    before_team_recorded_at = Column(DateTime, comment="提交前所在 Team 的最近记录时间")
+    claim_status = Column(String(20), nullable=False, comment="质保提交状态: success/failed")
+    failure_reason = Column(Text, comment="失败原因")
+    after_team_id = Column(Integer, ForeignKey("teams.id"), comment="质保成功后加入的 Team ID")
+    after_team_name = Column(String(255), comment="质保成功后加入的 Team 名称快照")
+    after_team_email = Column(String(255), comment="质保成功后加入的 Team 管理员邮箱快照")
+    after_team_account_id = Column(String(100), comment="质保成功后加入的 Team Account ID 快照")
+    after_team_recorded_at = Column(DateTime, comment="质保成功后记录时间")
+    submitted_at = Column(DateTime, default=get_now, nullable=False, comment="提交时间")
+    completed_at = Column(DateTime, comment="处理完成时间")
+
+    __table_args__ = (
+        Index("idx_warranty_claim_records_email", "email"),
+        Index("idx_warranty_claim_records_status", "claim_status"),
+        Index("idx_warranty_claim_records_submitted_at", "submitted_at"),
+    )
