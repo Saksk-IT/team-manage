@@ -993,6 +993,7 @@ class WarrantyService:
             .where(
                 Team.team_type == TEAM_TYPE_WARRANTY,
                 Team.status == "active",
+                or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
                 Team.current_members < Team.max_members
             )
             .order_by(Team.id.asc())

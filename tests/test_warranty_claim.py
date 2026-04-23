@@ -405,6 +405,61 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
 
+    async def test_claim_warranty_skips_warranty_unavailable_team(self):
+        async with self.Session() as session:
+            ordinary_team, unavailable_warranty_team = await self._seed_team_data(session)
+            ordinary_team.status = "banned"
+            unavailable_warranty_team.warranty_unavailable = True
+            unavailable_warranty_team.warranty_unavailable_reason = "官方拦截下发(响应空列表)"
+            unavailable_warranty_team.warranty_unavailable_at = get_now()
+
+            fallback_warranty_team = Team(
+                email="warranty-owner-2@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-warranty-2",
+                team_type=TEAM_TYPE_WARRANTY,
+                team_name="Warranty Team 2",
+                status="active",
+                current_members=1,
+                max_members=5
+            )
+            session.add(fallback_warranty_team)
+            await session.flush()
+
+            session.add(
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=5),
+                    source="manual",
+                    last_redeem_code="CODE-SKIP-UNAVAILABLE"
+                )
+            )
+            await self._add_latest_team_record(
+                session=session,
+                team=ordinary_team,
+                email="buyer@example.com",
+                code="CODE-SKIP-UNAVAILABLE"
+            )
+            await session.commit()
+
+            service = WarrantyService()
+            service._find_existing_warranty_team_for_email = AsyncMock(return_value=None)
+            service.team_service.add_team_member = AsyncMock(return_value={"success": True, "message": "邀请已发送"})
+
+            result = await service.claim_warranty_invite(
+                db_session=session,
+                email="buyer@example.com"
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["team_info"]["id"], fallback_warranty_team.id)
+        service.team_service.add_team_member.assert_awaited_once_with(
+            fallback_warranty_team.id,
+            "buyer@example.com",
+            session
+        )
+
     async def test_claim_warranty_rejects_when_latest_team_is_not_banned(self):
         async with self.Session() as session:
             ordinary_team, _ = await self._seed_team_data(session)

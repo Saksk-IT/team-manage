@@ -186,6 +186,13 @@
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-width: 260px;">
                         <div style="min-width: 0;">
                             <div>{{ team.email }}</div>
+                            {% if is_warranty_mode and team.warranty_unavailable %}
+                            <span
+                                class="role-hint"
+                                title="不可用原因：{{ team.warranty_unavailable_reason or '系统自动标记' }}{% if team.warranty_unavailable_at %}；标记时间：{{ team.warranty_unavailable_at|format_datetime }}{% endif %}">
+                                已标记不可用
+                            </span>
+                            {% endif %}
                             {% if team.account_role and team.account_role != 'account-owner' %}
                             <span class="role-hint" title="账号角色: {{ team.account_role }}">已降级</span>
                             {% endif %}
@@ -233,6 +240,13 @@
                     {% endif %}
                 </td>
                 <td>
+                    {% if is_warranty_mode and team.warranty_unavailable %}
+                    <span
+                        class="status-badge status-error"
+                        title="不可用原因：{{ team.warranty_unavailable_reason or '系统自动标记' }}{% if team.warranty_unavailable_at %}；标记时间：{{ team.warranty_unavailable_at|format_datetime }}{% endif %}">
+                        不可用
+                    </span>
+                    {% else %}
                     <span class="status-badge status-{{ team.status }}">
                         {% if team.status == 'active' %}
                         可用
@@ -248,6 +262,7 @@
                         未知
                         {% endif %}
                     </span>
+                    {% endif %}
                 </td>
                 <td>
                     <div class="action-buttons">

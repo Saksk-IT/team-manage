@@ -167,6 +167,39 @@ class TeamService:
         )
         return any(keyword in error_msg for keyword in full_keywords)
 
+    @staticmethod
+    def _is_warranty_intercept_error(result: Dict[str, Any]) -> bool:
+        error_code = str(result.get("error_code") or "").strip().lower()
+        error_msg = str(result.get("error") or "").strip().lower()
+        return error_code == "ghost_success" and "官方拦截下发" in error_msg
+
+    def _should_mark_warranty_team_unavailable(self, team: Team, result: Dict[str, Any]) -> bool:
+        if not team or team.team_type != TEAM_TYPE_WARRANTY:
+            return False
+
+        error_msg = result.get("error")
+        return self._is_warranty_intercept_error(result) or self._is_team_full_error_message(error_msg)
+
+    def _mark_warranty_team_unavailable(
+        self,
+        team: Team,
+        reason: Optional[str]
+    ) -> None:
+        if not team or team.team_type != TEAM_TYPE_WARRANTY:
+            return
+
+        team.warranty_unavailable = True
+        team.warranty_unavailable_reason = (reason or "").strip() or team.warranty_unavailable_reason
+        team.warranty_unavailable_at = get_now()
+
+    def _clear_warranty_team_unavailable(self, team: Team) -> None:
+        if not team or team.team_type != TEAM_TYPE_WARRANTY:
+            return
+
+        team.warranty_unavailable = False
+        team.warranty_unavailable_reason = None
+        team.warranty_unavailable_at = None
+
     async def _sync_team_member_snapshots(
         self,
         team: Team,
@@ -261,6 +294,8 @@ class TeamService:
         if error_code == "ghost_success":
             logger.error(f"检测到 Team {team.id} ({team.email}) 存在“虚假成功”现象 (邀请返回 200 但列表无成员)，标记为 error")
             team.status = "error"
+            if self._should_mark_warranty_team_unavailable(team, result):
+                self._mark_warranty_team_unavailable(team, result.get("error"))
             if not db_session.in_transaction():
                 await db_session.commit()
             return True
@@ -284,6 +319,8 @@ class TeamService:
         if self._is_team_full_error_message(error_msg):
             logger.warning(f"检测到 Team 席位已满 (msg={error_msg}), 更新 Team {team.id} ({team.email}) 状态为 full")
             team.status = "full"
+            if self._should_mark_warranty_team_unavailable(team, result):
+                self._mark_warranty_team_unavailable(team, result.get("error"))
             # 学习真实的席位上限: 如果当前探测到的成员数小于预设的最大值，说明该团队实际容量较小
             if team.current_members > 0 and team.current_members < team.max_members:
                 logger.info(f"修正 Team {team.id} 的最大成员数: {team.max_members} -> {team.current_members}")
@@ -1580,6 +1617,8 @@ class TeamService:
             team.current_members = current_members
             team.status = status
             team.device_code_auth_enabled = device_code_auth_enabled
+            if team.team_type == TEAM_TYPE_WARRANTY and status == "active":
+                self._clear_warranty_team_unavailable(team)
             team.error_count = 0  # 同步成功，重置错误次数
             team.last_sync = get_now()
             await self._sync_team_member_snapshots(
@@ -2050,6 +2089,8 @@ class TeamService:
             logger.info(f"添加成员成功: {email} -> Team {team_id}")
 
             # 6. 请求成功，重置错误状态
+            if team.team_type == TEAM_TYPE_WARRANTY:
+                self._clear_warranty_team_unavailable(team)
             await self._reset_error_status(team, db_session)
 
             return {
@@ -2429,6 +2470,10 @@ class TeamService:
             # 3. 如果有状态过滤,添加过滤条件
             if status:
                 stmt = stmt.where(Team.status == status)
+                if team_type == TEAM_TYPE_WARRANTY and status == "active":
+                    stmt = stmt.where(
+                        or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None))
+                    )
 
             if team_type:
                 stmt = stmt.where(Team.team_type == team_type)
@@ -2527,6 +2572,13 @@ class TeamService:
                     "bound_code_count": len(bound_codes_for_team),
                     "bound_codes": bound_codes_for_team,
                     "status": team.status,
+                    "warranty_unavailable": bool(getattr(team, "warranty_unavailable", False)),
+                    "warranty_unavailable_reason": getattr(team, "warranty_unavailable_reason", None),
+                    "warranty_unavailable_at": (
+                        team.warranty_unavailable_at.isoformat()
+                        if getattr(team, "warranty_unavailable_at", None)
+                        else None
+                    ),
                     "device_code_auth_enabled": getattr(team, 'device_code_auth_enabled', False),
                     "last_sync": team.last_sync.isoformat() if team.last_sync else None,
                     "created_at": team.created_at.isoformat() if team.created_at else None
@@ -2679,6 +2731,10 @@ class TeamService:
                 Team.status == "active",
                 Team.current_members < Team.max_members
             )
+            if team_type == TEAM_TYPE_WARRANTY:
+                stmt = stmt.where(
+                    or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None))
+                )
             result = await db_session.execute(stmt)
             return result.scalar() or 0
         except Exception as e:
@@ -2706,6 +2762,10 @@ class TeamService:
             )
             if team_type:
                 available_stmt = available_stmt.where(Team.team_type == team_type)
+            if team_type == TEAM_TYPE_WARRANTY:
+                available_stmt = available_stmt.where(
+                    or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None))
+                )
             available_result = await db_session.execute(available_stmt)
             available = available_result.scalar() or 0
 
@@ -2721,6 +2781,10 @@ class TeamService:
             )
             if team_type:
                 remaining_seats_stmt = remaining_seats_stmt.where(Team.team_type == team_type)
+            if team_type == TEAM_TYPE_WARRANTY:
+                remaining_seats_stmt = remaining_seats_stmt.where(
+                    or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None))
+                )
             remaining_seats_result = await db_session.execute(remaining_seats_stmt)
             remaining_seats = remaining_seats_result.scalar() or 0
             

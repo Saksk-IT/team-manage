@@ -8,7 +8,7 @@ from starlette.requests import Request
 
 from app.database import Base
 from app.models import Team
-from app.routes.admin import admin_dashboard
+from app.routes.admin import admin_dashboard, warranty_teams_dashboard
 
 
 class AdminTeamListBoundCodeTypeBadgeTests(unittest.IsolatedAsyncioTestCase):
@@ -90,6 +90,39 @@ class AdminTeamListBoundCodeTypeBadgeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("账号类型", html)
         self.assertRegex(html, r"<td>\s*Standard Badge Team\s*</td>\s*<td>\s*<span[^>]*data-bound-code-type=\"standard\"")
         self.assertRegex(html, r'data-bound-code-type="standard"[^>]*>\s*普通\s*<')
+
+    async def test_warranty_team_list_renders_unavailable_badge_for_marked_team(self):
+        async with self.Session() as session:
+            session.add(
+                Team(
+                    email="warranty-owner@example.com",
+                    access_token_encrypted="dummy-token",
+                    account_id="acc-warranty",
+                    team_type="warranty",
+                    team_name="Unavailable Warranty Team",
+                    status="error",
+                    current_members=1,
+                    max_members=5,
+                    warranty_unavailable=True,
+                    warranty_unavailable_reason="官方拦截下发(响应空列表)",
+                )
+            )
+            await session.commit()
+
+            response = await warranty_teams_dashboard(
+                request=Request({"type": "http", "method": "GET", "path": "/admin/warranty-teams", "headers": []}),
+                page=1,
+                per_page=20,
+                search=None,
+                status=None,
+                db=session,
+                current_user={"username": "admin"},
+            )
+
+        html = response.body.decode("utf-8")
+        self.assertIn("Unavailable Warranty Team", html)
+        self.assertIn("已标记不可用", html)
+        self.assertRegex(html, r'>\s*不可用\s*<')
 
 
 if __name__ == "__main__":

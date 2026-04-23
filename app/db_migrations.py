@@ -234,6 +234,27 @@ def run_auto_migration():
             cursor.execute("ALTER TABLE teams ADD COLUMN device_code_auth_enabled BOOLEAN DEFAULT 0")
             migrations_applied.append("teams.device_code_auth_enabled")
 
+        if not column_exists(cursor, "teams", "warranty_unavailable"):
+            logger.info("添加 teams.warranty_unavailable 字段")
+            cursor.execute("ALTER TABLE teams ADD COLUMN warranty_unavailable BOOLEAN DEFAULT 0")
+            migrations_applied.append("teams.warranty_unavailable")
+
+        if not column_exists(cursor, "teams", "warranty_unavailable_reason"):
+            logger.info("添加 teams.warranty_unavailable_reason 字段")
+            cursor.execute("ALTER TABLE teams ADD COLUMN warranty_unavailable_reason TEXT")
+            migrations_applied.append("teams.warranty_unavailable_reason")
+
+        if not column_exists(cursor, "teams", "warranty_unavailable_at"):
+            logger.info("添加 teams.warranty_unavailable_at 字段")
+            cursor.execute("ALTER TABLE teams ADD COLUMN warranty_unavailable_at DATETIME")
+            migrations_applied.append("teams.warranty_unavailable_at")
+
+        cursor.execute("""
+            UPDATE teams
+            SET warranty_unavailable = 0
+            WHERE warranty_unavailable IS NULL
+        """)
+
         if not table_exists(cursor, "team_member_snapshots"):
             logger.info("创建 team_member_snapshots 表")
             cursor.execute("""
