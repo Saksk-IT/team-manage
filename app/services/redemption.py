@@ -1001,6 +1001,17 @@ class RedemptionService:
                 if code.has_warranty:
                     code.warranty_expires_at = None
 
+                    normalized_email = (record.email or "").strip().lower()
+                    if normalized_email:
+                        warranty_entry_result = await db_session.execute(
+                            select(WarrantyEmailEntry).where(
+                                WarrantyEmailEntry.email == normalized_email
+                            )
+                        )
+                        warranty_entry = warranty_entry_result.scalar_one_or_none()
+                        if warranty_entry:
+                            await db_session.delete(warranty_entry)
+
             # 4. 删除使用记录
             await db_session.delete(record)
             await db_session.commit()

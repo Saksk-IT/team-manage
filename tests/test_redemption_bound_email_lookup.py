@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import RedemptionCode, RedemptionRecord
+from app.models import RedemptionCode, RedemptionRecord, WarrantyEmailEntry
 from app.services.redemption import RedemptionService
 
 
@@ -113,6 +113,93 @@ class RedemptionBoundEmailLookupTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(refreshed_code.used_team_id)
         self.assertIsNone(refreshed_code.used_at)
         self.assertEqual(remaining_records, [])
+
+    async def test_withdraw_record_removes_warranty_email_entry_for_warranty_code(self):
+        async with self.Session() as session:
+            code = RedemptionCode(
+                code="CODE-WARRANTY-WITHDRAW-001",
+                status="used",
+                has_warranty=True,
+                used_by_email="buyer@example.com",
+                used_team_id=1,
+                used_at=datetime(2026, 4, 23, 11, 0, 0),
+            )
+            session.add(code)
+            await session.flush()
+            session.add_all([
+                RedemptionRecord(
+                    email="buyer@example.com",
+                    code=code.code,
+                    team_id=1,
+                    account_id="acc-warranty",
+                    redeemed_at=datetime(2026, 4, 23, 11, 0, 0),
+                ),
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=10,
+                    source="auto_redeem",
+                    last_redeem_code=code.code,
+                )
+            ])
+            await session.commit()
+
+            with patch(
+                "app.services.team.team_service.remove_invite_or_member",
+                new=AsyncMock(return_value={"success": True, "message": "已移除"})
+            ):
+                result = await self.service.withdraw_record_by_code("CODE-WARRANTY-WITHDRAW-001", session)
+
+            warranty_result = await session.execute(
+                select(WarrantyEmailEntry).where(WarrantyEmailEntry.email == "buyer@example.com")
+            )
+            warranty_entry = warranty_result.scalar_one_or_none()
+
+        self.assertTrue(result["success"])
+        self.assertIsNone(warranty_entry)
+
+    async def test_withdraw_record_keeps_warranty_email_entry_for_non_warranty_code(self):
+        async with self.Session() as session:
+            code = RedemptionCode(
+                code="CODE-STANDARD-WITHDRAW-001",
+                status="used",
+                has_warranty=False,
+                used_by_email="buyer@example.com",
+                used_team_id=1,
+                used_at=datetime(2026, 4, 23, 12, 0, 0),
+            )
+            session.add(code)
+            await session.flush()
+            session.add_all([
+                RedemptionRecord(
+                    email="buyer@example.com",
+                    code=code.code,
+                    team_id=1,
+                    account_id="acc-standard",
+                    redeemed_at=datetime(2026, 4, 23, 12, 0, 0),
+                ),
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=2,
+                    source="manual",
+                    last_redeem_code="OTHER-CODE",
+                )
+            ])
+            await session.commit()
+
+            with patch(
+                "app.services.team.team_service.remove_invite_or_member",
+                new=AsyncMock(return_value={"success": True, "message": "已移除"})
+            ):
+                result = await self.service.withdraw_record_by_code("CODE-STANDARD-WITHDRAW-001", session)
+
+            warranty_result = await session.execute(
+                select(WarrantyEmailEntry).where(WarrantyEmailEntry.email == "buyer@example.com")
+            )
+            warranty_entry = warranty_result.scalar_one_or_none()
+
+        self.assertTrue(result["success"])
+        self.assertIsNotNone(warranty_entry)
+        self.assertEqual(warranty_entry.last_redeem_code, "OTHER-CODE")
 
     async def test_withdraw_record_by_code_rejects_unbound_code(self):
         async with self.Session() as session:
