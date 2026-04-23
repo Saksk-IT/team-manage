@@ -2,11 +2,13 @@ import os
 import tempfile
 import unittest
 from datetime import datetime
+from unittest.mock import AsyncMock, patch
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import RedemptionCode
+from app.models import RedemptionCode, RedemptionRecord
 from app.services.redemption import RedemptionService
 
 
@@ -68,6 +70,59 @@ class RedemptionBoundEmailLookupTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result["used_by_email"])
         self.assertEqual(result["status"], "unused")
         self.assertEqual(result["message"], "该兑换码当前未绑定邮箱")
+
+    async def test_withdraw_record_by_code_reuses_withdraw_record_semantics(self):
+        async with self.Session() as session:
+            code = RedemptionCode(
+                code="CODE-WITHDRAW-001",
+                status="used",
+                used_by_email="buyer@example.com",
+                used_team_id=1,
+                used_at=datetime(2026, 4, 23, 10, 0, 0),
+            )
+            session.add(code)
+            await session.flush()
+            session.add(
+                RedemptionRecord(
+                    email="buyer@example.com",
+                    code=code.code,
+                    team_id=1,
+                    account_id="acc-1",
+                    redeemed_at=datetime(2026, 4, 23, 10, 0, 0),
+                )
+            )
+            await session.commit()
+
+            with patch(
+                "app.services.team.team_service.remove_invite_or_member",
+                new=AsyncMock(return_value={"success": True, "message": "已移除"})
+            ) as mocked_remove:
+                result = await self.service.withdraw_record_by_code("CODE-WITHDRAW-001", session)
+
+            code_result = await session.execute(
+                select(RedemptionCode).where(RedemptionCode.code == "CODE-WITHDRAW-001")
+            )
+            refreshed_code = code_result.scalar_one()
+            records_result = await session.execute(select(RedemptionRecord))
+            remaining_records = records_result.scalars().all()
+
+        mocked_remove.assert_awaited_once_with(1, "buyer@example.com", session)
+        self.assertTrue(result["success"])
+        self.assertEqual(refreshed_code.status, "unused")
+        self.assertIsNone(refreshed_code.used_by_email)
+        self.assertIsNone(refreshed_code.used_team_id)
+        self.assertIsNone(refreshed_code.used_at)
+        self.assertEqual(remaining_records, [])
+
+    async def test_withdraw_record_by_code_rejects_unbound_code(self):
+        async with self.Session() as session:
+            session.add(RedemptionCode(code="CODE-UNBOUND-001", status="unused"))
+            await session.commit()
+
+            result = await self.service.withdraw_record_by_code("CODE-UNBOUND-001", session)
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "该兑换码当前未绑定邮箱，无需撤销")
 
 
 if __name__ == "__main__":

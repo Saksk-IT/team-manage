@@ -498,6 +498,10 @@ body.transition-open {
     word-break: break-all;
 }
 
+.lookup-result__actions {
+    margin-top: 1rem;
+}
+
 .btn {
     width: 100%;
     padding: 0.75rem;
@@ -535,6 +539,16 @@ body.transition-open {
 
 .btn-primary:active {
     transform: translateY(0);
+}
+
+.btn-danger {
+    background-color: var(--danger);
+    color: white;
+}
+
+.btn-danger:hover {
+    background-color: #dc2626;
+    transform: translateY(-1px);
 }
 
 /* Toast */

@@ -712,6 +712,60 @@ class RedemptionService:
                 "error": f"查询兑换码绑定邮箱失败: {str(e)}"
             }
 
+    async def withdraw_record_by_code(
+        self,
+        code: str,
+        db_session: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        根据兑换码撤回当前绑定邮箱对应的最新使用记录。
+
+        该方法供前台“查询绑定邮箱”后的撤销入口使用，最终复用后台使用记录的
+        withdraw_record 逻辑，以保持 Team 成员/邀请处理、兑换码恢复、记录删除语义一致。
+
+        Args:
+            code: 兑换码
+            db_session: 数据库会话
+
+        Returns:
+            结果字典
+        """
+        normalized_code = (code or "").strip()
+        if not normalized_code:
+            return {"success": False, "error": "兑换码不能为空"}
+
+        try:
+            code_stmt = select(RedemptionCode).where(RedemptionCode.code == normalized_code)
+            code_result = await db_session.execute(code_stmt)
+            redemption_code = code_result.scalar_one_or_none()
+
+            if not redemption_code:
+                return {"success": False, "error": "兑换码不存在"}
+
+            used_by_email = (redemption_code.used_by_email or "").strip()
+            if not used_by_email:
+                return {"success": False, "error": "该兑换码当前未绑定邮箱，无需撤销"}
+
+            record_stmt = (
+                select(RedemptionRecord)
+                .where(
+                    RedemptionRecord.code == normalized_code,
+                    RedemptionRecord.email == used_by_email,
+                )
+                .order_by(RedemptionRecord.redeemed_at.desc(), RedemptionRecord.id.desc())
+            )
+            record_result = await db_session.execute(record_stmt)
+            record = record_result.scalars().first()
+
+            if not record:
+                return {"success": False, "error": "未找到可撤销的使用记录"}
+
+            return await self.withdraw_record(record.id, db_session)
+
+        except Exception as e:
+            logger.error(f"按兑换码撤回绑定邮箱失败: {e}")
+            return {"success": False, "error": f"撤销失败: {str(e)}"}
+
     async def get_unused_codes(
         self,
         db_session: AsyncSession

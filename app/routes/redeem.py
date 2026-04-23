@@ -32,6 +32,11 @@ class BoundEmailLookupRequest(BaseModel):
     code: str = Field(..., description="兑换码", min_length=1)
 
 
+class BoundEmailWithdrawRequest(BaseModel):
+    """前台撤销绑定邮箱请求"""
+    code: str = Field(..., description="兑换码", min_length=1)
+
+
 class RedeemRequest(BaseModel):
     """兑换请求"""
     email: EmailStr = Field(..., description="用户邮箱")
@@ -76,6 +81,13 @@ class BoundEmailLookupResponse(BaseModel):
     code_status: Optional[str] = None
     code_status_label: Optional[str] = None
     used_at: Optional[str] = None
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+class BoundEmailWithdrawResponse(BaseModel):
+    """前台撤销绑定邮箱响应"""
+    success: bool
     message: Optional[str] = None
     error: Optional[str] = None
 
@@ -191,6 +203,51 @@ async def lookup_bound_email(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"查询绑定邮箱失败: {str(e)}"
+        )
+
+
+@router.post("/bound-email/withdraw", response_model=BoundEmailWithdrawResponse)
+async def withdraw_bound_email(
+    request: BoundEmailWithdrawRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    根据兑换码撤销当前绑定邮箱对应的使用记录。
+    """
+    code = (request.code or "").strip()
+    if not code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="兑换码不能为空"
+        )
+
+    try:
+        logger.info("前台请求撤销兑换码绑定邮箱: %s", code)
+
+        result = await redemption_service.withdraw_record_by_code(
+            code=code,
+            db_session=db
+        )
+
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result.get("error") or "撤销失败"
+            )
+
+        return BoundEmailWithdrawResponse(
+            success=True,
+            message=result.get("message") or "撤销成功",
+            error=None
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"前台撤销绑定邮箱失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"撤销失败: {str(e)}"
         )
 
 

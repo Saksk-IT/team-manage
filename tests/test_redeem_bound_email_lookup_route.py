@@ -3,7 +3,12 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
-from app.routes.redeem import BoundEmailLookupRequest, lookup_bound_email
+from app.routes.redeem import (
+    BoundEmailLookupRequest,
+    BoundEmailWithdrawRequest,
+    lookup_bound_email,
+    withdraw_bound_email,
+)
 
 
 class RedeemBoundEmailLookupRouteTests(unittest.IsolatedAsyncioTestCase):
@@ -80,6 +85,44 @@ class RedeemBoundEmailLookupRouteTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(ctx.exception.status_code, 500)
         self.assertEqual(ctx.exception.detail, "数据库异常")
+
+    async def test_withdraw_bound_email_returns_success_message(self):
+        db = AsyncMock()
+
+        with patch(
+            "app.routes.redeem.redemption_service.withdraw_record_by_code",
+            new=AsyncMock(return_value={
+                "success": True,
+                "message": "成功撤回记录并恢复兑换码 CODE-123",
+            })
+        ) as mocked_withdraw:
+            result = await withdraw_bound_email(
+                request=BoundEmailWithdrawRequest(code="CODE-123"),
+                db=db,
+            )
+
+        mocked_withdraw.assert_awaited_once_with(code="CODE-123", db_session=db)
+        self.assertTrue(result.success)
+        self.assertEqual(result.message, "成功撤回记录并恢复兑换码 CODE-123")
+
+    async def test_withdraw_bound_email_raises_when_service_fails(self):
+        db = AsyncMock()
+
+        with patch(
+            "app.routes.redeem.redemption_service.withdraw_record_by_code",
+            new=AsyncMock(return_value={
+                "success": False,
+                "error": "该兑换码当前未绑定邮箱，无需撤销",
+            })
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                await withdraw_bound_email(
+                    request=BoundEmailWithdrawRequest(code="UNUSED-001"),
+                    db=db,
+                )
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "该兑换码当前未绑定邮箱，无需撤销")
 
 
 if __name__ == "__main__":
