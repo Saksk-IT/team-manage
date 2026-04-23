@@ -12,7 +12,6 @@ const totalItemsValue = document.getElementById('totalItemsValue');
 const visibleItemsValue = document.getElementById('visibleItemsValue');
 const lastSavedAtValue = document.getElementById('lastSavedAtValue');
 const searchInput = document.getElementById('localToolsSearchInput');
-const copyAllIdentifiersBtn = document.getElementById('copyAllIdentifiersBtn');
 const invalidLinesBox = document.getElementById('invalidLinesBox');
 const invalidLinesList = document.getElementById('invalidLinesList');
 
@@ -51,7 +50,8 @@ function buildDisplayUrl(url) {
 }
 
 function createFrozenItems(items) {
-    return Object.freeze(items.map((item) => Object.freeze({
+    return Object.freeze(items.map((item, index) => Object.freeze({
+        sequence: Number.isInteger(item.sequence) ? item.sequence : index + 1,
         identifier: item.identifier,
         openUrl: item.openUrl,
         displayUrl: item.displayUrl,
@@ -89,6 +89,7 @@ function persistLocalState(items) {
     const storagePayload = {
         savedAt,
         items: items.map((item) => ({
+            sequence: item.sequence,
             identifier: item.identifier,
             openUrl: item.openUrl,
             displayUrl: item.displayUrl,
@@ -139,6 +140,7 @@ function parseBatchContent(content) {
             }
 
             const nextItem = Object.freeze({
+                sequence: result.items.length + 1,
                 identifier,
                 openUrl,
                 displayUrl: buildDisplayUrl(openUrl),
@@ -196,11 +198,12 @@ function renderInvalidLines(invalidLines) {
     invalidLinesBox.hidden = false;
 }
 
-function createActionButton(label, className, onClick) {
+function createWorkbenchButton(className, text, title, onClick) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `btn ${className}`;
-    button.textContent = label;
+    button.className = className;
+    button.textContent = text;
+    button.title = title;
     button.addEventListener('click', onClick);
     return button;
 }
@@ -227,44 +230,35 @@ function renderItems() {
     emptyState.hidden = true;
     itemsGrid.hidden = false;
 
-    filteredItems.forEach((item, index) => {
+    filteredItems.forEach((item) => {
         const itemCard = document.createElement('article');
-        itemCard.className = 'item-card';
+        itemCard.className = 'work-item';
+        itemCard.title = `标识：${item.identifier}\n地址：${item.displayUrl}`;
 
-        const header = document.createElement('div');
-        header.className = 'item-card__header';
-
-        const indexBadge = document.createElement('span');
-        indexBadge.className = 'item-card__index';
-        indexBadge.textContent = String(index + 1);
-
-        const identifier = document.createElement('div');
-        identifier.className = 'item-card__identifier';
-        identifier.textContent = item.identifier;
-
-        header.append(indexBadge, identifier);
-
-        const meta = document.createElement('p');
-        meta.className = 'item-card__meta';
-        meta.textContent = '展示地址已隐藏查询参数；打开时仍会使用完整地址。';
-
-        const displayUrl = document.createElement('div');
-        displayUrl.className = 'item-card__display-url';
-        displayUrl.textContent = item.displayUrl;
-
-        const actions = document.createElement('div');
-        actions.className = 'item-card__actions';
-        actions.append(
-            createActionButton('复制标识', 'btn-secondary', async () => {
+        const copyButton = createWorkbenchButton(
+            'work-item__copy',
+            item.identifier,
+            `点击复制：${item.identifier}`,
+            async () => {
                 await copyText(item.identifier);
                 setFeedback(`已复制：${item.identifier}`, 'success');
-            }),
-            createActionButton('打开地址', 'btn-primary', () => {
-                window.open(item.openUrl, '_blank', 'noopener,noreferrer');
-            })
+            }
         );
 
-        itemCard.append(header, meta, displayUrl, actions);
+        copyButton.setAttribute('aria-label', `复制标识：${item.identifier}`);
+
+        const openButton = createWorkbenchButton(
+            'work-item__open',
+            '↗',
+            `打开地址：${item.displayUrl}`,
+            () => {
+                window.open(item.openUrl, '_blank', 'noopener,noreferrer');
+            }
+        );
+
+        openButton.setAttribute('aria-label', `打开地址：${item.displayUrl}`);
+
+        itemCard.append(copyButton, openButton);
         itemsGrid.appendChild(itemCard);
     });
 }
@@ -326,16 +320,6 @@ fileInput.addEventListener('change', async (event) => {
 });
 
 searchInput.addEventListener('input', renderItems);
-
-copyAllIdentifiersBtn.addEventListener('click', async () => {
-    if (!currentItems.length) {
-        setFeedback('当前没有可复制的数据。', 'warning');
-        return;
-    }
-
-    await copyText(currentItems.map((item) => item.identifier).join('\n'));
-    setFeedback(`已复制 ${currentItems.length} 条标识。`, 'success');
-});
 
 loadLocalState();
 renderItems();
