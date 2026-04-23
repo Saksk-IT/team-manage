@@ -103,7 +103,6 @@ class RedeemFlowBoundTeamRefreshTests(unittest.IsolatedAsyncioTestCase):
                 "success": True,
                 "data": {"account_invites": [{"id": "invite-1"}]}
             })
-            service.warranty_service.sync_warranty_email_entry_after_redeem = AsyncMock(return_value=None)
 
             def fake_create_task(coro):
                 coro.close()
