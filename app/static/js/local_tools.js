@@ -95,6 +95,9 @@ function buildSiteInfo(openUrl, overrides = {}) {
             host: parsed.hostname || parsed.host || '未知站点',
             path,
             title: '',
+            codeText: '待刷新',
+            sourceText: '',
+            expiresAt: '',
             statusText: '待刷新',
             checkedAt: '',
             ...overrides,
@@ -104,11 +107,89 @@ function buildSiteInfo(openUrl, overrides = {}) {
             host: '未知站点',
             path: '/',
             title: '',
+            codeText: '地址解析失败',
+            sourceText: '',
+            expiresAt: '',
             statusText: '地址解析失败',
             checkedAt: '',
             ...overrides,
         });
     }
+}
+
+function normalizeReadableText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function extractReadablePageContent(rawText, contentType) {
+    const normalizedContentType = String(contentType || '').toLowerCase();
+
+    if (normalizedContentType.includes('text/html')) {
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(String(rawText || ''), 'text/html');
+            return {
+                title: normalizeReadableText(doc.title),
+                text: normalizeReadableText(doc.body?.textContent || ''),
+            };
+        } catch (_error) {
+            return {
+                title: extractTitleFromHtml(rawText),
+                text: normalizeReadableText(rawText),
+            };
+        }
+    }
+
+    return {
+        title: '',
+        text: normalizeReadableText(rawText),
+    };
+}
+
+function parseVerificationContent(text) {
+    const normalizedText = normalizeReadableText(text);
+    const expiresMatch = normalizedText.match(/到期时间[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2}\s+[0-9]{2}:[0-9]{2}:[0-9]{2})/);
+    const codeMatch = normalizedText.match(/(^|[^\d])(\d{6})(?!\d)/);
+    const hasNoCode = normalizedText.includes('暂无验证码');
+
+    const pipeSegments = normalizedText
+        .split('|')
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+
+    let sourceText = '';
+    const bracketSegment = pipeSegments.find((segment) => /^\(.+\)$/.test(segment));
+    if (bracketSegment) {
+        sourceText = bracketSegment.replace(/^\(|\)$/g, '').trim();
+    } else {
+        const fallbackSourceMatch = normalizedText.match(/\(([^()]{1,80})\)/);
+        sourceText = fallbackSourceMatch ? fallbackSourceMatch[1].trim() : '';
+    }
+
+    if (hasNoCode) {
+        return Object.freeze({
+            codeText: '暂无验证码',
+            sourceText,
+            expiresAt: expiresMatch ? expiresMatch[1] : '',
+            statusText: '未获取到验证码',
+        });
+    }
+
+    if (codeMatch) {
+        return Object.freeze({
+            codeText: codeMatch[2],
+            sourceText,
+            expiresAt: expiresMatch ? expiresMatch[1] : '',
+            statusText: '已获取验证码',
+        });
+    }
+
+    return Object.freeze({
+        codeText: '',
+        sourceText,
+        expiresAt: expiresMatch ? expiresMatch[1] : '',
+        statusText: '',
+    });
 }
 
 function createFrozenItems(items) {
@@ -273,6 +354,10 @@ function createButton(className, text, title, onClick) {
 }
 
 function buildSiteSummaryText(siteInfo) {
+    if (siteInfo.codeText) {
+        return siteInfo.codeText;
+    }
+
     if (siteInfo.title) {
         return siteInfo.title;
     }
@@ -287,6 +372,9 @@ function buildSearchableText(item) {
         item.siteInfo.host,
         item.siteInfo.path,
         item.siteInfo.title,
+        item.siteInfo.codeText,
+        item.siteInfo.sourceText,
+        item.siteInfo.expiresAt,
         item.siteInfo.statusText,
     ].join(' ').toLowerCase();
 }
@@ -357,9 +445,11 @@ function renderItems() {
         meta.className = 'work-item__meta';
 
         const hostLine = createMetaLine('站点', `${item.siteInfo.host}${item.siteInfo.path}`);
-        const infoLine = createMetaLine('信息', buildSiteSummaryText(item.siteInfo));
+        const codeLine = createMetaLine('结果', buildSiteSummaryText(item.siteInfo));
+        const sourceLine = createMetaLine('来源', item.siteInfo.sourceText || '未识别');
+        const expireLine = createMetaLine('到期', item.siteInfo.expiresAt || '未提供');
         const timeLine = createMetaLine('刷新', formatCheckedAt(item.siteInfo.checkedAt));
-        meta.append(hostLine, infoLine, timeLine);
+        meta.append(hostLine, codeLine, sourceLine, expireLine, timeLine);
         itemCard.append(copyButton, openButton, meta);
         itemsGrid.appendChild(itemCard);
     });
@@ -434,20 +524,44 @@ async function fetchSiteInfoForItem(item) {
         }
 
         const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('text/html')) {
-            const html = await response.text();
-            const title = extractTitleFromHtml(html);
-            return buildSiteInfo(item.openUrl, {
-                ...fallbackInfo,
-                title,
-                statusText: title ? '已读取页面标题' : '已访问（无标题）',
-                checkedAt,
-            });
+        const normalizedContentType = contentType.toLowerCase();
+
+        if (normalizedContentType.includes('text/') || normalizedContentType.includes('json') || normalizedContentType.includes('html') || !normalizedContentType) {
+            const rawText = await response.text();
+            const readableContent = extractReadablePageContent(rawText, contentType);
+            const verificationInfo = parseVerificationContent(readableContent.text);
+
+            if (verificationInfo.codeText || verificationInfo.expiresAt || verificationInfo.sourceText) {
+                return buildSiteInfo(item.openUrl, {
+                    ...fallbackInfo,
+                    title: readableContent.title,
+                    codeText: verificationInfo.codeText,
+                    sourceText: verificationInfo.sourceText,
+                    expiresAt: verificationInfo.expiresAt,
+                    statusText: verificationInfo.statusText || '已刷新，显示网址信息',
+                    checkedAt,
+                });
+            }
+
+            if (readableContent.title) {
+                return buildSiteInfo(item.openUrl, {
+                    ...fallbackInfo,
+                    title: readableContent.title,
+                    codeText: '',
+                    sourceText: '',
+                    expiresAt: '',
+                    statusText: '已读取页面标题',
+                    checkedAt,
+                });
+            }
         }
 
         const shortType = contentType.split(';')[0] || '可访问';
         return buildSiteInfo(item.openUrl, {
             ...fallbackInfo,
+            codeText: '',
+            sourceText: '',
+            expiresAt: '',
             statusText: `已访问：${shortType}`,
             checkedAt,
         });
@@ -455,6 +569,9 @@ async function fetchSiteInfoForItem(item) {
         const isTimeout = error?.name === 'AbortError';
         return buildSiteInfo(item.openUrl, {
             ...fallbackInfo,
+            codeText: '',
+            sourceText: '',
+            expiresAt: '',
             statusText: isTimeout ? '刷新超时，显示网址信息' : '站点限制读取，显示网址信息',
             checkedAt,
         });
