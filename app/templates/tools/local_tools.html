@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>本地快捷导入工具</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="stylesheet" href="/static/css/local_tools.css">
+</head>
+
+<body>
+    <main class="local-tools-page">
+        <section class="hero-card">
+            <p class="hero-card__eyebrow">独立本地工具</p>
+            <h1>本地快捷导入工具</h1>
+            <p class="hero-card__description">
+                支持导入 <code>标识----地址</code> 这一类批量文本。所有数据只保存在当前浏览器本地，不写入数据库，也不会提交到服务端。
+            </p>
+            <div class="hero-card__meta">
+                <span>推荐格式：邮箱/号码/账号 ---- URL</span>
+                <span>分隔符支持：4 个及以上连续减号</span>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel__header">
+                <div>
+                    <h2>导入内容</h2>
+                    <p>可直接粘贴文本，也可导入本地 txt 文件。</p>
+                </div>
+            </div>
+
+            <div class="import-actions">
+                <label class="file-trigger" for="localToolsFileInput">选择 txt 文件</label>
+                <input id="localToolsFileInput" type="file" accept=".txt,text/plain">
+                <button id="importLocalToolsBtn" type="button" class="btn btn-primary">解析并保存到本地</button>
+                <button id="clearTextareaBtn" type="button" class="btn btn-secondary">清空输入框</button>
+                <button id="clearLocalDataBtn" type="button" class="btn btn-danger">清空本地数据</button>
+            </div>
+
+            <label class="input-label" for="batchContentInput">批量文本</label>
+            <textarea
+                id="batchContentInput"
+                class="batch-textarea"
+                placeholder="示例：&#10;user@example.com----https://example.com/login?token=123&#10;+15722257869----------------https://example.com/api/get_sms?key=abc"
+            ></textarea>
+
+            <div class="feedback-row">
+                <p id="importFeedback" class="feedback" aria-live="polite"></p>
+                <p class="privacy-tip">提示：解析与保存都只发生在当前浏览器。</p>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel__header panel__header--stack-mobile">
+                <div>
+                    <h2>本地数据</h2>
+                    <p>导入成功后会自动保存在浏览器本地，刷新页面仍可继续使用。</p>
+                </div>
+
+                <div class="panel-tools">
+                    <input id="localToolsSearchInput" type="search" class="search-input" placeholder="搜索标识">
+                    <button id="copyAllIdentifiersBtn" type="button" class="btn btn-secondary">复制全部标识</button>
+                </div>
+            </div>
+
+            <div class="stats-grid" id="localToolsStats">
+                <article class="stat-card">
+                    <span class="stat-card__label">总条数</span>
+                    <strong id="totalItemsValue">0</strong>
+                </article>
+                <article class="stat-card">
+                    <span class="stat-card__label">当前显示</span>
+                    <strong id="visibleItemsValue">0</strong>
+                </article>
+                <article class="stat-card">
+                    <span class="stat-card__label">最近导入</span>
+                    <strong id="lastSavedAtValue">暂无</strong>
+                </article>
+            </div>
+
+            <div id="invalidLinesBox" class="invalid-lines" hidden>
+                <h3>未导入的行</h3>
+                <ul id="invalidLinesList"></ul>
+            </div>
+
+            <div id="emptyState" class="empty-state">
+                <h3>还没有本地数据</h3>
+                <p>请先粘贴或导入 txt 文件，再点击“解析并保存到本地”。</p>
+            </div>
+
+            <div id="itemsGrid" class="items-grid" hidden></div>
+        </section>
+    </main>
+
+    <script src="/static/js/local_tools.js"></script>
+</body>
+
+</html>

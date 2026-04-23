@@ -42,10 +42,6 @@ class Settings(BaseSettings):
     # 时区配置
     timezone: str = "Asia/Shanghai"
 
-    # 后台短信快捷工具
-    sms_helper_phone: str = ""
-    sms_helper_url: str = ""
-
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
         env_file_encoding="utf-8",
