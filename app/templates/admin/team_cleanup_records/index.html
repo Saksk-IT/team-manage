@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}自动清理记录 - GPT Team 管理系统{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>自动清理记录</h2>
+</div>
+
+<div class="content-section sticky-toolbar-section">
+    <div class="section-header">
+        <h3>搜索筛选</h3>
+    </div>
+
+    <form method="get" action="/admin/team-cleanup-records" class="search-form-grid">
+        <div class="form-group">
+            <label for="search">关键词</label>
+            <input
+                type="text"
+                id="search"
+                name="search"
+                value="{{ search or '' }}"
+                placeholder="搜索 Team、邮箱、Account ID、失败原因"
+                class="form-control"
+            >
+        </div>
+        <div class="form-group">
+            <label for="cleanup_status">状态</label>
+            <select id="cleanup_status" name="cleanup_status" class="form-control">
+                <option value="">全部</option>
+                <option value="success" {% if cleanup_status == 'success' %}selected{% endif %}>清理成功</option>
+                <option value="partial_failed" {% if cleanup_status == 'partial_failed' %}selected{% endif %}>部分失败</option>
+                <option value="failed" {% if cleanup_status == 'failed' %}selected{% endif %}>清理失败</option>
+            </select>
+        </div>
+        <div class="form-actions" style="display: flex; gap: 0.5rem;">
+            <button type="submit" class="btn btn-primary" style="flex: 1;">
+                <i data-lucide="search" style="width: 16px; height: 16px;"></i> 搜索
+            </button>
+            <a href="/admin/team-cleanup-records" class="btn btn-secondary">
+                <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i> 重置
+            </a>
+        </div>
+    </form>
+</div>
+
+<div class="content-section sticky-toolbar-section">
+    <div class="section-header">
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <h3>记录列表</h3>
+            <span class="badge badge-info">{{ pagination.total }} 条记录</span>
+        </div>
+    </div>
+
+    {% if records %}
+    <div class="table-container table-sticky-edges">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Team</th>
+                    <th>清理结果</th>
+                    <th>删除成员邮箱</th>
+                    <th>撤回邀请邮箱</th>
+                    <th>失败明细</th>
+                    <th>记录时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in records %}
+                <tr>
+                    <td><span class="text-muted">{{ record.id }}</span></td>
+                    <td>
+                        <div class="record-stack">
+                            <div><strong>{{ record.team_name or '-' }}</strong></div>
+                            <div class="record-muted">Team ID：{{ record.team_id or '-' }}</div>
+                            <div class="record-muted">账号：{{ record.team_email or '-' }}</div>
+                            <div class="record-muted">Account ID：{{ record.team_account_id or '-' }}</div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="record-stack">
+                            <div>
+                                <span class="status-badge {{ 'status-active' if record.cleanup_status == 'success' else ('status-warning' if record.cleanup_status == 'partial_failed' else 'status-banned') }}">
+                                    {{ record.cleanup_status_label }}
+                                </span>
+                            </div>
+                            <div class="record-muted">删除成员：{{ record.removed_member_count }}</div>
+                            <div class="record-muted">撤回邀请：{{ record.revoked_invite_count }}</div>
+                            <div class="record-muted">失败：{{ record.failed_count }}</div>
+                        </div>
+                    </td>
+                    <td>
+                        {% if record.removed_member_emails %}
+                        <div class="email-list-cell">
+                            {% for email in record.removed_member_emails %}
+                            <div>{{ email }}</div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if record.revoked_invite_emails %}
+                        <div class="email-list-cell">
+                            {% for email in record.revoked_invite_emails %}
+                            <div>{{ email }}</div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if record.failed_items %}
+                        <div class="record-stack">
+                            {% for item in record.failed_items %}
+                            <div class="failure-reason-cell">
+                                <strong>{{ '成员' if item.type == 'member' else '邀请' }}</strong>：
+                                {{ item.email or '-' }}<br>
+                                <span class="record-muted">{{ item.error or '-' }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ record.created_at|format_datetime }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if pagination.total_pages > 1 %}
+    {% set query_params = [] %}
+    {% if search %}{% set _ = query_params.append('search=' + search|urlencode) %}{% endif %}
+    {% if cleanup_status %}{% set _ = query_params.append('cleanup_status=' + cleanup_status|urlencode) %}{% endif %}
+    {% if pagination.per_page != 20 %}{% set _ = query_params.append('per_page=' + pagination.per_page|string) %}{% endif %}
+    {% set base_query = '&' + query_params|join('&') if query_params else '' %}
+
+    <div class="pagination">
+        <div class="per-page-selector">
+            每页
+            <select class="per-page-select" onchange="changePerPage(this.value)">
+                <option value="20" {% if pagination.per_page == 20 %}selected{% endif %}>20</option>
+                <option value="50" {% if pagination.per_page == 50 %}selected{% endif %}>50</option>
+                <option value="100" {% if pagination.per_page == 100 %}selected{% endif %}>100</option>
+            </select>
+        </div>
+
+        <div class="pagination-controls">
+            <a href="?page=1{{ base_query }}"
+                class="btn btn-sm btn-secondary {% if pagination.current_page == 1 %}disabled{% endif %}">
+                <i data-lucide="chevrons-left" style="width: 14px; height: 14px;"></i>
+            </a>
+
+            {% if pagination.current_page > 1 %}
+            <a href="?page={{ pagination.current_page - 1 }}{{ base_query }}" class="btn btn-sm btn-secondary">
+                <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+            </a>
+            {% else %}
+            <button class="btn btn-sm btn-secondary" disabled>
+                <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+            </button>
+            {% endif %}
+
+            <div class="pagination-numbers">
+                {% for p in range(1, pagination.total_pages + 1) %}
+                    {% if p == pagination.current_page %}
+                    <span class="page-number active">{{ p }}</span>
+                    {% elif p <= 2 or p > pagination.total_pages - 2 or (p >= pagination.current_page - 1 and p <= pagination.current_page + 1) %}
+                    <a href="?page={{ p }}{{ base_query }}" class="page-number">{{ p }}</a>
+                    {% elif p == 3 and pagination.current_page > 4 %}
+                    <span class="page-dots">...</span>
+                    {% elif p == pagination.total_pages - 2 and pagination.current_page < pagination.total_pages - 3 %}
+                    <span class="page-dots">...</span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+
+            {% if pagination.current_page < pagination.total_pages %}
+            <a href="?page={{ pagination.current_page + 1 }}{{ base_query }}" class="btn btn-sm btn-secondary">
+                <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+            </a>
+            {% else %}
+            <button class="btn btn-sm btn-secondary" disabled>
+                <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+            </button>
+            {% endif %}
+
+            <a href="?page={{ pagination.total_pages }}{{ base_query }}"
+                class="btn btn-sm btn-secondary {% if pagination.current_page == pagination.total_pages %}disabled{% endif %}">
+                <i data-lucide="chevrons-right" style="width: 14px; height: 14px;"></i>
+            </a>
+        </div>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="empty-state">
+        <i data-lucide="broom" style="width: 48px; height: 48px; margin-bottom: 1rem; opacity: 0.2;"></i>
+        <p>暂无自动清理记录</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .record-stack {
+        display: grid;
+        gap: 0.2rem;
+        min-width: 180px;
+    }
+
+    .record-muted {
+        color: var(--text-muted);
+        font-size: 0.8125rem;
+        line-height: 1.4;
+    }
+
+    .email-list-cell {
+        display: grid;
+        gap: 0.25rem;
+        min-width: 180px;
+        white-space: normal;
+        word-break: break-word;
+    }
+
+    .failure-reason-cell {
+        min-width: 220px;
+        white-space: normal;
+        word-break: break-word;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function changePerPage(value) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('per_page', value);
+        url.searchParams.set('page', '1');
+        window.location.href = url.toString();
+    }
+</script>
+{% endblock %}

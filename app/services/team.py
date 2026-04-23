@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models import Team, TeamAccount, TeamMemberSnapshot, RedemptionCode, RedemptionRecord, WarrantyEmailEntry
 from app.services.chatgpt import ChatGPTService
+from app.services.team_cleanup_record import team_cleanup_record_service
 from app.services.encryption import encryption_service
 from app.services.redemption import RedemptionService
 from app.services.settings import settings_service
@@ -1826,6 +1827,22 @@ class TeamService:
                 )
 
                 if cleanup_summary["attempted"]:
+                    try:
+                        await team_cleanup_record_service.create_record(
+                            db_session=db_session,
+                            team_id=team.id,
+                            team_email=team.email,
+                            team_name=current_account.get("name") or team.team_name,
+                            team_account_id=current_account.get("account_id") or team.account_id,
+                            cleanup_summary=cleanup_summary,
+                        )
+                    except Exception as cleanup_record_error:
+                        logger.error(
+                            "写入标准 Team 自动清理记录失败: team_id=%s error=%s",
+                            team.id,
+                            cleanup_record_error,
+                        )
+
                     members_result = await self.chatgpt_service.get_members(
                         access_token,
                         current_account["account_id"],

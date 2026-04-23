@@ -200,3 +200,28 @@ class WarrantyClaimRecord(Base):
         Index("idx_warranty_claim_records_status", "claim_status"),
         Index("idx_warranty_claim_records_submitted_at", "submitted_at"),
     )
+
+
+class TeamCleanupRecord(Base):
+    """标准 Team 自动清理非绑定邮箱记录表"""
+    __tablename__ = "team_cleanup_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), comment="触发清理的 Team ID")
+    team_email = Column(String(255), nullable=False, comment="Team 管理员邮箱快照")
+    team_name = Column(String(255), comment="Team 名称快照")
+    team_account_id = Column(String(100), comment="Team Account ID 快照")
+    cleanup_status = Column(String(20), nullable=False, default="success", comment="清理状态: success/partial_failed/failed")
+    removed_member_count = Column(Integer, nullable=False, default=0, comment="自动删除成员数量")
+    revoked_invite_count = Column(Integer, nullable=False, default=0, comment="自动撤回邀请数量")
+    failed_count = Column(Integer, nullable=False, default=0, comment="自动清理失败数量")
+    removed_member_emails = Column(Text, comment="删除成员邮箱 JSON")
+    revoked_invite_emails = Column(Text, comment="撤回邀请邮箱 JSON")
+    failed_items = Column(Text, comment="失败明细 JSON")
+    created_at = Column(DateTime, default=get_now, nullable=False, comment="记录创建时间")
+
+    __table_args__ = (
+        Index("idx_team_cleanup_records_team_id", "team_id"),
+        Index("idx_team_cleanup_records_status", "cleanup_status"),
+        Index("idx_team_cleanup_records_created_at", "created_at"),
+    )

@@ -317,6 +317,40 @@ def run_auto_migration():
             """)
             migrations_applied.append("warranty_claim_records")
 
+        if not table_exists(cursor, "team_cleanup_records"):
+            logger.info("创建 team_cleanup_records 表")
+            cursor.execute("""
+                CREATE TABLE team_cleanup_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    team_id INTEGER,
+                    team_email VARCHAR(255) NOT NULL,
+                    team_name VARCHAR(255),
+                    team_account_id VARCHAR(100),
+                    cleanup_status VARCHAR(20) NOT NULL DEFAULT 'success',
+                    removed_member_count INTEGER NOT NULL DEFAULT 0,
+                    revoked_invite_count INTEGER NOT NULL DEFAULT 0,
+                    failed_count INTEGER NOT NULL DEFAULT 0,
+                    removed_member_emails TEXT,
+                    revoked_invite_emails TEXT,
+                    failed_items TEXT,
+                    created_at DATETIME NOT NULL,
+                    FOREIGN KEY(team_id) REFERENCES teams(id)
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_team_cleanup_records_team_id
+                ON team_cleanup_records (team_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_team_cleanup_records_status
+                ON team_cleanup_records (cleanup_status)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_team_cleanup_records_created_at
+                ON team_cleanup_records (created_at)
+            """)
+            migrations_applied.append("team_cleanup_records")
+
         migrations_applied.extend(migrate_customer_service_upload_assets(cursor))
         
         # 提交更改

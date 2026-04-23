@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import RedemptionCode, Team, TeamMemberSnapshot
+from app.models import RedemptionCode, Team, TeamCleanupRecord, TeamMemberSnapshot
 from app.services.team import TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY, TeamService
 
 
@@ -132,6 +132,9 @@ class TeamStandardRefreshCleanupTests(unittest.IsolatedAsyncioTestCase):
                 .order_by(TeamMemberSnapshot.email.asc())
             )
             snapshots = snapshots_result.scalars().all()
+            cleanup_record = await session.scalar(
+                select(TeamCleanupRecord).where(TeamCleanupRecord.team_id == team.id)
+            )
 
         self.assertTrue(result["success"])
         self.assertEqual(result["cleanup_removed_member_count"], 1)
@@ -167,6 +170,12 @@ class TeamStandardRefreshCleanupTests(unittest.IsolatedAsyncioTestCase):
             [snapshot.member_state for snapshot in snapshots],
             ["invited", "joined", "joined"],
         )
+        self.assertIsNotNone(cleanup_record)
+        self.assertEqual(cleanup_record.cleanup_status, "success")
+        self.assertEqual(cleanup_record.removed_member_count, 1)
+        self.assertEqual(cleanup_record.revoked_invite_count, 1)
+        self.assertIn("stray-joined@example.com", cleanup_record.removed_member_emails or "")
+        self.assertIn("stray-invite@example.com", cleanup_record.revoked_invite_emails or "")
 
     async def test_warranty_team_refresh_does_not_cleanup_members(self):
         async with self.Session() as session:

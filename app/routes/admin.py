@@ -19,6 +19,7 @@ from app.database import get_db
 from app.dependencies.auth import require_admin
 from app.models import Team, RedemptionCode
 from app.services.team import TeamService, TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY
+from app.services.team_cleanup_record import team_cleanup_record_service
 from app.services.redemption import RedemptionService
 from app.services.settings import settings_service
 from app.services.warranty import warranty_service
@@ -2338,6 +2339,61 @@ async def warranty_claim_records_page(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"加载质保提交记录页失败: {str(e)}"
+        )
+
+
+@router.get("/team-cleanup-records", response_class=HTMLResponse)
+async def team_cleanup_records_page(
+    request: Request,
+    search: Optional[str] = None,
+    cleanup_status: Optional[str] = None,
+    page: Optional[str] = "1",
+    per_page: int = 20,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        from app.main import templates
+
+        try:
+            page_int = int(page) if page and page.strip() else 1
+        except (ValueError, TypeError):
+            page_int = 1
+
+        logger.info(
+            "管理员访问自动清理记录页 search=%s cleanup_status=%s page=%s per_page=%s",
+            search,
+            cleanup_status,
+            page_int,
+            per_page
+        )
+
+        result = await team_cleanup_record_service.list_cleanup_records(
+            db_session=db,
+            search=search,
+            cleanup_status=cleanup_status,
+            page=page_int,
+            per_page=per_page,
+        )
+
+        return templates.TemplateResponse(
+            request,
+            "admin/team_cleanup_records/index.html",
+            {
+                "request": request,
+                "user": current_user,
+                "active_page": "team_cleanup_records",
+                "records": result["records"],
+                "search": search or "",
+                "cleanup_status": (cleanup_status or "").strip().lower(),
+                "pagination": result["pagination"],
+            }
+        )
+    except Exception as e:
+        logger.error(f"加载自动清理记录页失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"加载自动清理记录页失败: {str(e)}"
         )
 
 
