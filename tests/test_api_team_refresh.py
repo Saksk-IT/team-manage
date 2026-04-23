@@ -22,7 +22,12 @@ class ApiTeamRefreshTests(unittest.IsolatedAsyncioTestCase):
 
         payload = json.loads(response.body.decode("utf-8"))
 
-        mocked_sync.assert_awaited_once_with(1, db, force_refresh=False)
+        mocked_sync.assert_awaited_once_with(
+            1,
+            db,
+            force_refresh=False,
+            enforce_bound_email_cleanup=True,
+        )
         db.commit.assert_awaited_once()
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["success"])
@@ -43,7 +48,12 @@ class ApiTeamRefreshTests(unittest.IsolatedAsyncioTestCase):
 
         payload = json.loads(response.body.decode("utf-8"))
 
-        mocked_sync.assert_awaited_once_with(1, db, force_refresh=True)
+        mocked_sync.assert_awaited_once_with(
+            1,
+            db,
+            force_refresh=True,
+            enforce_bound_email_cleanup=True,
+        )
         db.commit.assert_awaited_once()
         self.assertEqual(response.status_code, 400)
         self.assertFalse(payload["success"])

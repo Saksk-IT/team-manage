@@ -137,7 +137,8 @@ class TeamAutoRefreshService:
                         result = await team_service.sync_team_info(
                             team_id,
                             session,
-                            force_refresh=False
+                            force_refresh=False,
+                            enforce_bound_email_cleanup=True,
                         )
                         await session.commit()
 

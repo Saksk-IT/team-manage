@@ -258,6 +258,212 @@ class TeamService:
 
         await db_session.flush()
 
+    async def _get_bound_code_allowed_emails(
+        self,
+        team_id: int,
+        db_session: AsyncSession
+    ) -> set[str]:
+        result = await db_session.execute(
+            select(RedemptionCode.used_by_email).where(
+                RedemptionCode.bound_team_id == team_id,
+                RedemptionCode.used_team_id == team_id,
+                RedemptionCode.used_by_email.is_not(None),
+            )
+        )
+
+        allowed_emails: set[str] = set()
+        for email in result.scalars().all():
+            normalized_email = self._normalize_member_email(email)
+            if normalized_email:
+                allowed_emails.add(normalized_email)
+
+        return allowed_emails
+
+    def _build_member_state_from_results(
+        self,
+        members_result: Dict[str, Any],
+        invites_result: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        all_member_emails: set[str] = set()
+        joined_member_emails: set[str] = set()
+        invited_member_emails: set[str] = set()
+        current_members = 0
+
+        if members_result.get("success"):
+            current_members += int(members_result.get("total") or 0)
+            for member in members_result.get("members", []):
+                normalized_email = self._normalize_member_email(member.get("email"))
+                if not normalized_email:
+                    continue
+                all_member_emails.add(normalized_email)
+                joined_member_emails.add(normalized_email)
+
+        if invites_result.get("success"):
+            current_members += int(invites_result.get("total") or 0)
+            for invite in invites_result.get("items", []):
+                normalized_email = self._normalize_member_email(invite.get("email_address"))
+                if not normalized_email:
+                    continue
+                all_member_emails.add(normalized_email)
+                invited_member_emails.add(normalized_email)
+
+        return {
+            "all_member_emails": all_member_emails,
+            "joined_member_emails": joined_member_emails,
+            "invited_member_emails": invited_member_emails,
+            "current_members": current_members,
+        }
+
+    async def _cleanup_non_bound_team_emails(
+        self,
+        team: Team,
+        access_token: str,
+        account_id: str,
+        members_result: Dict[str, Any],
+        invites_result: Dict[str, Any],
+        db_session: AsyncSession
+    ) -> Dict[str, Any]:
+        cleanup_summary = {
+            "removed_member_count": 0,
+            "revoked_invite_count": 0,
+            "failed_count": 0,
+            "removed_member_emails": [],
+            "revoked_invite_emails": [],
+            "failed_items": [],
+            "attempted": False,
+        }
+
+        allowed_emails = await self._get_bound_code_allowed_emails(team.id, db_session)
+        owner_email = self._normalize_member_email(team.email)
+        if owner_email:
+            allowed_emails.add(owner_email)
+
+        removable_members = []
+        for member in members_result.get("members", []):
+            normalized_email = self._normalize_member_email(member.get("email"))
+            if not normalized_email or normalized_email in allowed_emails:
+                continue
+
+            if (member.get("role") or "").strip().lower() == "account-owner":
+                continue
+
+            removable_members.append({
+                "email": normalized_email,
+                "user_id": member.get("id"),
+            })
+
+        revocable_invites = []
+        for invite in invites_result.get("items", []):
+            normalized_email = self._normalize_member_email(invite.get("email_address"))
+            if not normalized_email or normalized_email in allowed_emails:
+                continue
+
+            revocable_invites.append({"email": normalized_email})
+
+        if not removable_members and not revocable_invites:
+            return cleanup_summary
+
+        cleanup_summary["attempted"] = True
+
+        for member in removable_members:
+            target_email = member["email"]
+            user_id = member.get("user_id")
+
+            if not user_id:
+                cleanup_summary["failed_count"] += 1
+                cleanup_summary["failed_items"].append({
+                    "type": "member",
+                    "email": target_email,
+                    "error": "缺少用户 ID，无法删除成员",
+                })
+                logger.warning(
+                    "标准 Team 自动清理跳过成员: team_id=%s email=%s reason=%s",
+                    team.id,
+                    target_email,
+                    "缺少用户 ID",
+                )
+                continue
+
+            delete_result = await self.chatgpt_service.delete_member(
+                access_token,
+                account_id,
+                user_id,
+                db_session,
+                identifier=team.email,
+            )
+
+            if delete_result.get("success"):
+                cleanup_summary["removed_member_count"] += 1
+                cleanup_summary["removed_member_emails"].append(target_email)
+                logger.info(
+                    "标准 Team 自动清理已删除成员: team_id=%s email=%s",
+                    team.id,
+                    target_email,
+                )
+                continue
+
+            cleanup_summary["failed_count"] += 1
+            cleanup_summary["failed_items"].append({
+                "type": "member",
+                "email": target_email,
+                "error": delete_result.get("error") or "删除成员失败",
+            })
+            logger.warning(
+                "标准 Team 自动清理删除成员失败: team_id=%s email=%s error=%s",
+                team.id,
+                target_email,
+                delete_result.get("error"),
+            )
+
+        for invite in revocable_invites:
+            target_email = invite["email"]
+            revoke_result = await self.chatgpt_service.delete_invite(
+                access_token,
+                account_id,
+                target_email,
+                db_session,
+                identifier=team.email,
+            )
+
+            if revoke_result.get("success"):
+                cleanup_summary["revoked_invite_count"] += 1
+                cleanup_summary["revoked_invite_emails"].append(target_email)
+                logger.info(
+                    "标准 Team 自动清理已撤回邀请: team_id=%s email=%s",
+                    team.id,
+                    target_email,
+                )
+                continue
+
+            cleanup_summary["failed_count"] += 1
+            cleanup_summary["failed_items"].append({
+                "type": "invite",
+                "email": target_email,
+                "error": revoke_result.get("error") or "撤回邀请失败",
+            })
+            logger.warning(
+                "标准 Team 自动清理撤回邀请失败: team_id=%s email=%s error=%s",
+                team.id,
+                target_email,
+                revoke_result.get("error"),
+            )
+
+        return cleanup_summary
+
+    @staticmethod
+    def _build_cleanup_summary_text(cleanup_summary: Dict[str, Any]) -> Optional[str]:
+        removed_member_count = int(cleanup_summary.get("removed_member_count") or 0)
+        revoked_invite_count = int(cleanup_summary.get("revoked_invite_count") or 0)
+        failed_count = int(cleanup_summary.get("failed_count") or 0)
+
+        if removed_member_count <= 0 and revoked_invite_count <= 0 and failed_count <= 0:
+            return None
+
+        return (
+            f"自动清理：删除成员 {removed_member_count} 个，"
+            f"撤回邀请 {revoked_invite_count} 个，失败 {failed_count} 个"
+        )
+
     async def _handle_api_error(self, result: Dict[str, Any], team: Team, db_session: AsyncSession) -> bool:
         """
         检查结果是否表示账号被封禁、Token 失效或 Team 已满,如果是则更新状态
@@ -1353,7 +1559,8 @@ class TeamService:
         team_id: int,
         db_session: AsyncSession,
         force_refresh: bool = False,
-        progress_callback: ProgressCallback = None
+        progress_callback: ProgressCallback = None,
+        enforce_bound_email_cleanup: bool = False,
     ) -> Dict[str, Any]:
         """
         同步单个 Team 的信息
@@ -1362,6 +1569,7 @@ class TeamService:
             team_id: Team ID
             db_session: 数据库会话
             force_refresh: 是否强制刷新 Token
+            enforce_bound_email_cleanup: 是否在刷新时自动清理非绑定码邮箱
 
         Returns:
             结果字典,包含 success, message, error
@@ -1513,6 +1721,69 @@ class TeamService:
                     "error": "该 Token 没有关联任何 Team 账户"
                 }
 
+            cleanup_summary = {
+                "removed_member_count": 0,
+                "revoked_invite_count": 0,
+                "failed_count": 0,
+                "removed_member_emails": [],
+                "revoked_invite_emails": [],
+                "failed_items": [],
+                "attempted": False,
+            }
+
+            async def handle_member_fetch_failure(
+                fetch_result: Dict[str, Any],
+                target_label: str,
+                after_cleanup: bool = False
+            ) -> Dict[str, Any]:
+                if await self._handle_api_error(fetch_result, team, db_session):
+                    error_msg = fetch_result.get("error", "未知错误")
+                    if fetch_result.get("error_code") == "account_deactivated":
+                        error_msg = "账号已封禁 (account_deactivated)"
+                    elif fetch_result.get("error_code") == "token_invalidated":
+                        error_msg = "账号已封禁/失效 (token_invalidated)"
+
+                    if after_cleanup:
+                        error_msg = f"自动清理后重新获取{target_label}失败: {error_msg}"
+
+                    return {
+                        "success": False,
+                        "message": None,
+                        "error": error_msg,
+                        "error_code": fetch_result.get("error_code"),
+                        "cleanup_removed_member_count": cleanup_summary["removed_member_count"],
+                        "cleanup_revoked_invite_count": cleanup_summary["revoked_invite_count"],
+                        "cleanup_failed_count": cleanup_summary["failed_count"],
+                        "cleanup_removed_member_emails": cleanup_summary["removed_member_emails"],
+                        "cleanup_revoked_invite_emails": cleanup_summary["revoked_invite_emails"],
+                        "cleanup_failed_items": cleanup_summary["failed_items"],
+                    }
+
+                team.error_count = (team.error_count or 0) + 1
+                if team.error_count >= 3:
+                    logger.error(
+                        "Team %s 获取%s连续失败 %s 次，更新状态为 error",
+                        team.id,
+                        target_label,
+                        team.error_count,
+                    )
+                    team.status = "error"
+                await db_session.commit()
+
+                error_prefix = "自动清理后重新获取" if after_cleanup else "获取"
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": f"{error_prefix}{target_label}失败: {fetch_result.get('error')} (错误次数: {team.error_count})",
+                    "error_code": fetch_result.get("error_code"),
+                    "cleanup_removed_member_count": cleanup_summary["removed_member_count"],
+                    "cleanup_revoked_invite_count": cleanup_summary["revoked_invite_count"],
+                    "cleanup_failed_count": cleanup_summary["failed_count"],
+                    "cleanup_removed_member_emails": cleanup_summary["removed_member_emails"],
+                    "cleanup_revoked_invite_emails": cleanup_summary["revoked_invite_emails"],
+                    "cleanup_failed_items": cleanup_summary["failed_items"],
+                }
+
             # 5. 获取成员列表 (包含已加入和待加入)
             await self._emit_progress(progress_callback, "fetch_members", "拉取成员 / 邀请列表", team)
             members_result = await self.chatgpt_service.get_members(
@@ -1529,53 +1800,67 @@ class TeamService:
                 identifier=team.email
             )
 
-            all_member_emails = set()
-            joined_member_emails = set()
-            invited_member_emails = set()
-            current_members = 0
-            if members_result["success"]:
-                current_members += members_result["total"]
-                for m in members_result.get("members", []):
-                    if m.get("email"):
-                        normalized_email = m["email"].lower()
-                        all_member_emails.add(normalized_email)
-                        joined_member_emails.add(normalized_email)
-            
-            if invites_result["success"]:
-                current_members += invites_result["total"]
-                for inv in invites_result.get("items", []):
-                    if inv.get("email_address"):
-                        normalized_email = inv["email_address"].lower()
-                        all_member_emails.add(normalized_email)
-                        invited_member_emails.add(normalized_email)
-            else:
-                # 检查是否封号或 Token 失效
-                if await self._handle_api_error(invites_result, team, db_session):
-                    error_msg = invites_result.get("error", "未知错误")
-                    if invites_result.get("error_code") == "account_deactivated":
-                        error_msg = "账号已封禁 (account_deactivated)"
-                    elif invites_result.get("error_code") == "token_invalidated":
-                        error_msg = "账号已封禁/失效 (token_invalidated)"
-                        
-                    return {
-                        "success": False,
-                        "message": None,
-                        "error": error_msg,
-                        "error_code": invites_result.get("error_code")
-                    }
-                
-                # 其他错误, 累加错误次数
-                team.error_count = (team.error_count or 0) + 1
-                if team.error_count >= 3:
-                    logger.error(f"Team {team.id} 获取成员列表连续失败 {team.error_count} 次，更新状态为 error")
-                    team.status = "error"
-                await db_session.commit()
-                return {
-                    "success": False,
-                    "message": None,
-                    "error": f"获取成员列表失败: {members_result['error']} (错误次数: {team.error_count})",
-                    "error_code": invites_result.get("error_code") or members_result.get("error_code")
-                }
+            if not members_result["success"]:
+                return await handle_member_fetch_failure(members_result, "成员列表")
+
+            if not invites_result["success"]:
+                return await handle_member_fetch_failure(invites_result, "邀请列表")
+
+            member_state = self._build_member_state_from_results(
+                members_result=members_result,
+                invites_result=invites_result,
+            )
+            all_member_emails = member_state["all_member_emails"]
+            joined_member_emails = member_state["joined_member_emails"]
+            invited_member_emails = member_state["invited_member_emails"]
+            current_members = member_state["current_members"]
+
+            if enforce_bound_email_cleanup and team.team_type == TEAM_TYPE_STANDARD:
+                cleanup_summary = await self._cleanup_non_bound_team_emails(
+                    team=team,
+                    access_token=access_token,
+                    account_id=current_account["account_id"],
+                    members_result=members_result,
+                    invites_result=invites_result,
+                    db_session=db_session,
+                )
+
+                if cleanup_summary["attempted"]:
+                    members_result = await self.chatgpt_service.get_members(
+                        access_token,
+                        current_account["account_id"],
+                        db_session,
+                        identifier=team.email,
+                    )
+                    invites_result = await self.chatgpt_service.get_invites(
+                        access_token,
+                        current_account["account_id"],
+                        db_session,
+                        identifier=team.email,
+                    )
+
+                    if not members_result["success"]:
+                        return await handle_member_fetch_failure(
+                            members_result,
+                            "成员列表",
+                            after_cleanup=True,
+                        )
+
+                    if not invites_result["success"]:
+                        return await handle_member_fetch_failure(
+                            invites_result,
+                            "邀请列表",
+                            after_cleanup=True,
+                        )
+
+                    member_state = self._build_member_state_from_results(
+                        members_result=members_result,
+                        invites_result=invites_result,
+                    )
+                    all_member_emails = member_state["all_member_emails"]
+                    joined_member_emails = member_state["joined_member_emails"]
+                    invited_member_emails = member_state["invited_member_emails"]
+                    current_members = member_state["current_members"]
 
             # 6. 解析过期时间
             expires_at = None
@@ -1633,12 +1918,28 @@ class TeamService:
             else:
                 await db_session.flush()
 
-            logger.info(f"Team 同步成功: ID {team_id}, 成员数 {current_members}")
+            cleanup_summary_text = self._build_cleanup_summary_text(cleanup_summary)
+            success_message = f"同步成功,当前成员数: {current_members}"
+            if cleanup_summary_text:
+                success_message = f"{success_message}；{cleanup_summary_text}"
+
+            logger.info(
+                "Team 同步成功: ID %s, 成员数 %s, cleanup=%s",
+                team_id,
+                current_members,
+                cleanup_summary_text or "无",
+            )
 
             return {
                 "success": True,
-                "message": f"同步成功,当前成员数: {current_members}",
+                "message": success_message,
                 "member_emails": list(all_member_emails),
+                "cleanup_removed_member_count": cleanup_summary["removed_member_count"],
+                "cleanup_revoked_invite_count": cleanup_summary["revoked_invite_count"],
+                "cleanup_failed_count": cleanup_summary["failed_count"],
+                "cleanup_removed_member_emails": cleanup_summary["removed_member_emails"],
+                "cleanup_revoked_invite_emails": cleanup_summary["revoked_invite_emails"],
+                "cleanup_failed_items": cleanup_summary["failed_items"],
                 "error": None
             }
 

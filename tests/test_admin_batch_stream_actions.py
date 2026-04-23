@@ -7,6 +7,7 @@ from app.routes.admin import (
     BulkActionRequest,
     BatchActionJobState,
     batch_action_jobs,
+    batch_refresh_teams,
     batch_enable_device_auth_stream,
     batch_refresh_teams_stream,
     stop_batch_action,
@@ -43,9 +44,17 @@ class BatchStreamActionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_batch_refresh_stream_returns_stage_and_result_events(self):
         force_refresh_calls = []
+        cleanup_calls = []
 
-        async def mock_sync(team_id, db_session, force_refresh=False, progress_callback=None):
+        async def mock_sync(
+            team_id,
+            db_session,
+            force_refresh=False,
+            progress_callback=None,
+            enforce_bound_email_cleanup=False,
+        ):
             force_refresh_calls.append(force_refresh)
+            cleanup_calls.append(enforce_bound_email_cleanup)
             await progress_callback({
                 'stage_key': 'load_team',
                 'stage_label': '加载 Team 信息',
@@ -60,11 +69,12 @@ class BatchStreamActionTests(unittest.IsolatedAsyncioTestCase):
                 'error': None if team_id == 1 else 'Token 已过期且无法刷新',
             }
 
+        db = AsyncMock()
         with patch('app.routes.admin.team_service.sync_team_info', new=AsyncMock(side_effect=mock_sync)):
             response = await batch_refresh_teams_stream(
                 request=FakeRequest(),
                 action_data=BulkActionRequest(ids=[1, 2]),
-                db=object(),
+                db=db,
                 current_user={'username': 'admin'},
             )
             events = await collect_events(response.body_iterator)
@@ -87,6 +97,31 @@ class BatchStreamActionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(finish_event['success_count'], 1)
         self.assertEqual(finish_event['failed_count'], 1)
         self.assertEqual(force_refresh_calls, [True, True])
+        self.assertEqual(cleanup_calls, [True, True])
+
+    async def test_batch_refresh_route_enables_bound_email_cleanup(self):
+        db = AsyncMock()
+
+        with patch(
+            'app.routes.admin.team_service.sync_team_info',
+            new=AsyncMock(return_value={'success': True, 'message': '同步成功', 'error': None})
+        ) as mocked_sync:
+            response = await batch_refresh_teams(
+                action_data=BulkActionRequest(ids=[1]),
+                db=db,
+                current_user={'username': 'admin'},
+            )
+
+        payload = json.loads(response.body.decode('utf-8'))
+
+        mocked_sync.assert_awaited_once_with(
+            1,
+            db,
+            force_refresh=True,
+            enforce_bound_email_cleanup=True,
+        )
+        db.commit.assert_awaited_once()
+        self.assertTrue(payload['success'])
 
     async def test_batch_enable_device_auth_stream_returns_finish_summary(self):
         async def mock_enable(team_id, db_session, progress_callback=None):
@@ -128,7 +163,13 @@ class BatchStreamActionTests(unittest.IsolatedAsyncioTestCase):
         release_first_item = asyncio.Event()
         started_team_ids = []
 
-        async def mock_sync(team_id, db_session, force_refresh=False, progress_callback=None):
+        async def mock_sync(
+            team_id,
+            db_session,
+            force_refresh=False,
+            progress_callback=None,
+            enforce_bound_email_cleanup=False,
+        ):
             started_team_ids.append(team_id)
             await progress_callback({
                 'stage_key': 'load_team',
@@ -146,11 +187,12 @@ class BatchStreamActionTests(unittest.IsolatedAsyncioTestCase):
                 'error': None,
             }
 
+        db = AsyncMock()
         with patch('app.routes.admin.team_service.sync_team_info', new=AsyncMock(side_effect=mock_sync)):
             response = await batch_refresh_teams_stream(
                 request=FakeRequest(),
                 action_data=BulkActionRequest(ids=[1, 2, 3]),
-                db=object(),
+                db=db,
                 current_user={'username': 'admin'},
             )
 

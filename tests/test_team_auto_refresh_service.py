@@ -59,6 +59,8 @@ class TeamAutoRefreshServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mocked_sync.await_args_list[1].args[0], 22)
         self.assertFalse(mocked_sync.await_args_list[0].kwargs["force_refresh"])
         self.assertFalse(mocked_sync.await_args_list[1].kwargs["force_refresh"])
+        self.assertTrue(mocked_sync.await_args_list[0].kwargs["enforce_bound_email_cleanup"])
+        self.assertTrue(mocked_sync.await_args_list[1].kwargs["enforce_bound_email_cleanup"])
 
     async def test_run_once_skips_sync_when_disabled(self):
         service = TeamAutoRefreshService()

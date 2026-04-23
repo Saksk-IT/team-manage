@@ -1038,7 +1038,8 @@ async def batch_refresh_teams_stream(
             team_id,
             db,
             force_refresh=True,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
+            enforce_bound_email_cleanup=True,
         )
         await db.commit()
         return result
@@ -1071,7 +1072,12 @@ async def batch_refresh_teams(
             try:
                 # 注意: 这里使用 sync_team_info, 它会自动处理 Token 刷新和信息同步
                 # force_refresh=True 代表强制同步 API
-                result = await team_service.sync_team_info(team_id, db, force_refresh=True)
+                result = await team_service.sync_team_info(
+                    team_id,
+                    db,
+                    force_refresh=True,
+                    enforce_bound_email_cleanup=True
+                )
                 await db.commit()
                 if result.get("success"):
                     success_count += 1

@@ -1419,7 +1419,7 @@
             const data = await response.json();
 
             if (response.ok && data.success) {
-                showToast('刷新成功', 'success');
+                showToast(data.message || '刷新成功', 'success');
                 setTimeout(() => location.reload(), 1000);
             } else {
                 showToast(data.error || '刷新失败', 'error');
