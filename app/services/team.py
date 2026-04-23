@@ -2001,7 +2001,9 @@ class TeamService:
                 return {
                     "success": False,
                     "message": None,
-                    "error": "Team账号受限: 官方拦截下发(响应空列表)，请检查账单/风控状态"
+                    "error": "Team账号受限: 官方拦截下发(响应空列表)，请检查账单/风控状态",
+                    "error_code": "invite_intercepted_empty_list",
+                    "allow_try_next_team": True
                 }
 
             # 5. 更新成员数并二次校验邀请是否真的生效 (循环检测 3 次，防止接口返回 200 但实际延迟入库)

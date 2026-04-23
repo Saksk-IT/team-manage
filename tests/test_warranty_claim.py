@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 from datetime import timedelta
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, call
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -280,6 +280,73 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             smallest_warranty_team.id,
             "buyer@example.com",
             session
+        )
+
+    async def test_claim_warranty_falls_back_to_next_team_for_empty_invite_list_error(self):
+        async with self.Session() as session:
+            ordinary_team, smallest_warranty_team = await self._seed_team_data(session)
+            ordinary_team.status = "banned"
+
+            larger_warranty_team = Team(
+                email="warranty-owner-2@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-warranty-2",
+                team_type=TEAM_TYPE_WARRANTY,
+                team_name="Warranty Team 2",
+                status="active",
+                current_members=1,
+                max_members=5
+            )
+            session.add(larger_warranty_team)
+            await session.flush()
+
+            session.add(
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=5),
+                    source="manual",
+                    last_redeem_code="CODE-TRY-NEXT"
+                )
+            )
+            await self._add_latest_team_record(
+                session=session,
+                team=ordinary_team,
+                email="buyer@example.com",
+                code="CODE-TRY-NEXT"
+            )
+            await session.commit()
+
+            service = WarrantyService()
+            service._find_existing_warranty_team_for_email = AsyncMock(return_value=None)
+            service.team_service.add_team_member = AsyncMock(side_effect=[
+                {
+                    "success": False,
+                    "error": "Team账号受限: 官方拦截下发(响应空列表)，请检查账单/风控状态",
+                    "error_code": "invite_intercepted_empty_list",
+                    "allow_try_next_team": True
+                },
+                {
+                    "success": True,
+                    "message": "邀请已发送"
+                }
+            ])
+
+            result = await service.claim_warranty_invite(
+                db_session=session,
+                email="buyer@example.com"
+            )
+            entry = await service.get_warranty_email_entry(session, "buyer@example.com")
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["team_info"]["id"], larger_warranty_team.id)
+        self.assertEqual(entry.remaining_claims, 1)
+        self.assertEqual(entry.last_warranty_team_id, larger_warranty_team.id)
+        service.team_service.add_team_member.assert_has_awaits(
+            [
+                call(smallest_warranty_team.id, "buyer@example.com", session),
+                call(larger_warranty_team.id, "buyer@example.com", session),
+            ]
         )
 
     async def test_claim_warranty_rejects_when_latest_team_is_not_banned(self):

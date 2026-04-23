@@ -46,6 +46,9 @@ class WarrantyService:
     def normalize_email(self, email: str) -> str:
         return (email or "").strip().lower()
 
+    def _should_try_next_warranty_team(self, add_result: Dict[str, Any]) -> bool:
+        return bool(add_result.get("allow_try_next_team"))
+
     def get_team_status_label(self, status: Optional[str]) -> str:
         normalized_status = (status or "").strip().lower()
         return self.TEAM_STATUS_LABELS.get(normalized_status, "未知")
@@ -972,33 +975,45 @@ class WarrantyService:
                 logger.warning("质保申请失败: 没有可用的质保 Team")
                 return {"success": False, "error": "当前没有可用的质保 Team，请稍后再试"}
 
-            team = warranty_teams[0]
-            add_result = await self.team_service.add_team_member(team.id, normalized_email, db_session)
-            if not add_result.get("success"):
+            last_error = None
+            for team in warranty_teams:
+                add_result = await self.team_service.add_team_member(team.id, normalized_email, db_session)
+                if add_result.get("success"):
+                    await self._record_warranty_claim_success(
+                        db_session=db_session,
+                        entry=warranty_entry,
+                        email=normalized_email,
+                        team=team
+                    )
+                    return {
+                        "success": True,
+                        "message": add_result.get("message") or "质保邀请发送成功，请查收邮箱。",
+                        "team_info": {
+                            "id": team.id,
+                            "team_name": team.team_name,
+                            "email": team.email,
+                            "expires_at": team.expires_at.isoformat() if team.expires_at else None
+                        },
+                        "warranty_info": self.serialize_warranty_email_entry(warranty_entry)
+                    }
+
+                last_error = add_result.get("error")
+                if self._should_try_next_warranty_team(add_result):
+                    logger.warning(
+                        "质保 Team 邀请失败，命中可重试错误，尝试下一个 team_id=%s error=%s",
+                        team.id,
+                        last_error
+                    )
+                    continue
+
                 logger.warning(
                     "质保 Team 邀请失败: team_id=%s error=%s",
                     team.id,
-                    add_result.get("error")
+                    last_error
                 )
-                return {"success": False, "error": add_result.get("error") or "当前质保 Team 邀请失败，请稍后再试"}
+                return {"success": False, "error": last_error or "当前质保 Team 邀请失败，请稍后再试"}
 
-            await self._record_warranty_claim_success(
-                db_session=db_session,
-                entry=warranty_entry,
-                email=normalized_email,
-                team=team
-            )
-            return {
-                "success": True,
-                "message": add_result.get("message") or "质保邀请发送成功，请查收邮箱。",
-                "team_info": {
-                    "id": team.id,
-                    "team_name": team.team_name,
-                    "email": team.email,
-                    "expires_at": team.expires_at.isoformat() if team.expires_at else None
-                },
-                "warranty_info": self.serialize_warranty_email_entry(warranty_entry)
-            }
+            return {"success": False, "error": last_error or "当前质保 Team 邀请失败，请稍后再试"}
 
         except Exception as e:
             logger.error(f"质保邀请申请失败: {e}")
