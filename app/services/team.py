@@ -157,6 +157,16 @@ class TeamService:
         normalized_email = (email or "").strip().lower()
         return normalized_email or None
 
+    @staticmethod
+    def _is_team_full_error_message(error: Optional[str]) -> bool:
+        error_msg = str(error or "").lower()
+        full_keywords = (
+            "maximum number of seats",
+            "reached maximum number of seats",
+            "no seats available",
+        )
+        return any(keyword in error_msg for keyword in full_keywords)
+
     async def _sync_team_member_snapshots(
         self,
         team: Team,
@@ -271,8 +281,7 @@ class TeamService:
             return True
 
         # 2. 判定是否为“席位已满”错误
-        full_keywords = ["maximum number of seats", "reached maximum number of seats", "no seats available"]
-        if any(kw in error_msg for kw in full_keywords):
+        if self._is_team_full_error_message(error_msg):
             logger.warning(f"检测到 Team 席位已满 (msg={error_msg}), 更新 Team {team.id} ({team.email}) 状态为 full")
             team.status = "full"
             # 学习真实的席位上限: 如果当前探测到的成员数小于预设的最大值，说明该团队实际容量较小
@@ -1945,7 +1954,8 @@ class TeamService:
                 return {
                     "success": False,
                     "message": None,
-                    "error": "Team 已满,无法添加成员"
+                    "error": "Team 已满,无法添加成员",
+                    "allow_try_next_team": True
                 }
 
             if team.status == "expired":
@@ -1981,11 +1991,17 @@ class TeamService:
                         error_msg = "账号已封禁 (account_deactivated)"
                     elif invite_result.get("error_code") == "token_invalidated":
                         error_msg = "Token 已失效 (token_invalidated)"
-                        
+
+                    allow_try_next_team = bool(
+                        team.status == "full"
+                        or self._is_team_full_error_message(error_msg)
+                    )
+
                     return {
                         "success": False,
                         "message": None,
-                        "error": error_msg
+                        "error": error_msg,
+                        "allow_try_next_team": allow_try_next_team
                     }
 
                 return {
