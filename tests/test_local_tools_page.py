@@ -18,6 +18,7 @@ class LocalToolsPageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="batchContentInput"', html)
         self.assertIn('id="localToolsFileInput"', html)
         self.assertIn('id="importLocalToolsBtn"', html)
+        self.assertIn('id="refreshAllSiteInfoBtn"', html)
         self.assertIn("点击完整标识即可复制", html)
         self.assertIn('class="workbench-layout"', html)
         self.assertIn('class="items-grid items-grid--workbench"', html)

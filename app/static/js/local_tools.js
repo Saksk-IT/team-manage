@@ -1,10 +1,13 @@
 const LOCAL_STORAGE_KEY = 'local_tools_items_v1';
+const REFRESH_CONCURRENCY = 4;
+const REFRESH_TIMEOUT_MS = 6000;
 
 const batchContentInput = document.getElementById('batchContentInput');
 const importFeedback = document.getElementById('importFeedback');
 const importLocalToolsBtn = document.getElementById('importLocalToolsBtn');
 const clearTextareaBtn = document.getElementById('clearTextareaBtn');
 const clearLocalDataBtn = document.getElementById('clearLocalDataBtn');
+const refreshAllSiteInfoBtn = document.getElementById('refreshAllSiteInfoBtn');
 const fileInput = document.getElementById('localToolsFileInput');
 const itemsGrid = document.getElementById('itemsGrid');
 const emptyState = document.getElementById('emptyState');
@@ -27,6 +30,15 @@ function setFeedback(message, tone = '') {
     }
 }
 
+function setRefreshButtonState(label, disabled) {
+    if (!refreshAllSiteInfoBtn) {
+        return;
+    }
+
+    refreshAllSiteInfoBtn.textContent = label;
+    refreshAllSiteInfoBtn.disabled = disabled;
+}
+
 function formatSavedAt(value) {
     if (!value) {
         return '暂无';
@@ -40,6 +52,28 @@ function formatSavedAt(value) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+function formatCheckedAt(value) {
+    if (!value) {
+        return '未刷新';
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return '未刷新';
+    }
+
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function extractTitleFromHtml(html) {
+    const match = String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    if (!match) {
+        return '';
+    }
+
+    return match[1].replace(/\s+/g, ' ').trim();
+}
+
 function buildDisplayUrl(url) {
     try {
         const parsed = new URL(url);
@@ -49,12 +83,41 @@ function buildDisplayUrl(url) {
     }
 }
 
+function normalizeCopyIdentifier(identifier) {
+    return String(identifier || '').replace(/^\+1(?:[\s-])?/, '').trim();
+}
+
+function buildSiteInfo(openUrl, overrides = {}) {
+    try {
+        const parsed = new URL(openUrl);
+        const path = `${parsed.pathname || '/'}${parsed.search ? `?参数 ${parsed.searchParams.size}` : ''}`;
+        return Object.freeze({
+            host: parsed.hostname || parsed.host || '未知站点',
+            path,
+            title: '',
+            statusText: '待刷新',
+            checkedAt: '',
+            ...overrides,
+        });
+    } catch (_error) {
+        return Object.freeze({
+            host: '未知站点',
+            path: '/',
+            title: '',
+            statusText: '地址解析失败',
+            checkedAt: '',
+            ...overrides,
+        });
+    }
+}
+
 function createFrozenItems(items) {
     return Object.freeze(items.map((item, index) => Object.freeze({
         sequence: Number.isInteger(item.sequence) ? item.sequence : index + 1,
-        identifier: item.identifier,
-        openUrl: item.openUrl,
-        displayUrl: item.displayUrl,
+        identifier: String(item.identifier || ''),
+        openUrl: String(item.openUrl || ''),
+        displayUrl: String(item.displayUrl || buildDisplayUrl(item.openUrl || '')),
+        siteInfo: buildSiteInfo(item.openUrl || '', item.siteInfo || {}),
     })));
 }
 
@@ -70,8 +133,7 @@ function loadLocalState() {
         currentItems = createFrozenItems(
             parsedItems.filter((item) =>
                 typeof item?.identifier === 'string' &&
-                typeof item?.openUrl === 'string' &&
-                typeof item?.displayUrl === 'string'
+                typeof item?.openUrl === 'string'
             )
         );
         currentSavedAt = typeof parsedValue?.savedAt === 'string' ? parsedValue.savedAt : '';
@@ -93,6 +155,7 @@ function persistLocalState(items) {
             identifier: item.identifier,
             openUrl: item.openUrl,
             displayUrl: item.displayUrl,
+            siteInfo: item.siteInfo,
         })),
     };
 
@@ -144,6 +207,7 @@ function parseBatchContent(content) {
                 identifier,
                 openUrl,
                 displayUrl: buildDisplayUrl(openUrl),
+                siteInfo: buildSiteInfo(openUrl),
             });
 
             return {
@@ -198,7 +262,7 @@ function renderInvalidLines(invalidLines) {
     invalidLinesBox.hidden = false;
 }
 
-function createWorkbenchButton(className, text, title, onClick) {
+function createButton(className, text, title, onClick) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = className;
@@ -208,11 +272,41 @@ function createWorkbenchButton(className, text, title, onClick) {
     return button;
 }
 
+function buildSiteSummaryText(siteInfo) {
+    if (siteInfo.title) {
+        return siteInfo.title;
+    }
+
+    return siteInfo.statusText || '待刷新';
+}
+
+function buildSearchableText(item) {
+    return [
+        item.identifier,
+        item.displayUrl,
+        item.siteInfo.host,
+        item.siteInfo.path,
+        item.siteInfo.title,
+        item.siteInfo.statusText,
+    ].join(' ').toLowerCase();
+}
+
+function createMetaLine(label, value) {
+    const line = document.createElement('div');
+    line.className = 'work-item__meta-line';
+
+    const strong = document.createElement('strong');
+    strong.textContent = `${label}：`;
+
+    const text = document.createTextNode(value);
+
+    line.append(strong, text);
+    return line;
+}
+
 function renderItems() {
     const keyword = (searchInput.value || '').trim().toLowerCase();
-    const filteredItems = currentItems.filter((item) =>
-        !keyword || item.identifier.toLowerCase().includes(keyword) || item.displayUrl.toLowerCase().includes(keyword)
-    );
+    const filteredItems = currentItems.filter((item) => !keyword || buildSearchableText(item).includes(keyword));
 
     itemsGrid.innerHTML = '';
     totalItemsValue.textContent = String(currentItems.length);
@@ -233,21 +327,22 @@ function renderItems() {
     filteredItems.forEach((item) => {
         const itemCard = document.createElement('article');
         itemCard.className = 'work-item';
-        itemCard.title = `标识：${item.identifier}\n地址：${item.displayUrl}`;
+        itemCard.title = `标识：${item.identifier}\n地址：${item.displayUrl}\n站点：${item.siteInfo.host}`;
 
-        const copyButton = createWorkbenchButton(
+        const copyButton = createButton(
             'work-item__copy',
             item.identifier,
-            `点击复制：${item.identifier}`,
+            `点击复制：${normalizeCopyIdentifier(item.identifier) || item.identifier}`,
             async () => {
-                await copyText(item.identifier);
-                setFeedback(`已复制：${item.identifier}`, 'success');
+                const copiedText = normalizeCopyIdentifier(item.identifier) || item.identifier;
+                await copyText(copiedText);
+                setFeedback(`已复制：${copiedText}`, 'success');
             }
         );
 
         copyButton.setAttribute('aria-label', `复制标识：${item.identifier}`);
 
-        const openButton = createWorkbenchButton(
+        const openButton = createButton(
             'work-item__open',
             '↗',
             `打开地址：${item.displayUrl}`,
@@ -258,7 +353,14 @@ function renderItems() {
 
         openButton.setAttribute('aria-label', `打开地址：${item.displayUrl}`);
 
-        itemCard.append(copyButton, openButton);
+        const meta = document.createElement('div');
+        meta.className = 'work-item__meta';
+
+        const hostLine = createMetaLine('站点', `${item.siteInfo.host}${item.siteInfo.path}`);
+        const infoLine = createMetaLine('信息', buildSiteSummaryText(item.siteInfo));
+        const timeLine = createMetaLine('刷新', formatCheckedAt(item.siteInfo.checkedAt));
+        meta.append(hostLine, infoLine, timeLine);
+        itemCard.append(copyButton, openButton, meta);
         itemsGrid.appendChild(itemCard);
     });
 }
@@ -301,6 +403,105 @@ async function handleFileImport(file) {
     setFeedback(`已读取文件：${file.name}，请确认后点击“解析并保存到本地”。`, 'success');
 }
 
+async function fetchSiteInfoForItem(item) {
+    const checkedAt = new Date().toISOString();
+    const fallbackInfo = buildSiteInfo(item.openUrl, {
+        ...item.siteInfo,
+        checkedAt,
+        statusText: '已刷新，显示网址信息',
+    });
+
+    try {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
+        const response = await fetch(item.openUrl, {
+            method: 'GET',
+            mode: 'cors',
+            cache: 'no-store',
+            signal: controller.signal,
+            headers: {
+                Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+            },
+        });
+        window.clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            return buildSiteInfo(item.openUrl, {
+                ...fallbackInfo,
+                statusText: `HTTP ${response.status}`,
+                checkedAt,
+            });
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('text/html')) {
+            const html = await response.text();
+            const title = extractTitleFromHtml(html);
+            return buildSiteInfo(item.openUrl, {
+                ...fallbackInfo,
+                title,
+                statusText: title ? '已读取页面标题' : '已访问（无标题）',
+                checkedAt,
+            });
+        }
+
+        const shortType = contentType.split(';')[0] || '可访问';
+        return buildSiteInfo(item.openUrl, {
+            ...fallbackInfo,
+            statusText: `已访问：${shortType}`,
+            checkedAt,
+        });
+    } catch (error) {
+        const isTimeout = error?.name === 'AbortError';
+        return buildSiteInfo(item.openUrl, {
+            ...fallbackInfo,
+            statusText: isTimeout ? '刷新超时，显示网址信息' : '站点限制读取，显示网址信息',
+            checkedAt,
+        });
+    }
+}
+
+async function refreshAllSiteInfo() {
+    if (!currentItems.length) {
+        setFeedback('当前没有可刷新的数据。', 'warning');
+        return;
+    }
+
+    setRefreshButtonState('刷新中 0/' + currentItems.length, true);
+
+    let cursor = 0;
+    let completed = 0;
+    const refreshedItems = new Array(currentItems.length);
+
+    const worker = async () => {
+        while (cursor < currentItems.length) {
+            const index = cursor;
+            cursor += 1;
+            const item = currentItems[index];
+            const nextSiteInfo = await fetchSiteInfoForItem(item);
+            refreshedItems[index] = Object.freeze({
+                ...item,
+                siteInfo: nextSiteInfo,
+            });
+            completed += 1;
+            setRefreshButtonState(`刷新中 ${completed}/${currentItems.length}`, true);
+        }
+    };
+
+    const workers = Array.from(
+        { length: Math.min(REFRESH_CONCURRENCY, currentItems.length) },
+        () => worker()
+    );
+
+    await Promise.all(workers);
+
+    const nextItems = createFrozenItems(refreshedItems);
+    persistLocalState(nextItems);
+    renderItems();
+    setRefreshButtonState('刷新全部信息', false);
+    setFeedback(`已刷新 ${nextItems.length} 条站点信息。`, 'success');
+}
+
 importLocalToolsBtn.addEventListener('click', importCurrentTextarea);
 
 clearTextareaBtn.addEventListener('click', () => {
@@ -314,6 +515,10 @@ clearLocalDataBtn.addEventListener('click', () => {
     setFeedback('浏览器本地数据已清空。', 'success');
 });
 
+if (refreshAllSiteInfoBtn) {
+    refreshAllSiteInfoBtn.addEventListener('click', refreshAllSiteInfo);
+}
+
 fileInput.addEventListener('change', async (event) => {
     const [file] = event.target.files || [];
     await handleFileImport(file);
@@ -323,3 +528,4 @@ searchInput.addEventListener('input', renderItems);
 
 loadLocalState();
 renderItems();
+setRefreshButtonState('刷新全部信息', false);
