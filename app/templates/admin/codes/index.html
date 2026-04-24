@@ -42,23 +42,34 @@
 <!-- 操作栏 -->
 <div class="content-section sticky-toolbar-section">
     <div class="section-header">
-        <div class="header-group">
-            <div class="filter-tabs">
-                <button onclick="filterByStatus('')" class="filter-tab {% if not status_filter %}active{% endif %}"
-                    id="filter-all">全部</button>
-                <button onclick="filterByStatus('unused')"
-                    class="filter-tab {% if status_filter == 'unused' %}active{% endif %}"
-                    id="filter-unused">未使用</button>
-                <button onclick="filterByStatus('used')"
-                    class="filter-tab {% if status_filter == 'used' %}active{% endif %}" id="filter-used">已使用</button>
-                <button onclick="filterByStatus('expired')"
-                    class="filter-tab {% if status_filter == 'expired' %}active{% endif %}"
-                    id="filter-expired">已过期</button>
-            </div>
+        <form action="/admin/codes" method="get" class="code-filter-form">
+            {% if pagination and pagination.per_page %}
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            {% endif %}
 
-            <div class="input-group-clean">
-                <i data-lucide="building-2" style="width: 14px; height: 14px;"></i>
-                <select id="teamFilter" class="form-control team-filter-select" onchange="filterByTeam(this.value)">
+            <label class="code-filter-field">
+                <span>状态</span>
+                <select name="status_filter" class="form-control">
+                    <option value="" {% if not status_filter %}selected{% endif %}>全部状态</option>
+                    <option value="unused" {% if status_filter == 'unused' %}selected{% endif %}>未使用</option>
+                    <option value="used" {% if status_filter == 'used' %}selected{% endif %}>已使用（含质保中）</option>
+                    <option value="warranty_active" {% if status_filter == 'warranty_active' %}selected{% endif %}>仅质保中</option>
+                    <option value="expired" {% if status_filter == 'expired' %}selected{% endif %}>已过期</option>
+                </select>
+            </label>
+
+            <label class="code-filter-field">
+                <span>兑换码类型</span>
+                <select name="code_type" class="form-control">
+                    <option value="" {% if not code_filters.code_type %}selected{% endif %}>全部类型</option>
+                    <option value="standard" {% if code_filters.code_type == 'standard' %}selected{% endif %}>普通兑换码</option>
+                    <option value="warranty" {% if code_filters.code_type == 'warranty' %}selected{% endif %}>质保兑换码</option>
+                </select>
+            </label>
+
+            <label class="code-filter-field code-filter-field-wide">
+                <span>绑定 Team</span>
+                <select id="teamFilter" name="team_id" class="form-control team-filter-select">
                     <option value="">全部 Team</option>
                     {% for team in team_options %}
                     <option value="{{ team.id }}" {% if selected_team_id == team.id %}selected{% endif %}>
@@ -66,40 +77,52 @@
                     </option>
                     {% endfor %}
                 </select>
+            </label>
+
+            <label class="code-filter-field">
+                <span>搜索</span>
+                <input type="text" name="search" value="{{ search or '' }}" class="form-control" placeholder="兑换码 / 邮箱">
+            </label>
+
+            <div class="code-filter-field code-filter-range-field">
+                <span>创建时间</span>
+                <div class="filter-range-inputs">
+                    <input type="date" name="created_from" value="{{ code_filters.created_from }}" class="form-control" aria-label="创建开始日期">
+                    <span>至</span>
+                    <input type="date" name="created_to" value="{{ code_filters.created_to }}" class="form-control" aria-label="创建结束日期">
+                </div>
             </div>
 
-            <form action="/admin/codes" method="get" class="search-form">
-                {% if status_filter %}
-                <input type="hidden" name="status_filter" value="{{ status_filter }}">
-                {% endif %}
-                {% if selected_team_id %}
-                <input type="hidden" name="team_id" value="{{ selected_team_id }}">
-                {% endif %}
-                {% if pagination and pagination.per_page %}
-                <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
-                {% endif %}
-                <div class="input-group-clean">
-                    <i data-lucide="search" style="width: 14px; height: 14px;"></i>
-                    <input type="text" name="search" value="{{ search or '' }}" placeholder="搜索兑换码..."
-                        style="width: 180px;">
-                    {% if search %}
-                    {% set clear_search_query = [] %}
-                    {% if status_filter %}
-                    {% set _ = clear_search_query.append('status_filter=' + status_filter|urlencode) %}
-                    {% endif %}
-                    {% if selected_team_id %}
-                    {% set _ = clear_search_query.append('team_id=' + selected_team_id|string) %}
-                    {% endif %}
-                    {% if pagination and pagination.per_page %}
-                    {% set _ = clear_search_query.append('per_page=' + pagination.per_page|string) %}
-                    {% endif %}
-                    <a href="/admin/codes{% if clear_search_query %}?{{ clear_search_query|join('&') }}{% endif %}" title="清除搜索">
-                        <i data-lucide="x-circle" style="width: 14px; height: 14px;"></i>
-                    </a>
-                    {% endif %}
+            <label class="code-filter-field">
+                <span>质保时长</span>
+                <input type="number" name="warranty_days" value="{{ code_filters.warranty_days }}" min="1" class="form-control" placeholder="天数">
+            </label>
+
+            <div class="code-filter-field code-filter-range-field">
+                <span>剩余天数</span>
+                <div class="filter-range-inputs">
+                    <input type="number" name="remaining_days_min" value="{{ code_filters.remaining_days_min }}" min="0" class="form-control" placeholder="最小">
+                    <span>至</span>
+                    <input type="number" name="remaining_days_max" value="{{ code_filters.remaining_days_max }}" min="0" class="form-control" placeholder="最大">
                 </div>
-            </form>
-        </div>
+            </div>
+
+            <div class="code-filter-field code-filter-range-field">
+                <span>剩余次数</span>
+                <div class="filter-range-inputs">
+                    <input type="number" name="remaining_claims_min" value="{{ code_filters.remaining_claims_min }}" min="0" class="form-control" placeholder="最小">
+                    <span>至</span>
+                    <input type="number" name="remaining_claims_max" value="{{ code_filters.remaining_claims_max }}" min="0" class="form-control" placeholder="最大">
+                </div>
+            </div>
+
+            <div class="code-filter-actions">
+                <button type="submit" class="btn btn-primary">
+                    <i data-lucide="filter" style="width: 16px; height: 16px;"></i> 筛选
+                </button>
+                <a href="/admin/codes{% if reset_query %}?{{ reset_query }}{% endif %}" class="btn btn-secondary">重置</a>
+            </div>
+        </form>
 
         <div class="header-actions">
             <div class="dropdown-wrapper">
@@ -274,11 +297,7 @@
         </div>
 
         {% if pagination.total_pages > 1 %}
-        {% set search_param = '&search=' + search|urlencode if search else '' %}
-        {% set status_param = '&status_filter=' + status_filter|urlencode if status_filter else '' %}
-        {% set team_param = '&team_id=' + selected_team_id|string if selected_team_id else '' %}
-        {% set per_page_param = '&per_page=' + pagination.per_page|string if pagination.per_page != 50 else '' %}
-        {% set base_query = search_param + status_param + team_param + per_page_param %}
+        {% set base_query = '&' + filter_query if filter_query else '' %}
 
         <div class="pagination-controls">
             <!-- 首页 -->
@@ -520,10 +539,80 @@
     }
 
     .team-filter-select {
-        min-width: 260px;
-        border: none;
-        background: transparent;
-        padding: 0;
+        min-width: 100%;
+    }
+
+    .code-filter-form {
+        flex: 1 1 760px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 0.75rem;
+        align-items: end;
+        width: 100%;
+    }
+
+    .code-filter-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        margin: 0;
+        min-width: 0;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-muted);
+    }
+
+    .code-filter-field-wide {
+        grid-column: span 2;
+    }
+
+    .code-filter-field .form-control {
+        width: 100%;
+        min-height: 38px;
+        font-size: 0.8125rem;
+        color: var(--text-main);
+    }
+
+    .code-filter-range-field {
+        grid-column: span 2;
+    }
+
+    .filter-range-inputs {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .filter-range-inputs span {
+        color: var(--text-dim);
+        font-size: 0.75rem;
+    }
+
+    .code-filter-actions {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    @media (max-width: 768px) {
+        .code-filter-form {
+            grid-template-columns: 1fr;
+        }
+
+        .code-filter-field-wide,
+        .code-filter-range-field {
+            grid-column: span 1;
+        }
+
+        .filter-range-inputs {
+            grid-template-columns: 1fr;
+        }
+
+        .filter-range-inputs span {
+            display: none;
+        }
     }
 </style>
 {% endblock %}
@@ -638,6 +727,32 @@
         return teamFilter.options[teamFilter.selectedIndex]?.text?.trim() || '';
     }
 
+    function getNullableQueryParam(urlParams, key) {
+        const value = urlParams.get(key);
+        return value && value.trim() ? value.trim() : null;
+    }
+
+    function getNullableNumberQueryParam(urlParams, key) {
+        const value = getNullableQueryParam(urlParams, key);
+        return value === null ? null : Number(value);
+    }
+
+    function buildCurrentFilterPayload(urlParams) {
+        return {
+            search: getNullableQueryParam(urlParams, 'search'),
+            status_filter: getNullableQueryParam(urlParams, 'status_filter'),
+            team_id: getSelectedTeamId(),
+            code_type: getNullableQueryParam(urlParams, 'code_type'),
+            created_from: getNullableQueryParam(urlParams, 'created_from'),
+            created_to: getNullableQueryParam(urlParams, 'created_to'),
+            warranty_days: getNullableNumberQueryParam(urlParams, 'warranty_days'),
+            remaining_days_min: getNullableNumberQueryParam(urlParams, 'remaining_days_min'),
+            remaining_days_max: getNullableNumberQueryParam(urlParams, 'remaining_days_max'),
+            remaining_claims_min: getNullableNumberQueryParam(urlParams, 'remaining_claims_min'),
+            remaining_claims_max: getNullableNumberQueryParam(urlParams, 'remaining_claims_max'),
+        };
+    }
+
     // 全选/取消全选
     function toggleSelectAll(checkbox) {
         const checkboxes = document.querySelectorAll('.code-checkbox');
@@ -688,11 +803,11 @@
 
         const selectedTeamLabel = getSelectedTeamLabel();
         if (selectedTeamLabel) {
-            scopeText.innerText = `将导出 ${selectedTeamLabel}下的全部兑换码。`;
-            scopeSubtext.innerText = '无需逐个勾选，会按当前所选 Team 整组导出。';
+            scopeText.innerText = `将导出当前筛选结果（包含 ${selectedTeamLabel}）。`;
+            scopeSubtext.innerText = '无需逐个勾选，会同时保留当前多重筛选条件。';
         } else {
             scopeText.innerText = '将导出当前筛选结果。';
-            scopeSubtext.innerText = '如果未勾选兑换码，则按当前搜索和状态筛选导出。';
+            scopeSubtext.innerText = '如果未勾选兑换码，则按当前搜索、状态和多重条件筛选导出。';
         }
         showModal('exportCodesModal');
     }
@@ -834,6 +949,20 @@
             const selectedCodes = getSelectedCodes();
             const urlParams = new URLSearchParams(window.location.search);
             const exportFormat = document.querySelector('input[name="exportFormat"]:checked')?.value || 'excel';
+            const currentFilters = buildCurrentFilterPayload(urlParams);
+            const emptyFilters = {
+                search: null,
+                status_filter: null,
+                team_id: null,
+                code_type: null,
+                created_from: null,
+                created_to: null,
+                warranty_days: null,
+                remaining_days_min: null,
+                remaining_days_max: null,
+                remaining_claims_min: null,
+                remaining_claims_max: null,
+            };
             const response = await fetch('/admin/codes/export', {
                 method: 'POST',
                 headers: {
@@ -841,9 +970,7 @@
                 },
                 body: JSON.stringify({
                     codes: selectedCodes,
-                    search: selectedCodes.length > 0 ? null : (urlParams.get('search') || null),
-                    status_filter: selectedCodes.length > 0 ? null : (urlParams.get('status_filter') || null),
-                    team_id: selectedCodes.length > 0 ? null : getSelectedTeamId(),
+                    ...(selectedCodes.length > 0 ? emptyFilters : currentFilters),
                     export_format: exportFormat
                 })
             });

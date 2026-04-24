@@ -74,6 +74,32 @@ class AdminCodesWarrantySyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertRegex(html, r">\s*12\s*<")
         self.assertRegex(html, r">\s*8\s*<")
 
+    async def test_codes_page_accepts_empty_multi_filter_fields(self):
+        async with self.Session() as session:
+            response = await codes_list_page(
+                request=self._build_request(),
+                page=1,
+                per_page=50,
+                search="",
+                status_filter="",
+                team_id="",
+                code_type="",
+                created_from="",
+                created_to="",
+                warranty_days="",
+                remaining_days_min="",
+                remaining_days_max="",
+                remaining_claims_min="",
+                remaining_claims_max="",
+                db=session,
+                current_user={"username": "admin"},
+            )
+
+        html = response.body.decode("utf-8")
+        self.assertIn('name="code_type"', html)
+        self.assertIn('name="created_from"', html)
+        self.assertIn('name="remaining_claims_max"', html)
+
 
 if __name__ == "__main__":
     unittest.main()

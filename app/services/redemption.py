@@ -419,7 +419,15 @@ class RedemptionService:
         status: Optional[str] = None,
         selected_codes: Optional[List[str]] = None,
         bound_team_id: Optional[int] = None,
-        bound_team_ids: Optional[List[int]] = None
+        bound_team_ids: Optional[List[int]] = None,
+        code_type: Optional[str] = None,
+        created_from: Optional[datetime] = None,
+        created_to: Optional[datetime] = None,
+        warranty_days: Optional[int] = None,
+        remaining_days_min: Optional[int] = None,
+        remaining_days_max: Optional[int] = None,
+        remaining_claims_min: Optional[int] = None,
+        remaining_claims_max: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         获取所有兑换码
@@ -433,17 +441,40 @@ class RedemptionService:
             selected_codes: 指定导出的兑换码列表
             bound_team_id: 绑定的单个 Team ID
             bound_team_ids: 绑定的多个 Team ID 列表
+            code_type: 兑换码类型筛选 (standard/warranty)
+            created_from: 创建时间起始
+            created_to: 创建时间结束
+            warranty_days: 质保时长筛选
+            remaining_days_min: 剩余天数最小值
+            remaining_days_max: 剩余天数最大值
+            remaining_claims_min: 剩余次数最小值
+            remaining_claims_max: 剩余次数最大值
 
         Returns:
             结果字典,包含 success, codes, total, total_pages, current_page, error
         """
         try:
             # 1. 构建基础查询
-            count_stmt = select(func.count(RedemptionCode.id))
-            stmt = select(RedemptionCode).order_by(RedemptionCode.created_at.desc())
+            count_stmt = select(func.count(RedemptionCode.id)).select_from(RedemptionCode)
+            stmt = select(RedemptionCode).select_from(RedemptionCode).order_by(RedemptionCode.created_at.desc())
 
             # 2. 如果提供了筛选条件,添加过滤条件
             filters = []
+            has_remaining_day_filter = (
+                remaining_days_min is not None or remaining_days_max is not None
+            )
+            has_remaining_claim_filter = (
+                remaining_claims_min is not None or remaining_claims_max is not None
+            )
+            needs_warranty_entry_filter = has_remaining_day_filter or has_remaining_claim_filter
+            if needs_warranty_entry_filter:
+                warranty_entry_join = (
+                    WarrantyEmailEntry.email == func.lower(func.trim(RedemptionCode.used_by_email))
+                )
+                count_stmt = count_stmt.join(WarrantyEmailEntry, warranty_entry_join)
+                stmt = stmt.join(WarrantyEmailEntry, warranty_entry_join)
+                filters.append(RedemptionCode.has_warranty.is_(True))
+
             if search:
                 filters.append(or_(
                     RedemptionCode.code.ilike(f"%{search}%"),
@@ -464,6 +495,50 @@ class RedemptionService:
                     filters.append(RedemptionCode.status.in_(['used', 'warranty_active']))
                 else:
                     filters.append(RedemptionCode.status == status)
+
+            normalized_code_type = (code_type or "").strip().lower()
+            if normalized_code_type == "standard":
+                filters.append(or_(
+                    RedemptionCode.has_warranty.is_(False),
+                    RedemptionCode.has_warranty.is_(None)
+                ))
+            elif normalized_code_type == "warranty":
+                filters.append(RedemptionCode.has_warranty.is_(True))
+            elif normalized_code_type:
+                return {
+                    "success": False,
+                    "codes": [],
+                    "total": 0,
+                    "error": "无效的兑换码类型筛选"
+                }
+
+            if created_from:
+                filters.append(RedemptionCode.created_at >= created_from)
+
+            if created_to:
+                filters.append(RedemptionCode.created_at <= created_to)
+
+            if warranty_days is not None:
+                filters.append(RedemptionCode.has_warranty.is_(True))
+                filters.append(RedemptionCode.warranty_days == warranty_days)
+
+            if has_remaining_day_filter:
+                now = get_now()
+                filters.append(WarrantyEmailEntry.expires_at.isnot(None))
+                if remaining_days_min is not None and remaining_days_min > 0:
+                    filters.append(
+                        WarrantyEmailEntry.expires_at > now + timedelta(days=remaining_days_min - 1)
+                    )
+                if remaining_days_max is not None:
+                    filters.append(
+                        WarrantyEmailEntry.expires_at <= now + timedelta(days=remaining_days_max)
+                    )
+
+            if remaining_claims_min is not None:
+                filters.append(WarrantyEmailEntry.remaining_claims >= remaining_claims_min)
+
+            if remaining_claims_max is not None:
+                filters.append(WarrantyEmailEntry.remaining_claims <= remaining_claims_max)
             
             if filters:
                 count_stmt = count_stmt.where(and_(*filters))

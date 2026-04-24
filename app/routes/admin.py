@@ -5,8 +5,9 @@
 import asyncio
 import logging
 from dataclasses import dataclass
+from datetime import datetime, time
 from typing import Optional, List, Dict, Any, Callable, Awaitable
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, RedirectResponse
@@ -158,7 +159,179 @@ class CodeExportRequest(BaseModel):
     status_filter: Optional[str] = Field(None, description="状态筛选")
     team_id: Optional[int] = Field(None, description="绑定的 Team ID")
     team_ids: List[int] = Field(default_factory=list, description="批量勾选的 Team ID 列表")
+    code_type: Optional[str] = Field(None, description="兑换码类型筛选: standard/warranty")
+    created_from: Optional[str] = Field(None, description="创建时间起始")
+    created_to: Optional[str] = Field(None, description="创建时间结束")
+    warranty_days: Optional[int] = Field(None, ge=1, description="质保时长")
+    remaining_days_min: Optional[int] = Field(None, ge=0, description="剩余天数最小值")
+    remaining_days_max: Optional[int] = Field(None, ge=0, description="剩余天数最大值")
+    remaining_claims_min: Optional[int] = Field(None, ge=0, description="剩余次数最小值")
+    remaining_claims_max: Optional[int] = Field(None, ge=0, description="剩余次数最大值")
     export_format: str = Field("excel", description="导出格式: excel 或 text")
+
+
+def _normalize_optional_filter_text(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+
+    stripped_value = value.strip()
+    return stripped_value or None
+
+
+def _parse_code_filter_datetime(value: Optional[str], *, is_end: bool, label: str) -> Optional[datetime]:
+    normalized_value = _normalize_optional_filter_text(value)
+    if not normalized_value:
+        return None
+
+    try:
+        if len(normalized_value) == 10:
+            parsed_date = datetime.strptime(normalized_value, "%Y-%m-%d").date()
+            return datetime.combine(parsed_date, time.max if is_end else time.min)
+
+        parsed_datetime = datetime.fromisoformat(normalized_value)
+        return parsed_datetime.replace(tzinfo=None)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{label}格式不正确"
+        ) from exc
+
+
+def _validate_code_filter_range(
+    min_value: Optional[int],
+    max_value: Optional[int],
+    label: str
+) -> None:
+    if min_value is not None and min_value < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{label}最小值不能小于 0"
+        )
+
+    if max_value is not None and max_value < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{label}最大值不能小于 0"
+        )
+
+    if min_value is not None and max_value is not None and min_value > max_value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{label}最小值不能大于最大值"
+        )
+
+
+def _parse_optional_int_filter(
+    value: Optional[Any],
+    *,
+    label: str,
+    min_value: int = 0
+) -> Optional[int]:
+    if value is None:
+        return None
+
+    if isinstance(value, str) and not value.strip():
+        return None
+
+    try:
+        parsed_value = int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{label}必须是整数"
+        ) from exc
+
+    if parsed_value < min_value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{label}不能小于 {min_value}"
+        )
+
+    return parsed_value
+
+
+def _build_code_filter_kwargs(
+    *,
+    code_type: Optional[str] = None,
+    created_from: Optional[str] = None,
+    created_to: Optional[str] = None,
+    warranty_days: Optional[Any] = None,
+    remaining_days_min: Optional[Any] = None,
+    remaining_days_max: Optional[Any] = None,
+    remaining_claims_min: Optional[Any] = None,
+    remaining_claims_max: Optional[Any] = None,
+) -> Dict[str, Any]:
+    normalized_code_type = _normalize_optional_filter_text(code_type)
+    if normalized_code_type and normalized_code_type not in {"standard", "warranty"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="无效的兑换码类型筛选"
+        )
+
+    parsed_warranty_days = _parse_optional_int_filter(
+        warranty_days,
+        label="质保时长",
+        min_value=1
+    )
+    parsed_remaining_days_min = _parse_optional_int_filter(
+        remaining_days_min,
+        label="剩余天数最小值",
+        min_value=0
+    )
+    parsed_remaining_days_max = _parse_optional_int_filter(
+        remaining_days_max,
+        label="剩余天数最大值",
+        min_value=0
+    )
+    parsed_remaining_claims_min = _parse_optional_int_filter(
+        remaining_claims_min,
+        label="剩余次数最小值",
+        min_value=0
+    )
+    parsed_remaining_claims_max = _parse_optional_int_filter(
+        remaining_claims_max,
+        label="剩余次数最大值",
+        min_value=0
+    )
+
+    _validate_code_filter_range(parsed_remaining_days_min, parsed_remaining_days_max, "剩余天数")
+    _validate_code_filter_range(parsed_remaining_claims_min, parsed_remaining_claims_max, "剩余次数")
+
+    parsed_created_from = _parse_code_filter_datetime(
+        created_from,
+        is_end=False,
+        label="创建开始时间"
+    )
+    parsed_created_to = _parse_code_filter_datetime(
+        created_to,
+        is_end=True,
+        label="创建结束时间"
+    )
+    if parsed_created_from and parsed_created_to and parsed_created_from > parsed_created_to:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="创建开始时间不能晚于结束时间"
+        )
+
+    return {
+        "code_type": normalized_code_type,
+        "created_from": parsed_created_from,
+        "created_to": parsed_created_to,
+        "warranty_days": parsed_warranty_days,
+        "remaining_days_min": parsed_remaining_days_min,
+        "remaining_days_max": parsed_remaining_days_max,
+        "remaining_claims_min": parsed_remaining_claims_min,
+        "remaining_claims_max": parsed_remaining_claims_max,
+    }
+
+
+def _build_query_string(params: Dict[str, Any]) -> str:
+    filtered_params = {
+        key: value
+        for key, value in params.items()
+        if value is not None and value != ""
+    }
+    return urlencode(filtered_params)
 
 
 class BulkActionRequest(BaseModel):
@@ -1576,7 +1749,15 @@ async def codes_list_page(
     per_page: int = 50,
     search: Optional[str] = None,
     status_filter: Optional[str] = None,
-    team_id: Optional[int] = None,
+    team_id: Optional[str] = None,
+    code_type: Optional[str] = None,
+    created_from: Optional[str] = None,
+    created_to: Optional[str] = None,
+    warranty_days: Optional[str] = None,
+    remaining_days_min: Optional[str] = None,
+    remaining_days_max: Optional[str] = None,
+    remaining_claims_min: Optional[str] = None,
+    remaining_claims_max: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
@@ -1598,8 +1779,46 @@ async def codes_list_page(
     try:
         from app.main import templates
 
+        selected_team_id = _parse_optional_int_filter(
+            team_id,
+            label="Team ID",
+            min_value=1
+        )
+        code_filter_kwargs = _build_code_filter_kwargs(
+            code_type=code_type,
+            created_from=created_from,
+            created_to=created_to,
+            warranty_days=warranty_days,
+            remaining_days_min=remaining_days_min,
+            remaining_days_max=remaining_days_max,
+            remaining_claims_min=remaining_claims_min,
+            remaining_claims_max=remaining_claims_max,
+        )
+        filter_query = _build_query_string({
+            "search": search,
+            "status_filter": status_filter,
+            "team_id": selected_team_id,
+            "code_type": code_type,
+            "created_from": created_from,
+            "created_to": created_to,
+            "warranty_days": code_filter_kwargs["warranty_days"],
+            "remaining_days_min": code_filter_kwargs["remaining_days_min"],
+            "remaining_days_max": code_filter_kwargs["remaining_days_max"],
+            "remaining_claims_min": code_filter_kwargs["remaining_claims_min"],
+            "remaining_claims_max": code_filter_kwargs["remaining_claims_max"],
+            "per_page": per_page if per_page != 50 else None,
+        })
+        reset_query = _build_query_string({
+            "per_page": per_page if per_page != 50 else None,
+        })
+
         logger.info(
-            f"管理员访问兑换码列表页面, search={search}, status={status_filter}, team_id={team_id}, per_page={per_page}"
+            "管理员访问兑换码列表页面, search=%s, status=%s, team_id=%s, per_page=%s, filters=%s",
+            search,
+            status_filter,
+            selected_team_id,
+            per_page,
+            code_filter_kwargs,
         )
 
         team_options_stmt = (
@@ -1633,7 +1852,8 @@ async def codes_list_page(
             per_page=per_page,
             search=search,
             status=status_filter,
-            bound_team_id=team_id
+            bound_team_id=selected_team_id,
+            **code_filter_kwargs,
         )
         codes = codes_result.get("codes", [])
         total_codes = codes_result.get("total", 0)
@@ -1670,7 +1890,39 @@ async def codes_list_page(
                 "search": search,
                 "status_filter": status_filter,
                 "team_options": team_options,
-                "selected_team_id": team_id,
+                "selected_team_id": selected_team_id,
+                "code_filters": {
+                    "code_type": code_filter_kwargs["code_type"] or "",
+                    "created_from": created_from or "",
+                    "created_to": created_to or "",
+                    "warranty_days": (
+                        code_filter_kwargs["warranty_days"]
+                        if code_filter_kwargs["warranty_days"] is not None
+                        else ""
+                    ),
+                    "remaining_days_min": (
+                        code_filter_kwargs["remaining_days_min"]
+                        if code_filter_kwargs["remaining_days_min"] is not None
+                        else ""
+                    ),
+                    "remaining_days_max": (
+                        code_filter_kwargs["remaining_days_max"]
+                        if code_filter_kwargs["remaining_days_max"] is not None
+                        else ""
+                    ),
+                    "remaining_claims_min": (
+                        code_filter_kwargs["remaining_claims_min"]
+                        if code_filter_kwargs["remaining_claims_min"] is not None
+                        else ""
+                    ),
+                    "remaining_claims_max": (
+                        code_filter_kwargs["remaining_claims_max"]
+                        if code_filter_kwargs["remaining_claims_max"] is not None
+                        else ""
+                    ),
+                },
+                "filter_query": filter_query,
+                "reset_query": reset_query,
                 "pagination": {
                     "current_page": current_page,
                     "total_pages": total_pages,
@@ -1680,6 +1932,8 @@ async def codes_list_page(
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"加载兑换码列表页面失败: {e}")
         raise HTTPException(
@@ -1940,6 +2194,7 @@ async def _build_codes_export_response(
     team_id = export_data.team_id
     team_ids = list(dict.fromkeys(export_data.team_ids or [])) or None
     selected_codes = export_data.codes or None
+    code_filter_kwargs = {}
     if selected_codes:
         search = None
         status_filter = None
@@ -1949,6 +2204,19 @@ async def _build_codes_export_response(
         search = None
         status_filter = None
         team_id = None
+    else:
+        raw_code_filter_values = {
+            "code_type": export_data.code_type,
+            "created_from": export_data.created_from,
+            "created_to": export_data.created_to,
+            "warranty_days": export_data.warranty_days,
+            "remaining_days_min": export_data.remaining_days_min,
+            "remaining_days_max": export_data.remaining_days_max,
+            "remaining_claims_min": export_data.remaining_claims_min,
+            "remaining_claims_max": export_data.remaining_claims_max,
+        }
+        if any(value is not None and value != "" for value in raw_code_filter_values.values()):
+            code_filter_kwargs = _build_code_filter_kwargs(**raw_code_filter_values)
 
     codes_result = await redemption_service.get_all_codes(
         db,
@@ -1958,7 +2226,8 @@ async def _build_codes_export_response(
         status=status_filter,
         selected_codes=selected_codes,
         bound_team_id=team_id,
-        bound_team_ids=team_ids
+        bound_team_ids=team_ids,
+        **code_filter_kwargs,
     )
 
     if not codes_result.get("success"):

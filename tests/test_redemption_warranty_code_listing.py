@@ -65,6 +65,86 @@ class RedemptionWarrantyCodeListingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(code["warranty_remaining_days"], 12)
         self.assertEqual(code["warranty_remaining_claims"], 8)
 
+    async def test_get_all_codes_filters_warranty_codes_by_multiple_conditions(self):
+        now = get_now()
+        async with self.Session() as session:
+            session.add_all([
+                RedemptionCode(
+                    code="WARRANTY-MATCH-001",
+                    status="used",
+                    has_warranty=True,
+                    warranty_days=30,
+                    used_by_email="buyer@example.com",
+                    used_at=now,
+                    created_at=now - timedelta(days=2),
+                ),
+                RedemptionCode(
+                    code="WARRANTY-SHORT-001",
+                    status="used",
+                    has_warranty=True,
+                    warranty_days=7,
+                    used_by_email="short@example.com",
+                    used_at=now,
+                    created_at=now - timedelta(days=2),
+                ),
+                RedemptionCode(
+                    code="WARRANTY-LOW-CLAIMS-001",
+                    status="used",
+                    has_warranty=True,
+                    warranty_days=30,
+                    used_by_email="low@example.com",
+                    used_at=now,
+                    created_at=now - timedelta(days=2),
+                ),
+                RedemptionCode(
+                    code="NORMAL-CODE-001",
+                    status="unused",
+                    has_warranty=False,
+                    created_at=now - timedelta(days=2),
+                ),
+            ])
+            session.add_all([
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=8,
+                    expires_at=now + timedelta(days=12),
+                    source="auto_redeem",
+                    last_redeem_code="WARRANTY-MATCH-001",
+                ),
+                WarrantyEmailEntry(
+                    email="short@example.com",
+                    remaining_claims=8,
+                    expires_at=now + timedelta(days=5),
+                    source="auto_redeem",
+                    last_redeem_code="WARRANTY-SHORT-001",
+                ),
+                WarrantyEmailEntry(
+                    email="low@example.com",
+                    remaining_claims=2,
+                    expires_at=now + timedelta(days=12),
+                    source="auto_redeem",
+                    last_redeem_code="WARRANTY-LOW-CLAIMS-001",
+                ),
+            ])
+            await session.commit()
+
+            result = await self.service.get_all_codes(
+                db_session=session,
+                page=1,
+                per_page=50,
+                code_type="warranty",
+                created_from=now - timedelta(days=3),
+                created_to=now,
+                warranty_days=30,
+                remaining_days_min=10,
+                remaining_days_max=15,
+                remaining_claims_min=5,
+                remaining_claims_max=10,
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual([code["code"] for code in result["codes"]], ["WARRANTY-MATCH-001"])
+
 
 if __name__ == "__main__":
     unittest.main()
