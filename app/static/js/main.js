@@ -54,6 +54,11 @@ function escapeHtml(unsafe) {
         .replace(/'/g, '&#039;');
 }
 
+
+function isImportOnlyPage() {
+    return window.location.pathname === '/admin/import-only';
+}
+
 function getImportModeMeta(teamType = TEAM_TYPE_STANDARD) {
     if (teamType === TEAM_TYPE_WARRANTY) {
         return {
@@ -62,6 +67,16 @@ function getImportModeMeta(teamType = TEAM_TYPE_STANDARD) {
             batchHelper: '支持粘贴一行一个 AT Token，也支持直接粘贴完整的多个 Team 账号 JSON。导入后的质保 Team 不会生成兑换码。',
             singleResultTitle: '导入结果',
             batchCodesTitle: '质保 Team 不生成兑换码'
+        };
+    }
+
+    if (isImportOnlyPage()) {
+        return {
+            modalTitle: '导入 Team',
+            singleHelper: '子管理员导入后不会生成兑换码；账号会进入待分类池，由总管理员决定进入控制台或质保 Team。若进入控制台，再由总管理员选择普通或质保兑换码。',
+            batchHelper: '支持粘贴一行一个 AT Token，也支持完整 JSON。导入后进入待分类池，不生成兑换码。',
+            singleResultTitle: '导入结果',
+            batchCodesTitle: '待分类导入结果'
         };
     }
 
@@ -75,6 +90,10 @@ function getImportModeMeta(teamType = TEAM_TYPE_STANDARD) {
 }
 
 function getImportGeneratedCodesTitle(teamType = TEAM_TYPE_STANDARD, generateWarrantyCodes = false) {
+    if (isImportOnlyPage()) {
+        return '导入结果';
+    }
+
     if (teamType === TEAM_TYPE_WARRANTY) {
         return '质保 Team 不生成兑换码';
     }
@@ -83,7 +102,7 @@ function getImportGeneratedCodesTitle(teamType = TEAM_TYPE_STANDARD, generateWar
 }
 
 function setImportWarrantyOptionsVisibility(teamType = TEAM_TYPE_STANDARD) {
-    const isStandardTeam = teamType === TEAM_TYPE_STANDARD;
+    const isStandardTeam = teamType === TEAM_TYPE_STANDARD && !isImportOnlyPage();
     const optionIds = ['singleImportWarrantyOptions', 'batchImportWarrantyOptions'];
     const groupIds = ['single-import-warranty-days-group', 'batch-import-warranty-days-group'];
     const hiddenInputIds = ['singleImportGenerateWarrantyCodes', 'batchImportGenerateWarrantyCodes'];
@@ -180,6 +199,9 @@ function showImportTeamModal(teamType = TEAM_TYPE_STANDARD) {
 
 function renderImportedTeamsSummary(importedTeams = [], teamType = TEAM_TYPE_STANDARD, generateWarrantyCodes = false) {
     if (!importedTeams.length) {
+        if (isImportOnlyPage()) {
+            return '<div class="text-muted">本次导入已进入待分类池，等待总管理员决定去向。</div>';
+        }
         return teamType === TEAM_TYPE_WARRANTY
             ? '<div class="text-muted">本次导入的质保 Team 不会生成兑换码。</div>'
             : `<div class="text-muted">本次未生成${generateWarrantyCodes ? '质保' : ''}绑定兑换码。</div>`;
@@ -192,9 +214,11 @@ function renderImportedTeamsSummary(importedTeams = [], teamType = TEAM_TYPE_STA
             </div>
             <div style="font-size: 0.875rem; color: var(--text-muted); line-height: 1.6;">
                 当前成员 ${team.current_members}/${team.max_members}，剩余席位 ${team.remaining_seats}，
-                ${teamType === TEAM_TYPE_WARRANTY
-            ? '质保 Team 不生成兑换码'
-            : `自动生成 ${team.generated_code_count} 个${(team.generated_code_has_warranty ?? generateWarrantyCodes) ? '质保绑定兑换码' : '绑定兑换码'}`}
+                ${isImportOnlyPage()
+            ? '已进入待分类池，等待总管理员选择进入控制台或质保 Team'
+            : (teamType === TEAM_TYPE_WARRANTY
+                ? '质保 Team 不生成兑换码'
+                : `自动生成 ${team.generated_code_count} 个${(team.generated_code_has_warranty ?? generateWarrantyCodes) ? '质保绑定兑换码' : '绑定兑换码'}`)}
             </div>
         </div>
     `).join('');
@@ -518,7 +542,9 @@ async function handleSingleImport(event) {
             const importedTeams = result.data.imported_teams || [];
             const generatedCodeCount = result.data.generated_code_count || 0;
             showSingleImportResult(importedTeams, teamType, generateWarrantyCodes);
-            if (teamType === TEAM_TYPE_WARRANTY) {
+            if (isImportOnlyPage()) {
+                showToast('Team 导入成功，已进入待分类池，等待总管理员分类', 'success');
+            } else if (teamType === TEAM_TYPE_WARRANTY) {
                 showToast('质保 Team 导入成功', 'success');
             } else {
                 showToast(`Team 导入成功，已自动生成 ${generatedCodeCount} 个${generateWarrantyCodes ? '质保' : ''}绑定兑换码`, 'success');
@@ -640,9 +666,11 @@ async function handleBatchImport(event) {
                                                 <strong>${escapeHtml(team.team_name || `Team ${team.team_id}`)}</strong>
                                                 <span style="color: var(--text-muted);">#${team.team_id}</span>
                                                 ：剩余 ${team.remaining_seats} 席，
-                                                ${teamType === TEAM_TYPE_WARRANTY
-                                                    ? '质保 Team 不生成兑换码'
-                                                    : `已生成 ${team.generated_code_count} 个${(team.generated_code_has_warranty ?? generateWarrantyCodes) ? '质保绑定码' : '绑定码'}${(team.generated_code_has_warranty ?? generateWarrantyCodes) ? `（${team.generated_code_warranty_days || warrantyDays} 天）` : ''}`}
+                                                ${isImportOnlyPage()
+                                                    ? '已进入待分类池，等待总管理员决定去向和兑换码类型'
+                                                    : (teamType === TEAM_TYPE_WARRANTY
+                                                        ? '质保 Team 不生成兑换码'
+                                                        : `已生成 ${team.generated_code_count} 个${(team.generated_code_has_warranty ?? generateWarrantyCodes) ? '质保绑定码' : '绑定码'}${(team.generated_code_has_warranty ?? generateWarrantyCodes) ? `（${team.generated_code_warranty_days || warrantyDays} 天）` : ''}`)}
                                                 ${team.generated_codes && team.generated_codes.length ? `
                                                     <div style="margin-top: 0.25rem; word-break: break-all;">
                                                         <code>${escapeHtml(team.generated_codes.join(', '))}</code>
@@ -672,7 +700,9 @@ async function handleBatchImport(event) {
                         progressPercent.textContent = '100%';
                         finalSummaryEl.textContent = `总数: ${data.total} | 成功: ${data.success_count} | 失败: ${data.failed_count}`;
 
-                        if (data.failed_count === 0 && teamType === TEAM_TYPE_WARRANTY) {
+                        if (data.failed_count === 0 && isImportOnlyPage()) {
+                            showToast('全部导入成功，已进入待分类池，等待总管理员分类', 'success');
+                        } else if (data.failed_count === 0 && teamType === TEAM_TYPE_WARRANTY) {
                             showToast('质保 Team 全部导入成功', 'success');
                         } else if (data.failed_count === 0) {
                             showToast(`全部导入成功，自动生成的${generateWarrantyCodes ? '质保' : ''}绑定兑换码已显示在明细中`, 'success');

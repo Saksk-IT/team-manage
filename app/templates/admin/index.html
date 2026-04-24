@@ -278,9 +278,8 @@
                         {% if is_import_only_mode %}
                         <span class="status-badge status-warning">待总管理员分类</span>
                         {% elif is_pending_mode %}
-                        <button class="btn btn-sm btn-minimal btn-success btn-classify-team" data-id="{{ team.id }}" data-target="standard" title="归类为普通账号">普通</button>
-                        <button class="btn btn-sm btn-minimal btn-info btn-classify-team" data-id="{{ team.id }}" data-target="warranty_code" title="归类为质保账号">质保账号</button>
-                        <button class="btn btn-sm btn-minimal btn-warning btn-classify-team" data-id="{{ team.id }}" data-target="warranty_team" title="归类到质保 Team 页面">质保 Team</button>
+                        <button class="btn btn-sm btn-minimal btn-success btn-open-console-classify" data-id="{{ team.id }}" title="进入控制台并选择兑换码类型">进入控制台</button>
+                        <button class="btn btn-sm btn-minimal btn-warning btn-classify-warranty-team" data-id="{{ team.id }}" title="归类到质保 Team 页面">进入质保 Team</button>
                         <button class="btn btn-sm btn-icon btn-minimal btn-secondary btn-refresh-team" data-id="{{ team.id }}" title="刷新">
                             <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
                         </button>
@@ -419,6 +418,49 @@
 </div>
 {% endif %}
 </div>
+
+{% if is_pending_mode and not is_import_only_mode %}
+<!-- 待分类 Team：进入控制台后选择兑换码类型 -->
+<div id="classifyConsoleModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>进入控制台</h3>
+            <button class="modal-close" onclick="hideModal('classifyConsoleModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="form-text" style="margin-top: 0;">
+                该 Team 将进入控制台页面。进入控制台前，请选择本次自动生成的兑换码类型。
+            </p>
+            <form id="classifyConsoleForm" onsubmit="handleClassifyConsoleSubmit(event)">
+                <input type="hidden" id="classify-console-team-id" name="teamId">
+                <div class="form-group">
+                    <label>兑换码类型</label>
+                    <label class="export-option">
+                        <input type="radio" name="target" value="standard" checked style="width: auto; margin: 0;">
+                        <div>
+                            <strong>生成普通兑换码</strong>
+                            <div class="text-muted">按剩余席位生成普通绑定兑换码。</div>
+                        </div>
+                    </label>
+                    <label class="export-option">
+                        <input type="radio" name="target" value="warranty_code" style="width: auto; margin: 0;" onchange="toggleClassifyWarrantyDays()">
+                        <div>
+                            <strong>生成质保兑换码</strong>
+                            <div class="text-muted">按剩余席位自动生成质保绑定兑换码；用户首次使用后会自动加入质保邮箱列表。</div>
+                        </div>
+                    </label>
+                </div>
+                <div class="form-group" id="classifyWarrantyDaysGroup" style="display: none;">
+                    <label>兑换码质保时长 (天)</label>
+                    <input type="number" name="warrantyDays" class="form-control" value="30" min="1" max="3650">
+                    <small class="form-text">默认 30 天 / 10 次，和导入弹窗中的“自动生成质保兑换码”语义一致。</small>
+                </div>
+                <button type="submit" class="btn btn-primary">确认进入控制台</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {% if not is_warranty_mode %}
 <!-- 查看绑定兑换码模态框 -->
@@ -721,12 +763,15 @@
             });
         });
 
-        // 绑定待分类归类按钮
-        document.querySelectorAll('.btn-classify-team').forEach(btn => {
+        // 绑定待分类归类按钮：先决定去控制台或质保 Team；去控制台后再选择兑换码类型
+        document.querySelectorAll('.btn-open-console-classify').forEach(btn => {
             btn.addEventListener('click', () => {
-                const id = btn.getAttribute('data-id');
-                const target = btn.getAttribute('data-target');
-                classifyTeam(id, target);
+                openConsoleClassifyModal(btn.getAttribute('data-id'));
+            });
+        });
+        document.querySelectorAll('.btn-classify-warranty-team').forEach(btn => {
+            btn.addEventListener('click', () => {
+                classifyTeam(btn.getAttribute('data-id'), 'warranty_team');
             });
         });
 
@@ -1525,30 +1570,67 @@
         }
     }
 
-    async function classifyTeam(teamId, target) {
+    function openConsoleClassifyModal(teamId) {
+        const teamInput = document.getElementById('classify-console-team-id');
+        const form = document.getElementById('classifyConsoleForm');
+        if (!teamInput || !form) return;
+
+        form.reset();
+        teamInput.value = teamId;
+        toggleClassifyWarrantyDays();
+        showModal('classifyConsoleModal');
+    }
+
+    function toggleClassifyWarrantyDays() {
+        const selectedTarget = document.querySelector('#classifyConsoleForm input[name="target"]:checked')?.value || 'standard';
+        const group = document.getElementById('classifyWarrantyDaysGroup');
+        if (group) {
+            group.style.display = selectedTarget === 'warranty_code' ? 'block' : 'none';
+        }
+    }
+
+    document.addEventListener('change', (event) => {
+        if (event.target?.matches?.('#classifyConsoleForm input[name="target"]')) {
+            toggleClassifyWarrantyDays();
+        }
+    });
+
+    async function handleClassifyConsoleSubmit(event) {
+        event.preventDefault();
+        const form = event.target;
+        const teamId = form.teamId.value;
+        const target = form.target.value;
+        const warrantyDays = parseInt(form.warrantyDays?.value || '30', 10);
+        await classifyTeam(teamId, target, warrantyDays, { skipConfirm: true });
+    }
+
+    async function classifyTeam(teamId, target, warrantyDays = 30, options = {}) {
         const labels = {
-            standard: '普通账号',
-            warranty_code: '质保账号',
-            warranty_team: '质保 Team',
+            standard: '进入控制台并生成普通兑换码',
+            warranty_code: '进入控制台并生成质保兑换码',
+            warranty_team: '进入质保 Team 页面',
         };
-        const confirmed = await showSystemConfirm({
-            title: '确认归类 Team',
-            message: `确定要将该 Team 归类为“${labels[target] || target}”吗？`,
-            confirmText: '确认归类',
-        });
-        if (!confirmed) return;
+
+        if (!options.skipConfirm) {
+            const confirmed = await showSystemConfirm({
+                title: '确认 Team 去向',
+                message: `确定要将该 Team 归类为“${labels[target] || target}”吗？`,
+                confirmText: '确认归类',
+            });
+            if (!confirmed) return;
+        }
 
         try {
             showToast('正在归类...', 'info');
             const response = await fetch(`/admin/teams/${teamId}/classify`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ target, warranty_days: 30 })
+                body: JSON.stringify({ target, warranty_days: warrantyDays })
             });
             const data = await response.json();
             if (response.ok && data.success) {
-                const codeText = data.generated_code_count ? `，生成 ${data.generated_code_count} 个兑换码` : '';
-                showToast((data.message || '归类成功') + codeText, 'success');
+                hideModal('classifyConsoleModal');
+                showToast(data.message || '归类成功', 'success');
                 setTimeout(() => location.reload(), 1000);
             } else {
                 showToast(data.error || '归类失败', 'error');
