@@ -425,6 +425,7 @@ function renderItems() {
     itemsGrid.hidden = false;
 
     filteredItems.forEach((item) => {
+        const itemIndex = currentItems.findIndex((currentItem) => currentItem === item);
         const resultText = buildSiteSummaryText(item.siteInfo);
         const itemCard = document.createElement('article');
         itemCard.className = 'work-item';
@@ -466,6 +467,19 @@ function renderItems() {
 
         openButton.setAttribute('aria-label', `打开地址：${item.displayUrl}`);
 
+        const itemRefreshButton = createButton(
+            'work-item__refresh',
+            '刷新',
+            `只刷新此记录：${item.identifier}`,
+            async () => {
+                itemRefreshButton.disabled = true;
+                itemRefreshButton.textContent = '刷新中';
+                await refreshSingleSiteInfo(itemIndex);
+            }
+        );
+
+        itemRefreshButton.setAttribute('aria-label', `只刷新此记录：${item.identifier}`);
+
         const meta = document.createElement('div');
         meta.className = 'work-item__meta';
 
@@ -473,7 +487,7 @@ function renderItems() {
         const expireLine = createMetaLine('到期', item.siteInfo.expiresAt || '未提供');
         const timeLine = createMetaLine('刷新', formatCheckedAt(item.siteInfo.checkedAt));
         meta.append(sourceLine, expireLine, timeLine);
-        itemCard.append(copyButton, resultButton, openButton, meta);
+        itemCard.append(copyButton, resultButton, openButton, meta, itemRefreshButton);
         itemsGrid.appendChild(itemCard);
     });
 }
@@ -652,6 +666,32 @@ async function fetchSiteInfoForItem(item) {
             statusText: isTimeout ? '刷新超时，显示网址信息' : '站点限制读取，显示网址信息',
             checkedAt,
         });
+    }
+}
+
+async function refreshSingleSiteInfo(itemIndex) {
+    const targetItem = currentItems[itemIndex];
+    if (!targetItem) {
+        setFeedback('没有找到要刷新的记录。', 'warning');
+        renderItems();
+        return;
+    }
+
+    try {
+        const nextSiteInfo = await fetchSiteInfoForItem(targetItem);
+        const nextItems = createFrozenItems(
+            currentItems.map((item, index) => (
+                index === itemIndex
+                    ? Object.freeze({ ...item, siteInfo: nextSiteInfo })
+                    : item
+            ))
+        );
+        persistLocalState(nextItems);
+        renderItems();
+        setFeedback(`已刷新：${targetItem.identifier}`, 'success');
+    } catch (_error) {
+        renderItems();
+        setFeedback(`刷新失败：${targetItem.identifier}`, 'error');
     }
 }
 
