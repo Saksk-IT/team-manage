@@ -750,7 +750,13 @@
 
     // 删除兑换码
     async function deleteCode(code) {
-        if (!confirm(`确定要删除兑换码 ${code} 吗?`)) {
+        const confirmed = await showSystemConfirm({
+            title: '确认删除兑换码',
+            message: `确定要删除兑换码 ${code} 吗？`,
+            confirmText: '删除',
+            danger: true,
+        });
+        if (!confirmed) {
             return;
         }
 
@@ -785,7 +791,13 @@
             return;
         }
 
-        if (!confirm(`确定要批量删除选中的 ${codes.length} 个兑换码吗？\n\n此操作不可恢复!`)) {
+        const confirmed = await showSystemConfirm({
+            title: '确认批量删除兑换码',
+            message: `确定要批量删除选中的 ${codes.length} 个兑换码吗？\n\n此操作不可恢复！`,
+            confirmText: '批量删除',
+            danger: true,
+        });
+        if (!confirmed) {
             return;
         }
 

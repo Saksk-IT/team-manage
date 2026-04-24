@@ -247,7 +247,13 @@
     });
 
     async function deleteWarrantyEmail(entryId, email) {
-        if (!confirm(`确定要删除质保邮箱 ${email} 吗？`)) {
+        const confirmed = await showSystemConfirm({
+            title: '确认删除质保邮箱',
+            message: `确定要删除质保邮箱 ${email} 吗？`,
+            confirmText: '删除',
+            danger: true,
+        });
+        if (!confirmed) {
             return;
         }
 

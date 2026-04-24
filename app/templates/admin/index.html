@@ -1178,7 +1178,13 @@
             return;
         }
 
-        if (!confirm(`确定要对选中的 ${selectedTargets.length} 个 Team 进行 "${actionName}" 操作吗？`)) {
+        const confirmed = await showSystemConfirm({
+            title: '确认批量操作',
+            message: `确定要对选中的 ${selectedTargets.length} 个 Team 进行 "${actionName}" 操作吗？`,
+            confirmText: '确认操作',
+            danger: true,
+        });
+        if (!confirmed) {
             return;
         }
 
@@ -1382,7 +1388,12 @@
     }
 
     async function enableDeviceAuth(teamId) {
-        if (!confirm('确定要为该 Team 开启设备代码身份验证吗?')) {
+        const confirmed = await showSystemConfirm({
+            title: '确认开启设备验证',
+            message: '确定要为该 Team 开启设备代码身份验证吗？',
+            confirmText: '开启',
+        });
+        if (!confirmed) {
             return;
         }
 
@@ -1406,7 +1417,12 @@
     }
 
     async function refreshTeam(teamId) {
-        if (!confirm('确定要刷新此 Team 的信息吗?')) {
+        const confirmed = await showSystemConfirm({
+            title: '确认刷新 Team',
+            message: '确定要刷新此 Team 的信息吗？',
+            confirmText: '刷新',
+        });
+        if (!confirmed) {
             return;
         }
 
@@ -1433,7 +1449,12 @@
         const teamId = document.getElementById('edit-team-id').value;
         if (!teamId) return;
 
-        if (!confirm('确定要刷新此 Team 的 Access Token 吗?')) {
+        const confirmed = await showSystemConfirm({
+            title: '确认刷新 Access Token',
+            message: '确定要刷新此 Team 的 Access Token 吗？',
+            confirmText: '刷新',
+        });
+        if (!confirmed) {
             return;
         }
 
@@ -1473,7 +1494,13 @@
     }
 
     async function deleteTeam(teamId, email) {
-        if (!confirm(`确定要删除 Team "${email}" 吗?\n\n此操作不可恢复!`)) {
+        const confirmed = await showSystemConfirm({
+            title: '确认删除 Team',
+            message: `确定要删除 Team "${email}" 吗？\n\n此操作不可恢复！`,
+            confirmText: '删除',
+            danger: true,
+        });
+        if (!confirmed) {
             return;
         }
 
@@ -1682,7 +1709,13 @@
             ? `确定要将账号「${accountLabel}」转移到${targetTeamLabel}吗？\n\n系统会自动清理该账号当前绑定的兑换码。`
             : `确定要将账号「${accountLabel}」转移到${targetTeamLabel}吗？\n\n系统会自动补充 4 个绑定兑换码；若当前剩余席位不足，则按剩余席位生成。`;
 
-        if (!confirm(confirmMessage)) {
+        const confirmed = await showSystemConfirm({
+            title: '确认转移账号',
+            message: confirmMessage,
+            confirmText: '确认转移',
+            danger: movingToWarranty,
+        });
+        if (!confirmed) {
             return;
         }
 
@@ -1865,7 +1898,13 @@
             return;
         }
 
-        if (!confirm(`确定要对选中的 ${selectedIds.length} 个 Team 进行 "${actionName}" 操作吗？`)) {
+        const confirmed = await showSystemConfirm({
+            title: '确认批量操作',
+            message: `确定要对选中的 ${selectedIds.length} 个 Team 进行 "${actionName}" 操作吗？`,
+            confirmText: '确认操作',
+            danger: true,
+        });
+        if (!confirmed) {
             return;
         }
 

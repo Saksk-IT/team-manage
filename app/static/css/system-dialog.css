@@ -1,0 +1,105 @@
+.system-confirm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    background: rgba(15, 23, 42, 0.52);
+    backdrop-filter: blur(6px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-base, 0.2s ease);
+}
+
+.system-confirm-overlay.show {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.system-confirm {
+    width: min(100%, 440px);
+    background: var(--bg-surface, #fff);
+    color: var(--text-main, #0f172a);
+    border: 1px solid var(--border-base, #e2e8f0);
+    border-radius: var(--radius-lg, 16px);
+    box-shadow: var(--shadow-lg, 0 20px 35px rgb(15 23 42 / 0.16));
+    padding: 1.5rem;
+    transform: translateY(10px) scale(0.98);
+    transition: transform var(--transition-base, 0.2s ease);
+}
+
+.system-confirm-overlay.show .system-confirm {
+    transform: translateY(0) scale(1);
+}
+
+.system-confirm__header {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    margin-bottom: 0.85rem;
+}
+
+.system-confirm__icon {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-full, 9999px);
+    color: var(--primary, #6366f1);
+    background: var(--primary-soft, #eef2ff);
+}
+
+.system-confirm--danger .system-confirm__icon {
+    color: var(--danger, #ef4444);
+    background: var(--danger-soft, #fef2f2);
+}
+
+.system-confirm__icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+.system-confirm__title {
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.35;
+    color: var(--text-main, #0f172a);
+}
+
+.system-confirm__message {
+    margin: 0;
+    color: var(--text-muted, #64748b);
+    line-height: 1.65;
+    white-space: pre-line;
+    word-break: break-word;
+}
+
+.system-confirm__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 1.35rem;
+}
+
+.system-confirm__button {
+    min-width: 88px;
+}
+
+@media (max-width: 640px) {
+    .system-confirm {
+        padding: 1.25rem;
+    }
+
+    .system-confirm__actions {
+        flex-direction: column-reverse;
+    }
+
+    .system-confirm__button {
+        width: 100%;
+        justify-content: center;
+    }
+}

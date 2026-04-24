@@ -748,9 +748,12 @@ async function lookupBoundEmailByCode(code) {
 }
 
 async function withdrawBoundEmailByCode(code, email) {
-    const confirmed = window.confirm(
-        `确定要撤销 ${email || '该邮箱'} 的兑换记录吗？\n\n这将执行以下操作：\n1. 在 ChatGPT Team 中撤回邀请或删除成员\n2. 恢复对应兑换码为“未使用”状态\n3. 删除此条使用记录`
-    );
+    const confirmed = await showSystemConfirm({
+        title: '确认撤销兑换记录',
+        message: `确定要撤销 ${email || '该邮箱'} 的兑换记录吗？\n\n这将执行以下操作：\n1. 在 ChatGPT Team 中撤回邀请或删除成员\n2. 恢复对应兑换码为“未使用”状态\n3. 删除此条使用记录`,
+        confirmText: '撤销记录',
+        danger: true,
+    });
     if (!confirmed) return;
 
     const withdrawBtn = document.getElementById('boundEmailWithdrawBtn');
@@ -1871,15 +1874,22 @@ async function oneClickReplace(code, email) {
 
 // 用户一键开启设备身份验证
 async function enableUserDeviceAuth(teamId, code, email) {
-    if (!confirm('确定要在该 Team 中开启设备代码身份验证吗？')) {
+    const btn = window.event?.currentTarget;
+    const confirmed = await showSystemConfirm({
+        title: '确认开启设备验证',
+        message: '确定要在该 Team 中开启设备代码身份验证吗？',
+        confirmText: '开启',
+    });
+    if (!confirmed) {
         return;
     }
 
-    const btn = event.currentTarget;
-    const originalContent = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<i data-lucide="loader" class="spinning"></i> 开启中...';
-    if (window.lucide) lucide.createIcons();
+    const originalContent = btn?.innerHTML || '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader" class="spinning"></i> 开启中...';
+        if (window.lucide) lucide.createIcons();
+    }
 
     try {
         const response = await fetch('/warranty/enable-device-auth', {
@@ -1901,15 +1911,19 @@ async function enableUserDeviceAuth(teamId, code, email) {
             checkWarranty();
         } else {
             showToast(data.error || data.detail || '开启失败', 'error');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalContent;
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+    } catch (error) {
+        showToast('网络错误，请稍后重试', 'error');
+        if (btn) {
             btn.disabled = false;
             btn.innerHTML = originalContent;
             if (window.lucide) lucide.createIcons();
         }
-    } catch (error) {
-        showToast('网络错误，请稍后重试', 'error');
-        btn.disabled = false;
-        btn.innerHTML = originalContent;
-        if (window.lucide) lucide.createIcons();
     }
 }
 

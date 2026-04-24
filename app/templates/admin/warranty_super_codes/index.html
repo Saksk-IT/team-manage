@@ -142,7 +142,13 @@
     }
 
     async function disableWarrantySuperCodeConfig(codeType) {
-        if (!confirm('确定要停用这类超级兑换码吗？')) {
+        const confirmed = await showSystemConfirm({
+            title: '确认停用超级兑换码',
+            message: '确定要停用这类超级兑换码吗？',
+            confirmText: '停用',
+            danger: true,
+        });
+        if (!confirmed) {
             return;
         }
 

@@ -307,7 +307,12 @@ async function copyBatchImportCodes() {
 
 // 登出函数
 async function logout() {
-    if (!confirm('确定要登出吗?')) {
+    const confirmed = await showSystemConfirm({
+        title: '确认登出',
+        message: '确定要登出吗？',
+        confirmText: '登出',
+    });
+    if (!confirmed) {
         return;
     }
 
@@ -355,8 +360,11 @@ async function apiCall(url, options = {}) {
 }
 
 // 确认对话框
-function confirmAction(message) {
-    return confirm(message);
+function confirmAction(message, options = {}) {
+    return showSystemConfirm({
+        message,
+        ...options,
+    });
 }
 
 function applyDensityMode(mode) {
@@ -940,7 +948,13 @@ async function loadModalMemberList(teamId) {
 }
 
 async function revokeInvite(teamId, email, inModal = false) {
-    if (!confirm(`确定要撤回对 "${email}" 的邀请吗？`)) {
+    const confirmed = await showSystemConfirm({
+        title: '确认撤回邀请',
+        message: `确定要撤回对 "${email}" 的邀请吗？`,
+        confirmText: '撤回',
+        danger: true,
+    });
+    if (!confirmed) {
         return;
     }
 
@@ -1007,7 +1021,13 @@ async function handleAddMember(event) {
 }
 
 async function deleteMember(teamId, userId, email, inModal = false) {
-    if (!confirm(`确定要删除成员 "${email}" 吗?\n\n此操作不可恢复!`)) {
+    const confirmed = await showSystemConfirm({
+        title: '确认删除成员',
+        message: `确定要删除成员 "${email}" 吗？\n\n此操作不可恢复！`,
+        confirmText: '删除',
+        danger: true,
+    });
+    if (!confirmed) {
         return;
     }
 

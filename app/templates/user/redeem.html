@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GPT Team 兑换</title>
     <link rel="stylesheet" href="/static/css/user.css">
+    <link rel="stylesheet" href="/static/css/system-dialog.css">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
@@ -341,6 +342,7 @@
             initialRemainingSpots: {{ remaining_spots|default(none)|tojson }}
         };
     </script>
+    <script src="/static/js/system-dialog.js"></script>
     <script src="/static/js/redeem.js"></script>
     <script>
         if (window.lucide) lucide.createIcons();
