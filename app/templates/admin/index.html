@@ -15,29 +15,29 @@
         <div class="stat-icon"><i data-lucide="users"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.total_teams }}</div>
-            <div class="stat-label">{{ '待分类 Team 总数' if is_pending_mode else ('质保 Team 总数' if is_warranty_mode else 'Team 总数') }}</div>
+            <div class="stat-label">{{ '导入记录总数' if is_review_mode else ('质保 Team 总数' if is_warranty_mode else 'Team 总数') }}</div>
         </div>
     </div>
     <div class="stat-card stat-success">
         <div class="stat-icon"><i data-lucide="check-circle"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.available_teams }}</div>
-            <div class="stat-label">{{ '待处理' if is_pending_mode else ('可用质保 Team' if is_warranty_mode else '可用 Team') }}</div>
+            <div class="stat-label">{{ '待审核' if is_review_mode else ('可用质保 Team' if is_warranty_mode else '可用 Team') }}</div>
         </div>
     </div>
-    {% if is_warranty_mode or is_pending_mode %}
+    {% if is_warranty_mode or is_review_mode %}
     <div class="stat-card stat-info">
         <div class="stat-icon"><i data-lucide="users-round"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.total_seats }}</div>
-            <div class="stat-label">总席位数</div>
+            <div class="stat-label">{{ '已审核' if is_review_mode else '总席位数' }}</div>
         </div>
     </div>
     <div class="stat-card stat-warning">
         <div class="stat-icon"><i data-lucide="armchair"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.remaining_seats }}</div>
-            <div class="stat-label">剩余席位</div>
+            <div class="stat-label">{{ '未审核' if is_review_mode else '剩余席位' }}</div>
         </div>
     </div>
     {% else %}
@@ -61,11 +61,11 @@
 <!-- Team 列表 -->
 <div class="content-section sticky-toolbar-section">
     <div class="section-header">
-        <h3>{{ '我的导入' if is_import_only_mode else ('待分类 Team 列表' if is_pending_mode else ('质保 Team 列表' if is_warranty_mode else 'Team 列表')) }}</h3>
+        <h3>{{ '我的导入' if is_import_only_mode else ('子管理员导入记录' if is_review_mode else ('质保 Team 列表' if is_warranty_mode else 'Team 列表')) }}</h3>
         <div class="header-group">
             <!-- 批量操作 -->
             <div id="batchActions" class="batch-actions-group" style="display: none;">
-                {% if not is_warranty_mode and not is_pending_mode %}
+                {% if not is_warranty_mode and not is_review_mode %}
                 <button onclick="showTeamCodesExportModal()" class="btn btn-secondary btn-sm">
                     <i data-lucide="download" style="width: 14px; height: 14px;"></i> 批量导出兑换码
                 </button>
@@ -148,7 +148,7 @@
                 </div>
             </div>
 
-            {% if not is_pending_mode or is_import_only_mode %}
+            {% if not is_review_mode or is_import_only_mode %}
             <button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">
                 <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> {{ '导入质保 Team' if is_warranty_mode else '导入 Team' }}
             </button>
@@ -168,8 +168,9 @@
                 <th>邮箱</th>
                 <th>Account ID</th>
                 <th>Team 名称</th>
-                {% if is_pending_mode %}
+                {% if is_review_mode %}
                 <th>导入人</th>
+                <th>审核状态</th>
                 {% elif not is_warranty_mode %}
                 <th>账号类型</th>
                 {% endif %}
@@ -177,7 +178,7 @@
                 <th>订阅计划</th>
                 <th>到期时间</th>
                 <th>设备验证</th>
-                <th>状态</th>
+                <th>{{ 'Team 状态' if is_review_mode else '状态' }}</th>
                 <th>操作</th>
             </tr>
         </thead>
@@ -204,7 +205,7 @@
                             <span class="role-hint" title="账号角色: {{ team.account_role }}">已降级</span>
                             {% endif %}
                         </div>
-                        {% if not is_warranty_mode and team.bound_codes %}
+                        {% if not is_warranty_mode and not is_review_mode and team.bound_codes %}
                         <button type="button"
                             class="btn btn-sm btn-secondary btn-show-bound-codes"
                             data-email="{{ team.email }}"
@@ -216,8 +217,16 @@
                 </td>
                 <td><span class="text-muted small">{{ team.account_id or '-' }}</span></td>
                 <td>{{ team.team_name or '-' }}</td>
-                {% if is_pending_mode %}
+                {% if is_review_mode %}
                 <td>{{ team.imported_by_username or '-' }}</td>
+                <td>
+                    {% if team.import_status == 'pending' %}
+                    <span class="status-badge status-warning" title="管理员尚未分类">待审核</span>
+                    {% else %}
+                    <span class="status-badge status-active" title="{{ team.import_decision_label }}">已审核</span>
+                    <div class="text-muted small" style="margin-top: 0.25rem;">{{ team.import_decision_label }}</div>
+                    {% endif %}
+                </td>
                 {% elif not is_warranty_mode %}
                 <td>
                     <span
@@ -276,8 +285,13 @@
                 <td>
                     <div class="action-buttons">
                         {% if is_import_only_mode %}
-                        <span class="status-badge status-warning">待总管理员分类</span>
-                        {% elif is_pending_mode %}
+                        {% if team.import_status == 'pending' %}
+                        <span class="status-badge status-warning">待总管理员审核</span>
+                        {% else %}
+                        <span class="status-badge status-active" title="{{ team.import_decision_label }}">已审核</span>
+                        {% endif %}
+                        {% elif is_review_mode %}
+                        {% if team.import_status == 'pending' %}
                         <button class="btn btn-sm btn-minimal btn-success btn-open-console-classify" data-id="{{ team.id }}" title="进入控制台并选择兑换码类型">进入控制台</button>
                         <button class="btn btn-sm btn-minimal btn-warning btn-classify-warranty-team" data-id="{{ team.id }}" title="归类到质保 Team 页面">进入质保 Team</button>
                         <button class="btn btn-sm btn-icon btn-minimal btn-secondary btn-refresh-team" data-id="{{ team.id }}" title="刷新">
@@ -286,6 +300,9 @@
                         <button class="btn btn-sm btn-icon btn-minimal btn-danger btn-delete-team" data-id="{{ team.id }}" data-email="{{ team.email }}" title="删除">
                             <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
                         </button>
+                        {% else %}
+                        <span class="status-badge status-active" title="{{ team.import_decision_label }}">已审核</span>
+                        {% endif %}
                         {% else %}
                         <button class="btn btn-sm btn-icon btn-minimal btn-info btn-view-members"
                             data-id="{{ team.id }}" data-email="{{ team.email }}" title="查看成员">
@@ -413,13 +430,13 @@
 {% endif %}
 {% else %}
 <div class="empty-state">
-    <p>{{ '暂无导入记录' if is_import_only_mode else ('暂无待分类 Team' if is_pending_mode else ('暂无质保 Team 数据' if is_warranty_mode else '暂无 Team 数据')) }}</p>
-    {% if not is_pending_mode or is_import_only_mode %}<button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">{{ '立即导入质保 Team' if is_warranty_mode else '立即导入' }}</button>{% endif %}
+    <p>{{ '暂无导入记录' if is_review_mode else ('暂无质保 Team 数据' if is_warranty_mode else '暂无 Team 数据') }}</p>
+    {% if not is_review_mode or is_import_only_mode %}<button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">{{ '立即导入质保 Team' if is_warranty_mode else '立即导入' }}</button>{% endif %}
 </div>
 {% endif %}
 </div>
 
-{% if is_pending_mode and not is_import_only_mode %}
+{% if is_review_mode and not is_import_only_mode %}
 <!-- 待分类 Team：进入控制台后选择兑换码类型 -->
 <div id="classifyConsoleModal" class="modal-overlay">
     <div class="modal">

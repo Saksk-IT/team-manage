@@ -2722,7 +2722,8 @@ class TeamService:
             stmt = select(Team).where(
                 Team.team_type == team_type,
                 Team.status == "active",
-                Team.current_members < Team.max_members
+                Team.current_members < Team.max_members,
+                Team.import_status == IMPORT_STATUS_CLASSIFIED,
             )
             result = await db_session.execute(stmt)
             teams = result.scalars().all()
@@ -2862,6 +2863,7 @@ class TeamService:
         team_type: Optional[str] = None,
         import_status: Optional[str] = IMPORT_STATUS_CLASSIFIED,
         imported_by_user_id: Optional[int] = None,
+        imported_only: bool = False,
     ) -> Dict[str, Any]:
         """
         获取所有 Team 列表 (用于管理员页面)
@@ -2909,6 +2911,9 @@ class TeamService:
 
             if imported_by_user_id is not None:
                 stmt = stmt.where(Team.imported_by_user_id == imported_by_user_id)
+
+            if imported_only:
+                stmt = stmt.where(Team.imported_by_user_id.is_not(None))
 
             # 4. 获取总数
             count_stmt = select(func.count()).select_from(stmt.subquery())
@@ -2988,12 +2993,28 @@ class TeamService:
             team_list = []
             for team in teams:
                 bound_codes_for_team = bound_codes_map.get(team.id, [])
+                review_status = team.import_status or IMPORT_STATUS_CLASSIFIED
+                if review_status == IMPORT_STATUS_PENDING:
+                    review_status_label = "待审核"
+                    review_decision_label = "未审核"
+                elif team.team_type == TEAM_TYPE_WARRANTY:
+                    review_status_label = "已审核"
+                    review_decision_label = "质保 Team"
+                elif (team.bound_code_type or TEAM_TYPE_STANDARD) == TEAM_TYPE_WARRANTY:
+                    review_status_label = "已审核"
+                    review_decision_label = "控制台 / 质保兑换码"
+                else:
+                    review_status_label = "已审核"
+                    review_decision_label = "控制台 / 普通兑换码"
+
                 team_list.append({
                     "id": team.id,
                     "email": team.email,
                     "account_id": team.account_id,
                     "team_type": team.team_type,
-                    "import_status": team.import_status or IMPORT_STATUS_CLASSIFIED,
+                    "import_status": review_status,
+                    "import_status_label": review_status_label,
+                    "import_decision_label": review_decision_label,
                     "imported_by_user_id": team.imported_by_user_id,
                     "imported_by_username": team.imported_by_username,
                     "bound_code_type": team.bound_code_type or TEAM_TYPE_STANDARD,
@@ -3164,7 +3185,8 @@ class TeamService:
             stmt = select(func.sum(Team.max_members - Team.current_members)).where(
                 Team.team_type == team_type,
                 Team.status == "active",
-                Team.current_members < Team.max_members
+                Team.current_members < Team.max_members,
+                Team.import_status == IMPORT_STATUS_CLASSIFIED,
             )
             if team_type == TEAM_TYPE_WARRANTY:
                 stmt = stmt.where(
@@ -3179,7 +3201,8 @@ class TeamService:
     async def get_stats(
         self,
         db_session: AsyncSession,
-        team_type: Optional[str] = None
+        team_type: Optional[str] = None,
+        import_status: Optional[str] = IMPORT_STATUS_CLASSIFIED,
     ) -> Dict[str, int]:
         """获取 Team 统计信息"""
         try:
@@ -3187,6 +3210,8 @@ class TeamService:
             total_stmt = select(func.count(Team.id))
             if team_type:
                 total_stmt = total_stmt.where(Team.team_type == team_type)
+            if import_status:
+                total_stmt = total_stmt.where(Team.import_status == import_status)
             total_result = await db_session.execute(total_stmt)
             total = total_result.scalar() or 0
             
@@ -3197,6 +3222,8 @@ class TeamService:
             )
             if team_type:
                 available_stmt = available_stmt.where(Team.team_type == team_type)
+            if import_status:
+                available_stmt = available_stmt.where(Team.import_status == import_status)
             if team_type == TEAM_TYPE_WARRANTY:
                 available_stmt = available_stmt.where(
                     or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None))
@@ -3207,6 +3234,8 @@ class TeamService:
             total_seats_stmt = select(func.sum(Team.max_members))
             if team_type:
                 total_seats_stmt = total_seats_stmt.where(Team.team_type == team_type)
+            if import_status:
+                total_seats_stmt = total_seats_stmt.where(Team.import_status == import_status)
             total_seats_result = await db_session.execute(total_seats_stmt)
             total_seats = total_seats_result.scalar() or 0
 
@@ -3216,6 +3245,8 @@ class TeamService:
             )
             if team_type:
                 remaining_seats_stmt = remaining_seats_stmt.where(Team.team_type == team_type)
+            if import_status:
+                remaining_seats_stmt = remaining_seats_stmt.where(Team.import_status == import_status)
             if team_type == TEAM_TYPE_WARRANTY:
                 remaining_seats_stmt = remaining_seats_stmt.where(
                     or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None))

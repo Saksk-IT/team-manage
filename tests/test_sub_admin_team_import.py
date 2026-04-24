@@ -162,9 +162,58 @@ class PendingTeamClassificationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(refreshed.team_type, TEAM_TYPE_WARRANTY)
         self.assertEqual(code_count, 0)
 
+    async def test_reviewed_import_record_remains_visible_for_sub_admin_history(self):
+        async with self.Session() as session:
+            admin, pending_team = await self._create_pending_team(session, "importer01")
+            _, reviewed_team = await self._create_pending_team(session, "importer02")
+            reviewed_team.imported_by_user_id = admin.id
+            reviewed_team.imported_by_username = admin.username
+            reviewed_team.import_status = IMPORT_STATUS_CLASSIFIED
+            reviewed_team.bound_code_type = TEAM_TYPE_WARRANTY
+            await session.commit()
 
-if __name__ == "__main__":
-    unittest.main()
+            result = await self.service.get_all_teams(
+                session,
+                import_status=None,
+                imported_by_user_id=admin.id,
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["total"], 2)
+        status_by_id = {team["id"]: team for team in result["teams"]}
+        self.assertEqual(status_by_id[pending_team.id]["import_status_label"], "待审核")
+        self.assertEqual(status_by_id[reviewed_team.id]["import_status_label"], "已审核")
+        self.assertEqual(status_by_id[reviewed_team.id]["import_decision_label"], "控制台 / 质保兑换码")
+
+    async def test_imported_only_history_excludes_super_admin_direct_imports(self):
+        async with self.Session() as session:
+            _, imported_team = await self._create_pending_team(session, "importer01")
+            session.add(
+                Team(
+                    email="super@example.com",
+                    access_token_encrypted="enc",
+                    account_id="acc-super",
+                    team_type=TEAM_TYPE_STANDARD,
+                    bound_code_type=TEAM_TYPE_STANDARD,
+                    team_name="Super Admin Team",
+                    status="active",
+                    current_members=1,
+                    max_members=5,
+                    import_status=IMPORT_STATUS_CLASSIFIED,
+                )
+            )
+            await session.commit()
+
+            result = await self.service.get_all_teams(
+                session,
+                import_status=None,
+                imported_only=True,
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["teams"][0]["id"], imported_team.id)
+
 
 class SubAdminImportRouteTests(unittest.IsolatedAsyncioTestCase):
     async def test_sub_admin_single_import_is_forced_to_pending_without_codes(self):
@@ -215,3 +264,7 @@ class SubAdminImportRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["import_status"], IMPORT_STATUS_PENDING)
         self.assertEqual(kwargs["imported_by_user_id"], 7)
         self.assertEqual(kwargs["imported_by_username"], "importer01")
+
+
+if __name__ == "__main__":
+    unittest.main()

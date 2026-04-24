@@ -471,6 +471,31 @@ def _normalize_warranty_super_code_type(code_type: str) -> str:
     return normalized
 
 
+async def _get_import_review_stats(
+    db: AsyncSession,
+    imported_by_user_id: Optional[int] = None,
+) -> Dict[str, int]:
+    base_filters = [Team.imported_by_user_id.is_not(None)]
+    if imported_by_user_id is not None:
+        base_filters.append(Team.imported_by_user_id == imported_by_user_id)
+
+    total = await db.scalar(select(func.count(Team.id)).where(*base_filters)) or 0
+    pending = await db.scalar(
+        select(func.count(Team.id)).where(*base_filters, Team.import_status == IMPORT_STATUS_PENDING)
+    ) or 0
+    reviewed = max(total - pending, 0)
+
+    return {
+        "total_teams": total,
+        "available_teams": pending,
+        "reviewed_teams": reviewed,
+        "total_codes": 0,
+        "used_codes": 0,
+        "total_seats": reviewed,
+        "remaining_seats": pending,
+    }
+
+
 async def _render_team_dashboard_page(
     request: Request,
     db: AsyncSession,
@@ -484,6 +509,7 @@ async def _render_team_dashboard_page(
     page_title: str,
     import_status: Optional[str] = IMPORT_STATUS_CLASSIFIED,
     imported_by_user_id: Optional[int] = None,
+    imported_only: bool = False,
 ):
     from app.main import templates
 
@@ -497,18 +523,13 @@ async def _render_team_dashboard_page(
         team_type=team_type,
         import_status=import_status,
         imported_by_user_id=imported_by_user_id,
+        imported_only=imported_only,
     )
+    is_review_mode = active_page in {"pending_teams", "import_only"}
     team_stats = await team_service.get_stats(db, team_type=team_type) if import_status == IMPORT_STATUS_CLASSIFIED and team_type else {"total": teams_result.get("total", 0), "available": 0, "total_seats": 0, "remaining_seats": 0}
 
-    if import_status == IMPORT_STATUS_PENDING:
-        stats = {
-            "total_teams": team_stats["total"],
-            "available_teams": team_stats["total"],
-            "total_codes": 0,
-            "used_codes": 0,
-            "total_seats": 0,
-            "remaining_seats": 0,
-        }
+    if is_review_mode:
+        stats = await _get_import_review_stats(db, imported_by_user_id=imported_by_user_id)
     elif team_type == TEAM_TYPE_STANDARD:
         code_stats = await redemption_service.get_stats(db)
         stats = {
@@ -534,7 +555,8 @@ async def _render_team_dashboard_page(
             "active_page": active_page,
             "page_title": page_title,
             "team_mode": team_type or TEAM_TYPE_STANDARD,
-            "is_pending_mode": import_status == IMPORT_STATUS_PENDING,
+            "is_pending_mode": is_review_mode,
+            "is_review_mode": is_review_mode,
             "teams": teams_result.get("teams", []),
             "stats": stats,
             "search": search,
@@ -630,7 +652,7 @@ async def pending_teams_dashboard(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
-    """总管理员查看子管理员导入的待分类 Team。"""
+    """总管理员查看子管理员导入审核记录。"""
     return await _render_team_dashboard_page(
         request=request,
         db=db,
@@ -641,8 +663,9 @@ async def pending_teams_dashboard(
         status=status,
         team_type=None,
         active_page="pending_teams",
-        page_title="待分类 Team",
-        import_status=IMPORT_STATUS_PENDING,
+        page_title="子管理员导入记录",
+        import_status=None,
+        imported_only=True,
     )
 
 
@@ -669,8 +692,9 @@ async def import_only_page(
         team_type=None,
         active_page="import_only",
         page_title="导入 Team / 我的导入",
-        import_status=IMPORT_STATUS_PENDING,
+        import_status=None,
         imported_by_user_id=imported_by_user_id,
+        imported_only=not is_import_admin_user(current_user),
     )
 
 
