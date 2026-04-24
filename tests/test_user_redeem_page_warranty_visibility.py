@@ -42,6 +42,7 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("兑换服务", html)
         self.assertIn("查询绑定邮箱", html)
+        self.assertIn("自助撤销", html)
         self.assertIn('id="boundEmailLookupForm"', html)
         self.assertIn("可查询当前绑定的完整邮箱，也可在查询结果中撤销兑换码", html)
         self.assertNotIn("质保服务", html)
@@ -88,6 +89,7 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("质保服务", html)
         self.assertIn("查询绑定邮箱", html)
+        self.assertIn("自助撤销", html)
         self.assertIn('id="boundEmailLookupForm"', html)
         self.assertIn("可查询当前绑定的完整邮箱，也可在查询结果中撤销兑换码", html)
         self.assertIn("质保说明", html)
