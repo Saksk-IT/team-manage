@@ -5,18 +5,26 @@ from unittest.mock import AsyncMock, patch
 
 from app.routes.admin import (
     BulkActionRequest,
+    BulkTeamClassifyRequest,
     BatchActionJobState,
     batch_action_jobs,
     batch_refresh_teams,
+    batch_classify_pending_teams_stream,
     batch_enable_device_auth_stream,
     batch_refresh_teams_stream,
     stop_batch_action,
 )
+from app.services.team import CLASSIFY_TARGET_WARRANTY_CODE, CLASSIFY_TARGET_WARRANTY_TEAM
 
 
 class FakeRequest:
     async def is_disconnected(self):
         return False
+
+
+class FakeDb:
+    async def scalar(self, statement):
+        return None
 
 
 async def collect_events(async_iterable):
@@ -158,6 +166,80 @@ class BatchStreamActionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(finish_event['success_count'], 2)
         self.assertEqual(finish_event['failed_count'], 1)
         self.assertIn('批量开启验证已完成', finish_event['summary'])
+
+    async def test_batch_classify_stream_passes_target_and_warranty_days(self):
+        classify_calls = []
+
+        async def mock_classify(team_id, target, db_session, warranty_days=30):
+            classify_calls.append((team_id, target, warranty_days))
+            return {
+                'success': team_id != 2,
+                'team_id': team_id,
+                'message': '归类成功' if team_id != 2 else None,
+                'error': None if team_id != 2 else '该 Team 不在待分类列表中',
+            }
+
+        with patch('app.routes.admin.team_service.classify_pending_team', new=AsyncMock(side_effect=mock_classify)):
+            response = await batch_classify_pending_teams_stream(
+                request=FakeRequest(),
+                action_data=BulkTeamClassifyRequest(
+                    ids=[1, 2],
+                    target=CLASSIFY_TARGET_WARRANTY_CODE,
+                    warranty_days=45,
+                ),
+                db=FakeDb(),
+                current_user={'username': 'admin'},
+            )
+            events = await collect_events(response.body_iterator)
+
+        item_results = [event for event in events if event['type'] == 'item_result']
+        finish_event = events[-1]
+
+        self.assertEqual(classify_calls, [
+            (1, CLASSIFY_TARGET_WARRANTY_CODE, 45),
+            (2, CLASSIFY_TARGET_WARRANTY_CODE, 45),
+        ])
+        self.assertEqual(events[0]['action'], f'batch_classify_{CLASSIFY_TARGET_WARRANTY_CODE}')
+        self.assertEqual(len(item_results), 2)
+        self.assertEqual(item_results[0]['status'], 'success')
+        self.assertEqual(item_results[1]['status'], 'failed')
+        self.assertEqual(item_results[1]['message'], '该 Team 不在待分类列表中')
+        self.assertEqual(finish_event['success_count'], 1)
+        self.assertEqual(finish_event['failed_count'], 1)
+        self.assertIn('批量进入控制台（质保兑换码）已完成', finish_event['summary'])
+
+    async def test_batch_classify_stream_rejects_invalid_target(self):
+        response = await batch_classify_pending_teams_stream(
+            request=FakeRequest(),
+            action_data=BulkTeamClassifyRequest(ids=[1], target='invalid', warranty_days=30),
+            db=object(),
+            current_user={'username': 'admin'},
+        )
+        payload = json.loads(response.body.decode('utf-8'))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(payload['success'])
+
+    async def test_batch_classify_stream_supports_warranty_team_target(self):
+        with patch(
+            'app.routes.admin.team_service.classify_pending_team',
+            new=AsyncMock(return_value={'success': True, 'team_id': 1, 'message': '已归类为质保 Team'}),
+        ) as mocked_classify:
+            response = await batch_classify_pending_teams_stream(
+                request=FakeRequest(),
+                action_data=BulkTeamClassifyRequest(
+                    ids=[1],
+                    target=CLASSIFY_TARGET_WARRANTY_TEAM,
+                    warranty_days=30,
+                ),
+                db=FakeDb(),
+                current_user={'username': 'admin'},
+            )
+            events = await collect_events(response.body_iterator)
+
+        mocked_classify.assert_awaited_once()
+        self.assertEqual(events[0]['action'], f'batch_classify_{CLASSIFY_TARGET_WARRANTY_TEAM}')
+        self.assertIn('批量进入质保 Team已完成', events[-1]['summary'])
 
     async def test_stop_endpoint_stops_stream_after_current_item(self):
         release_first_item = asyncio.Event()

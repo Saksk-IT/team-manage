@@ -166,6 +166,12 @@ class BulkActionRequest(BaseModel):
     ids: List[int] = Field(..., description="Team ID 列表")
 
 
+class BulkTeamClassifyRequest(BulkActionRequest):
+    """批量待分类 Team 归类请求"""
+    target: str = Field(..., description="归类目标: standard / warranty_code / warranty_team")
+    warranty_days: int = Field(30, description="质保兑换码天数")
+
+
 class WarrantySuperCodeConfigRequest(BaseModel):
     code: str = Field("", description="超级兑换码")
     limit_value: int = Field(..., description="限制值")
@@ -201,6 +207,16 @@ class BatchActionJobState:
 
 
 batch_action_jobs: Dict[str, BatchActionJobState] = {}
+
+CLASSIFY_TARGETS = {
+    CLASSIFY_TARGET_STANDARD,
+    CLASSIFY_TARGET_WARRANTY_CODE,
+    CLASSIFY_TARGET_WARRANTY_TEAM,
+}
+
+
+def _normalize_classify_target(target: Optional[str]) -> str:
+    return (target or "").strip().lower()
 
 
 def _to_ndjson(payload: Dict[str, Any]) -> str:
@@ -908,12 +924,8 @@ async def classify_pending_team(
 ):
     """总管理员将待分类 Team 归类到普通账号、质保账号或质保 Team。"""
     try:
-        target = (classify_data.target or "").strip().lower()
-        if target not in {
-            CLASSIFY_TARGET_STANDARD,
-            CLASSIFY_TARGET_WARRANTY_CODE,
-            CLASSIFY_TARGET_WARRANTY_TEAM,
-        }:
+        target = _normalize_classify_target(classify_data.target)
+        if target not in CLASSIFY_TARGETS:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"success": False, "error": "分类目标无效"}
@@ -935,6 +947,69 @@ async def classify_pending_team(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"分类失败: {str(e)}"}
         )
+
+
+@router.post("/teams/batch-classify/stream")
+async def batch_classify_pending_teams_stream(
+    request: Request,
+    action_data: BulkTeamClassifyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """总管理员批量归类待审核 Team。"""
+    target = _normalize_classify_target(action_data.target)
+    if target not in CLASSIFY_TARGETS:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"success": False, "error": "分类目标无效"}
+        )
+
+    if not action_data.ids:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"success": False, "error": "请选择要归类的 Team"}
+        )
+
+    action_labels = {
+        CLASSIFY_TARGET_STANDARD: "批量进入控制台（普通兑换码）",
+        CLASSIFY_TARGET_WARRANTY_CODE: "批量进入控制台（质保兑换码）",
+        CLASSIFY_TARGET_WARRANTY_TEAM: "批量进入质保 Team",
+    }
+    stage_labels = {
+        CLASSIFY_TARGET_STANDARD: "归类为控制台普通账号",
+        CLASSIFY_TARGET_WARRANTY_CODE: "归类为控制台质保账号",
+        CLASSIFY_TARGET_WARRANTY_TEAM: "归类到质保 Team 页面",
+    }
+    action_label = action_labels[target]
+    logger.info("管理员%s %s 个 Team", action_label, len(action_data.ids))
+
+    async def item_runner(team_id: int, progress_callback):
+        team = await db.scalar(select(Team).where(Team.id == team_id))
+        email = team.email if team else None
+        await progress_callback({
+            "stage_key": "classify_team",
+            "stage_label": stage_labels[target],
+            "team_id": team_id,
+            "email": email,
+        })
+
+        result = await team_service.classify_pending_team(
+            team_id=team_id,
+            target=target,
+            db_session=db,
+            warranty_days=action_data.warranty_days,
+        )
+        if email and not result.get("email"):
+            result = {**result, "email": email}
+        return result
+
+    return await _stream_batch_team_action(
+        request=request,
+        action_data=action_data,
+        action_key=f"batch_classify_{target}",
+        action_label=action_label,
+        item_runner=item_runner,
+    )
 
 
 

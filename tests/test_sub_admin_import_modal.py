@@ -26,6 +26,15 @@ class SubAdminImportModalTests(unittest.TestCase):
         main_js = Path("app/static/js/main.js").read_text(encoding="utf-8")
         self.assertIn("const initialTabId = isImportOnlyPage() ? 'batchImport' : 'singleImport';", main_js)
 
+    def test_review_page_template_exposes_batch_classify_actions(self):
+        template = Path("app/templates/admin/index.html").read_text(encoding="utf-8")
+
+        self.assertIn("批量进入控制台", template)
+        self.assertIn("批量进入质保 Team", template)
+        self.assertIn("data-import-status", template)
+        self.assertIn("/admin/teams/batch-classify/stream", template)
+        self.assertIn("requireSelectedPendingReviewTargets", template)
+
 
 if __name__ == "__main__":
     unittest.main()

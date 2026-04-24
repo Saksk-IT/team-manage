@@ -65,6 +65,14 @@
         <div class="header-group">
             <!-- 批量操作 -->
             <div id="batchActions" class="batch-actions-group" style="display: none;">
+                {% if is_review_mode and not is_import_only_mode %}
+                <button onclick="openConsoleClassifyModalForSelected()" class="btn btn-success btn-sm">
+                    <i data-lucide="layout-dashboard" style="width: 14px; height: 14px;"></i> 批量进入控制台
+                </button>
+                <button onclick="handleBatchClassifyWarrantyTeam()" class="btn btn-warning btn-sm">
+                    <i data-lucide="shield" style="width: 14px; height: 14px;"></i> 批量进入质保 Team
+                </button>
+                {% endif %}
                 {% if not is_warranty_mode and not is_review_mode %}
                 <button onclick="showTeamCodesExportModal()" class="btn btn-secondary btn-sm">
                     <i data-lucide="download" style="width: 14px; height: 14px;"></i> 批量导出兑换码
@@ -187,6 +195,7 @@
             <tr>
                 <td><input type="checkbox" class="team-checkbox" value="{{ team.id }}" data-email="{{ team.email }}"
                         data-bound-code-count="{{ team.bound_code_count or 0 }}"
+                        data-import-status="{{ team.import_status or '' }}"
                         onchange="updateSelectedCount()">
                 </td>
                 <td><span class="text-muted">{{ team.id }}</span></td>
@@ -445,11 +454,12 @@
             <button class="modal-close" onclick="hideModal('classifyConsoleModal')">&times;</button>
         </div>
         <div class="modal-body">
-            <p class="form-text" style="margin-top: 0;">
+            <p id="classifyConsoleScopeText" class="form-text" style="margin-top: 0;">
                 该 Team 将进入控制台页面。进入控制台前，请选择本次自动生成的兑换码类型。
             </p>
             <form id="classifyConsoleForm" onsubmit="handleClassifyConsoleSubmit(event)">
                 <input type="hidden" id="classify-console-team-id" name="teamId">
+                <input type="hidden" id="classify-console-team-ids" name="teamIds">
                 <div class="form-group">
                     <label>兑换码类型</label>
                     <label class="export-option">
@@ -472,7 +482,7 @@
                     <input type="number" name="warrantyDays" class="form-control" value="30" min="1" max="3650">
                     <small class="form-text">默认 30 天 / 10 次，和导入弹窗中的“自动生成质保兑换码”语义一致。</small>
                 </div>
-                <button type="submit" class="btn btn-primary">确认进入控制台</button>
+                <button type="submit" id="classifyConsoleSubmitBtn" class="btn btn-primary">确认进入控制台</button>
             </form>
         </div>
     </div>
@@ -906,8 +916,9 @@
         batchActionProgressState.itemMap = new Map();
     }
 
-    function getSelectedBatchTargets() {
-        return Array.from(document.querySelectorAll('.team-checkbox:checked')).map((checkbox, index) => ({
+    function getSelectedBatchTargets(checkboxes = null) {
+        const selectedCheckboxes = checkboxes ? Array.from(checkboxes) : Array.from(document.querySelectorAll('.team-checkbox:checked'));
+        return selectedCheckboxes.map((checkbox, index) => ({
             index: index + 1,
             teamId: parseInt(checkbox.value, 10),
             email: checkbox.dataset.email || '',
@@ -915,6 +926,55 @@
             status: 'queued',
             message: '等待处理'
         }));
+    }
+
+    function getBatchTargetsByIds(teamIds) {
+        const checkboxById = new Map(
+            Array.from(document.querySelectorAll('.team-checkbox'))
+                .map(checkbox => [parseInt(checkbox.value, 10), checkbox])
+                .filter(([teamId]) => Number.isInteger(teamId))
+        );
+        return teamIds.map((teamId, index) => {
+            const checkbox = checkboxById.get(teamId);
+            return {
+                index: index + 1,
+                teamId,
+                email: checkbox?.dataset.email || '',
+                stageLabel: '等待开始',
+                status: 'queued',
+                message: '等待处理'
+            };
+        });
+    }
+
+    function getSelectedPendingReviewTargets() {
+        const selectedCheckboxes = Array.from(document.querySelectorAll('.team-checkbox:checked'));
+        const pendingCheckboxes = selectedCheckboxes.filter(checkbox => checkbox.dataset.importStatus === 'pending');
+        return {
+            selectedCount: selectedCheckboxes.length,
+            reviewedCount: selectedCheckboxes.length - pendingCheckboxes.length,
+            targets: getSelectedBatchTargets(pendingCheckboxes),
+        };
+    }
+
+    function requireSelectedPendingReviewTargets() {
+        const { selectedCount, reviewedCount, targets } = getSelectedPendingReviewTargets();
+        if (selectedCount === 0) {
+            showToast('请先勾选要审核的 Team', 'warning');
+            return null;
+        }
+
+        if (reviewedCount > 0) {
+            showToast('已审核记录不能重复操作，请只勾选待审核账号', 'warning');
+            return null;
+        }
+
+        if (targets.length === 0) {
+            showToast('请选择待审核账号', 'warning');
+            return null;
+        }
+
+        return targets;
     }
 
     function getBatchProgressStatusMeta(status) {
@@ -1264,33 +1324,39 @@
         resetBatchActionProgressState();
     }
 
-    async function handleBlockingBatchAction(endpoint, actionName, stopButtonText) {
-        const selectedTargets = getSelectedBatchTargets();
+    async function handleBlockingBatchAction(endpoint, actionName, stopButtonText, options = {}) {
+        const selectedTargets = options.selectedTargets || getSelectedBatchTargets();
 
         if (selectedTargets.length === 0) {
             showToast('请选择要操作的 Team', 'warning');
             return;
         }
 
-        const confirmed = await showSystemConfirm({
-            title: '确认批量操作',
-            message: `确定要对选中的 ${selectedTargets.length} 个 Team 进行 "${actionName}" 操作吗？`,
-            confirmText: '确认操作',
-            danger: true,
-        });
-        if (!confirmed) {
-            return;
+        if (!options.skipConfirm) {
+            const confirmed = await showSystemConfirm({
+                title: options.confirmTitle || '确认批量操作',
+                message: options.confirmMessage || `确定要对选中的 ${selectedTargets.length} 个 Team 进行 "${actionName}" 操作吗？`,
+                confirmText: options.confirmText || '确认操作',
+                danger: options.danger ?? true,
+            });
+            if (!confirmed) {
+                return;
+            }
         }
 
         openBatchActionProgressModal(actionName, stopButtonText, selectedTargets);
 
         try {
+            const requestBody = {
+                ids: selectedTargets.map(item => item.teamId),
+                ...(options.payload || {})
+            };
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ ids: selectedTargets.map(item => item.teamId) })
+                body: JSON.stringify(requestBody)
             });
 
             if (!response.ok) {
@@ -1587,15 +1653,42 @@
         }
     }
 
-    function openConsoleClassifyModal(teamId) {
+    function openConsoleClassifyModal(teamIds) {
         const teamInput = document.getElementById('classify-console-team-id');
+        const teamIdsInput = document.getElementById('classify-console-team-ids');
+        const scopeText = document.getElementById('classifyConsoleScopeText');
+        const submitBtn = document.getElementById('classifyConsoleSubmitBtn');
         const form = document.getElementById('classifyConsoleForm');
-        if (!teamInput || !form) return;
+        if (!teamInput || !teamIdsInput || !form) return;
+
+        const normalizedTeamIds = (Array.isArray(teamIds) ? teamIds : [teamIds])
+            .map(teamId => parseInt(teamId, 10))
+            .filter(Number.isInteger);
+
+        if (normalizedTeamIds.length === 0) {
+            showToast('请选择要审核的 Team', 'warning');
+            return;
+        }
 
         form.reset();
-        teamInput.value = teamId;
+        teamInput.value = normalizedTeamIds[0];
+        teamIdsInput.value = normalizedTeamIds.join(',');
+        if (scopeText) {
+            scopeText.textContent = normalizedTeamIds.length > 1
+                ? `已选择 ${normalizedTeamIds.length} 个待审核 Team。它们将进入控制台页面；进入前请选择本次自动生成的兑换码类型。`
+                : '该 Team 将进入控制台页面。进入控制台前，请选择本次自动生成的兑换码类型。';
+        }
+        if (submitBtn) {
+            submitBtn.textContent = normalizedTeamIds.length > 1 ? '确认批量进入控制台' : '确认进入控制台';
+        }
         toggleClassifyWarrantyDays();
         showModal('classifyConsoleModal');
+    }
+
+    function openConsoleClassifyModalForSelected() {
+        const targets = requireSelectedPendingReviewTargets();
+        if (!targets) return;
+        openConsoleClassifyModal(targets.map(item => item.teamId));
     }
 
     function toggleClassifyWarrantyDays() {
@@ -1615,10 +1708,21 @@
     async function handleClassifyConsoleSubmit(event) {
         event.preventDefault();
         const form = event.target;
-        const teamId = form.teamId.value;
+        const teamIds = (form.teamIds?.value || form.teamId.value || '')
+            .split(',')
+            .map(teamId => parseInt(teamId, 10))
+            .filter(Number.isInteger);
         const target = form.target.value;
         const warrantyDays = parseInt(form.warrantyDays?.value || '30', 10);
-        await classifyTeam(teamId, target, warrantyDays, { skipConfirm: true });
+        if (teamIds.length === 0) {
+            showToast('请选择要审核的 Team', 'warning');
+            return;
+        }
+        if (teamIds.length > 1) {
+            await classifyTeamBatch(teamIds, target, warrantyDays, { skipConfirm: true });
+            return;
+        }
+        await classifyTeam(teamIds[0], target, warrantyDays, { skipConfirm: true });
     }
 
     async function classifyTeam(teamId, target, warrantyDays = 30, options = {}) {
@@ -1655,6 +1759,53 @@
         } catch (error) {
             showToast('网络错误', 'error');
         }
+    }
+
+    async function classifyTeamBatch(teamIds, target, warrantyDays = 30, options = {}) {
+        const normalizedTeamIds = (teamIds || [])
+            .map(teamId => parseInt(teamId, 10))
+            .filter(Number.isInteger);
+        if (normalizedTeamIds.length === 0) {
+            showToast('请先勾选要审核的 Team', 'warning');
+            return;
+        }
+
+        const labels = {
+            standard: '批量进入控制台（普通兑换码）',
+            warranty_code: '批量进入控制台（质保兑换码）',
+            warranty_team: '批量进入质保 Team',
+        };
+        const selectedTargets = options.selectedTargets || getBatchTargetsByIds(normalizedTeamIds);
+        hideModal('classifyConsoleModal');
+
+        await handleBlockingBatchAction(
+            '/admin/teams/batch-classify/stream',
+            labels[target] || '批量归类',
+            '停止归类',
+            {
+                selectedTargets,
+                skipConfirm: Boolean(options.skipConfirm),
+                confirmTitle: '确认批量审核',
+                confirmMessage: `确定要将选中的 ${normalizedTeamIds.length} 个 Team 执行“${labels[target] || target}”吗？`,
+                confirmText: '确认归类',
+                danger: false,
+                payload: {
+                    target,
+                    warranty_days: warrantyDays,
+                },
+            }
+        );
+    }
+
+    async function handleBatchClassifyWarrantyTeam() {
+        const targets = requireSelectedPendingReviewTargets();
+        if (!targets) return;
+        await classifyTeamBatch(
+            targets.map(item => item.teamId),
+            'warranty_team',
+            30,
+            { selectedTargets: targets }
+        );
     }
 
 
