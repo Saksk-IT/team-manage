@@ -4,6 +4,7 @@
 
 {% block content %}
 {% set is_warranty_mode = team_mode == 'warranty' %}
+{% set is_import_only_mode = active_page == 'import_only' %}
 <div class="page-header">
     <h2>{{ page_title or '控制台' }}</h2>
 </div>
@@ -14,17 +15,17 @@
         <div class="stat-icon"><i data-lucide="users"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.total_teams }}</div>
-            <div class="stat-label">{{ '质保 Team 总数' if is_warranty_mode else 'Team 总数' }}</div>
+            <div class="stat-label">{{ '待分类 Team 总数' if is_pending_mode else ('质保 Team 总数' if is_warranty_mode else 'Team 总数') }}</div>
         </div>
     </div>
     <div class="stat-card stat-success">
         <div class="stat-icon"><i data-lucide="check-circle"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.available_teams }}</div>
-            <div class="stat-label">{{ '可用质保 Team' if is_warranty_mode else '可用 Team' }}</div>
+            <div class="stat-label">{{ '待处理' if is_pending_mode else ('可用质保 Team' if is_warranty_mode else '可用 Team') }}</div>
         </div>
     </div>
-    {% if is_warranty_mode %}
+    {% if is_warranty_mode or is_pending_mode %}
     <div class="stat-card stat-info">
         <div class="stat-icon"><i data-lucide="users-round"></i></div>
         <div class="stat-info-group">
@@ -60,15 +61,16 @@
 <!-- Team 列表 -->
 <div class="content-section sticky-toolbar-section">
     <div class="section-header">
-        <h3>{{ '质保 Team 列表' if is_warranty_mode else 'Team 列表' }}</h3>
+        <h3>{{ '我的导入' if is_import_only_mode else ('待分类 Team 列表' if is_pending_mode else ('质保 Team 列表' if is_warranty_mode else 'Team 列表')) }}</h3>
         <div class="header-group">
             <!-- 批量操作 -->
             <div id="batchActions" class="batch-actions-group" style="display: none;">
-                {% if not is_warranty_mode %}
+                {% if not is_warranty_mode and not is_pending_mode %}
                 <button onclick="showTeamCodesExportModal()" class="btn btn-secondary btn-sm">
                     <i data-lucide="download" style="width: 14px; height: 14px;"></i> 批量导出兑换码
                 </button>
                 {% endif %}
+                {% if not is_import_only_mode %}
                 <button onclick="handleBatchRefresh()" class="btn btn-secondary btn-sm">
                     <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i> 批量刷新
                 </button>
@@ -78,6 +80,7 @@
                 <button onclick="handleBatchDelete()" class="btn btn-danger btn-sm">
                     <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> 批量删除
                 </button>
+                {% endif %}
                 <span class="selected-count text-muted small" style="margin-left: 8px;">已选 0 项</span>
             </div>
 
@@ -119,13 +122,13 @@
             </div>
 
             <!-- 搜索框 -->
-            <form action="/admin" method="get" class="search-form">
+            <form action="{{ request.url.path }}" method="get" class="search-form">
                 <div class="input-group-clean">
                     <i data-lucide="search" style="width: 14px; height: 14px;"></i>
                     <input type="text" name="search" value="{{ search or '' }}" placeholder="搜索邮箱/Account ID..."
                         style="width: 200px;">
                     {% if search %}
-                    <a href="/admin" title="清除搜索">
+                    <a href="{{ request.url.path }}" title="清除搜索">
                         <i data-lucide="x-circle" style="width: 14px; height: 14px;"></i>
                     </a>
                     {% endif %}
@@ -145,9 +148,11 @@
                 </div>
             </div>
 
+            {% if not is_pending_mode or is_import_only_mode %}
             <button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">
                 <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> {{ '导入质保 Team' if is_warranty_mode else '导入 Team' }}
             </button>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -163,7 +168,9 @@
                 <th>邮箱</th>
                 <th>Account ID</th>
                 <th>Team 名称</th>
-                {% if not is_warranty_mode %}
+                {% if is_pending_mode %}
+                <th>导入人</th>
+                {% elif not is_warranty_mode %}
                 <th>账号类型</th>
                 {% endif %}
                 <th>成员数</th>
@@ -209,7 +216,9 @@
                 </td>
                 <td><span class="text-muted small">{{ team.account_id or '-' }}</span></td>
                 <td>{{ team.team_name or '-' }}</td>
-                {% if not is_warranty_mode %}
+                {% if is_pending_mode %}
+                <td>{{ team.imported_by_username or '-' }}</td>
+                {% elif not is_warranty_mode %}
                 <td>
                     <span
                         class="status-badge team-bound-code-type-badge {{ 'status-info' if team.bound_code_type == 'warranty' else 'status-banned' }}"
@@ -266,6 +275,19 @@
                 </td>
                 <td>
                     <div class="action-buttons">
+                        {% if is_import_only_mode %}
+                        <span class="status-badge status-warning">待总管理员分类</span>
+                        {% elif is_pending_mode %}
+                        <button class="btn btn-sm btn-minimal btn-success btn-classify-team" data-id="{{ team.id }}" data-target="standard" title="归类为普通账号">普通</button>
+                        <button class="btn btn-sm btn-minimal btn-info btn-classify-team" data-id="{{ team.id }}" data-target="warranty_code" title="归类为质保账号">质保账号</button>
+                        <button class="btn btn-sm btn-minimal btn-warning btn-classify-team" data-id="{{ team.id }}" data-target="warranty_team" title="归类到质保 Team 页面">质保 Team</button>
+                        <button class="btn btn-sm btn-icon btn-minimal btn-secondary btn-refresh-team" data-id="{{ team.id }}" title="刷新">
+                            <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                        </button>
+                        <button class="btn btn-sm btn-icon btn-minimal btn-danger btn-delete-team" data-id="{{ team.id }}" data-email="{{ team.email }}" title="删除">
+                            <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                        </button>
+                        {% else %}
                         <button class="btn btn-sm btn-icon btn-minimal btn-info btn-view-members"
                             data-id="{{ team.id }}" data-email="{{ team.email }}" title="查看成员">
                             <i data-lucide="users" style="width: 16px; height: 16px;"></i>
@@ -294,6 +316,7 @@
                             data-id="{{ team.id }}" data-email="{{ team.email }}" title="删除">
                             <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
                         </button>
+                        {% endif %}
                     </div>
                 </td>
             </tr>
@@ -391,8 +414,8 @@
 {% endif %}
 {% else %}
 <div class="empty-state">
-    <p>{{ '暂无质保 Team 数据' if is_warranty_mode else '暂无 Team 数据' }}</p>
-    <button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">{{ '立即导入质保 Team' if is_warranty_mode else '立即导入' }}</button>
+    <p>{{ '暂无导入记录' if is_import_only_mode else ('暂无待分类 Team' if is_pending_mode else ('暂无质保 Team 数据' if is_warranty_mode else '暂无 Team 数据')) }}</p>
+    {% if not is_pending_mode or is_import_only_mode %}<button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">{{ '立即导入质保 Team' if is_warranty_mode else '立即导入' }}</button>{% endif %}
 </div>
 {% endif %}
 </div>
@@ -695,6 +718,15 @@
                 const id = btn.getAttribute('data-id');
                 const email = btn.getAttribute('data-email');
                 deleteTeam(id, email);
+            });
+        });
+
+        // 绑定待分类归类按钮
+        document.querySelectorAll('.btn-classify-team').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.getAttribute('data-id');
+                const target = btn.getAttribute('data-target');
+                classifyTeam(id, target);
             });
         });
 
@@ -1492,6 +1524,40 @@
             showToast('网络错误', 'error');
         }
     }
+
+    async function classifyTeam(teamId, target) {
+        const labels = {
+            standard: '普通账号',
+            warranty_code: '质保账号',
+            warranty_team: '质保 Team',
+        };
+        const confirmed = await showSystemConfirm({
+            title: '确认归类 Team',
+            message: `确定要将该 Team 归类为“${labels[target] || target}”吗？`,
+            confirmText: '确认归类',
+        });
+        if (!confirmed) return;
+
+        try {
+            showToast('正在归类...', 'info');
+            const response = await fetch(`/admin/teams/${teamId}/classify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target, warranty_days: 30 })
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                const codeText = data.generated_code_count ? `，生成 ${data.generated_code_count} 个兑换码` : '';
+                showToast((data.message || '归类成功') + codeText, 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showToast(data.error || '归类失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    }
+
 
     async function deleteTeam(teamId, email) {
         const confirmed = await showSystemConfirm({

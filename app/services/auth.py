@@ -8,8 +8,9 @@ from typing import Optional, Dict, Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Setting
+from app.models import Setting, AdminUser
 from app.config import settings
+from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,118 @@ class AuthService:
         except Exception as e:
             logger.error(f"密码验证失败: {e}")
             return False
+
+
+    def _normalize_username(self, username: str) -> str:
+        return (username or "").strip().lower()
+
+    async def verify_sub_admin_login(
+        self,
+        username: str,
+        password: str,
+        db_session: AsyncSession
+    ) -> Dict[str, Any]:
+        normalized_username = self._normalize_username(username)
+        if not normalized_username:
+            return {"success": False, "error": "请输入用户名"}
+
+        stmt = select(AdminUser).where(AdminUser.username == normalized_username)
+        result = await db_session.execute(stmt)
+        admin_user = result.scalar_one_or_none()
+
+        if not admin_user or not admin_user.is_active:
+            return {"success": False, "error": "用户不存在或已禁用"}
+
+        if not self.verify_password(password, admin_user.password_hash):
+            return {"success": False, "error": "用户名或密码错误"}
+
+        return {
+            "success": True,
+            "user": {
+                "id": admin_user.id,
+                "username": admin_user.username,
+                "is_admin": True,
+                "role": admin_user.role or "import_admin",
+                "is_super_admin": False,
+            },
+            "message": "登录成功",
+            "error": None,
+        }
+
+    async def create_sub_admin(
+        self,
+        username: str,
+        password: str,
+        db_session: AsyncSession
+    ) -> Dict[str, Any]:
+        normalized_username = self._normalize_username(username)
+        if not normalized_username:
+            return {"success": False, "error": "用户名不能为空"}
+        if normalized_username == "admin":
+            return {"success": False, "error": "admin 为总管理员保留用户名"}
+        if len(password or "") < 6:
+            return {"success": False, "error": "密码长度至少 6 位"}
+
+        existing = await db_session.scalar(select(AdminUser).where(AdminUser.username == normalized_username))
+        if existing:
+            return {"success": False, "error": "该用户名已存在"}
+
+        now = get_now()
+        admin_user = AdminUser(
+            username=normalized_username,
+            password_hash=self.hash_password(password),
+            role="import_admin",
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+        db_session.add(admin_user)
+        await db_session.commit()
+        return {"success": True, "message": "子管理员已创建", "user_id": admin_user.id}
+
+    async def list_sub_admins(self, db_session: AsyncSession) -> list[dict]:
+        result = await db_session.execute(select(AdminUser).order_by(AdminUser.created_at.desc()))
+        return [
+            {
+                "id": user.id,
+                "username": user.username,
+                "role": user.role,
+                "is_active": bool(user.is_active),
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+                "updated_at": user.updated_at.isoformat() if user.updated_at else None,
+            }
+            for user in result.scalars().all()
+        ]
+
+    async def toggle_sub_admin(
+        self,
+        user_id: int,
+        is_active: bool,
+        db_session: AsyncSession
+    ) -> Dict[str, Any]:
+        admin_user = await db_session.get(AdminUser, user_id)
+        if not admin_user:
+            return {"success": False, "error": "子管理员不存在"}
+        admin_user.is_active = bool(is_active)
+        admin_user.updated_at = get_now()
+        await db_session.commit()
+        return {"success": True, "message": "状态已更新"}
+
+    async def reset_sub_admin_password(
+        self,
+        user_id: int,
+        password: str,
+        db_session: AsyncSession
+    ) -> Dict[str, Any]:
+        if len(password or "") < 6:
+            return {"success": False, "error": "密码长度至少 6 位"}
+        admin_user = await db_session.get(AdminUser, user_id)
+        if not admin_user:
+            return {"success": False, "error": "子管理员不存在"}
+        admin_user.password_hash = self.hash_password(password)
+        admin_user.updated_at = get_now()
+        await db_session.commit()
+        return {"success": True, "message": "密码已重置"}
 
     async def get_admin_password_hash(self, db_session: AsyncSession) -> Optional[str]:
         """

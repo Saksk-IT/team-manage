@@ -249,6 +249,50 @@ def run_auto_migration():
             cursor.execute("ALTER TABLE teams ADD COLUMN warranty_unavailable_at DATETIME")
             migrations_applied.append("teams.warranty_unavailable_at")
 
+        if not column_exists(cursor, "teams", "import_status"):
+            logger.info("添加 teams.import_status 字段")
+            cursor.execute("ALTER TABLE teams ADD COLUMN import_status VARCHAR(20) DEFAULT 'classified' NOT NULL")
+            migrations_applied.append("teams.import_status")
+
+        if not column_exists(cursor, "teams", "imported_by_user_id"):
+            logger.info("添加 teams.imported_by_user_id 字段")
+            cursor.execute("ALTER TABLE teams ADD COLUMN imported_by_user_id INTEGER")
+            migrations_applied.append("teams.imported_by_user_id")
+
+        if not column_exists(cursor, "teams", "imported_by_username"):
+            logger.info("添加 teams.imported_by_username 字段")
+            cursor.execute("ALTER TABLE teams ADD COLUMN imported_by_username VARCHAR(100)")
+            migrations_applied.append("teams.imported_by_username")
+
+        cursor.execute("""
+            UPDATE teams
+            SET import_status = 'classified'
+            WHERE import_status IS NULL OR TRIM(import_status) = ''
+        """)
+
+        if not table_exists(cursor, "admin_users"):
+            logger.info("创建 admin_users 表")
+            cursor.execute("""
+                CREATE TABLE admin_users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username VARCHAR(100) NOT NULL UNIQUE,
+                    password_hash VARCHAR(255) NOT NULL,
+                    role VARCHAR(30) NOT NULL DEFAULT 'import_admin',
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+            """)
+            cursor.execute("""
+                CREATE UNIQUE INDEX idx_admin_users_username
+                ON admin_users (username)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_admin_users_role
+                ON admin_users (role)
+            """)
+            migrations_applied.append("admin_users")
+
         cursor.execute("""
             UPDATE teams
             SET warranty_unavailable = 0

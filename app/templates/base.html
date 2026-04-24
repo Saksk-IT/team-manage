@@ -27,7 +27,7 @@
                 </div>
             </div>
             <div class="navbar-menu">
-                <span class="navbar-user">管理员</span>
+                <span class="navbar-user">{{ "总管理员" if user.get("is_super_admin", user.get("username") == "admin") else (user.username or "子管理员") }}</span>
                 <button id="densityToggleBtn" type="button" class="btn btn-secondary btn-sm" onclick="toggleDensityMode()">
                     紧凑模式
                 </button>
@@ -44,10 +44,23 @@
         <!-- 侧边栏 -->
         <aside class="sidebar" id="adminSidebar">
             <ul class="sidebar-menu">
+                {% if user.get("is_super_admin", user.get("username") == "admin") %}
                 <li class="menu-item {% if active_page == 'dashboard' %}active{% endif %}">
                     <a href="/admin">
                         <span class="menu-icon" data-lucide="layout-dashboard"></span>
                         <span class="menu-text">控制台</span>
+                    </a>
+                </li>
+                <li class="menu-item {% if active_page == 'pending_teams' %}active{% endif %}">
+                    <a href="/admin/pending-teams">
+                        <span class="menu-icon" data-lucide="inbox"></span>
+                        <span class="menu-text">待分类 Team</span>
+                    </a>
+                </li>
+                <li class="menu-item {% if active_page == 'sub_admins' %}active{% endif %}">
+                    <a href="/admin/sub-admins">
+                        <span class="menu-icon" data-lucide="user-cog"></span>
+                        <span class="menu-text">子管理员</span>
                     </a>
                 </li>
                 <li class="menu-item {% if active_page == 'warranty_teams' %}active{% endif %}">
@@ -92,6 +105,14 @@
                         <span class="menu-text">系统设置</span>
                     </a>
                 </li>
+                {% else %}
+                <li class="menu-item {% if active_page == 'import_only' %}active{% endif %}">
+                    <a href="/admin/import-only">
+                        <span class="menu-icon" data-lucide="upload-cloud"></span>
+                        <span class="menu-text">导入 Team / 我的导入</span>
+                    </a>
+                </li>
+                {% endif %}
             </ul>
         </aside>
 

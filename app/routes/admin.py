@@ -16,13 +16,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field, EmailStr
 
 from app.database import get_db
-from app.dependencies.auth import require_admin
+from app.dependencies.auth import require_admin, require_team_import_admin, is_import_admin_user
 from app.models import Team, RedemptionCode
-from app.services.team import TeamService, TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY
+from app.services.team import (
+    TeamService,
+    TEAM_TYPE_STANDARD,
+    TEAM_TYPE_WARRANTY,
+    IMPORT_STATUS_PENDING,
+    IMPORT_STATUS_CLASSIFIED,
+    CLASSIFY_TARGET_STANDARD,
+    CLASSIFY_TARGET_WARRANTY_CODE,
+    CLASSIFY_TARGET_WARRANTY_TEAM,
+)
 from app.services.team_cleanup_record import team_cleanup_record_service
 from app.services.redemption import RedemptionService
 from app.services.settings import settings_service
 from app.services.warranty import warranty_service
+from app.services.auth import auth_service
 from app.utils.time_utils import get_now
 from app.utils.storage import (
     build_customer_service_upload_url,
@@ -100,6 +110,28 @@ class TeamUpdateRequest(BaseModel):
 class TeamTransferRequest(BaseModel):
     """Team 类型转移请求"""
     target_team_type: str = Field(..., description="目标 Team 类型: standard 或 warranty")
+
+
+class TeamClassifyRequest(BaseModel):
+    """待分类 Team 归类请求"""
+    target: str = Field(..., description="归类目标: standard / warranty_code / warranty_team")
+    warranty_days: int = Field(30, description="质保兑换码天数")
+
+
+class SubAdminCreateRequest(BaseModel):
+    """创建子管理员请求"""
+    username: str = Field(..., min_length=1, max_length=100, description="用户名")
+    password: str = Field(..., min_length=6, description="密码")
+
+
+class SubAdminToggleRequest(BaseModel):
+    """启用/禁用子管理员请求"""
+    is_active: bool = Field(..., description="是否启用")
+
+
+class SubAdminResetPasswordRequest(BaseModel):
+    """重置子管理员密码请求"""
+    password: str = Field(..., min_length=6, description="新密码")
 
 
 class CodeUpdateRequest(BaseModel):
@@ -447,9 +479,11 @@ async def _render_team_dashboard_page(
     per_page: int,
     search: Optional[str],
     status: Optional[str],
-    team_type: str,
+    team_type: Optional[str],
     active_page: str,
-    page_title: str
+    page_title: str,
+    import_status: Optional[str] = IMPORT_STATUS_CLASSIFIED,
+    imported_by_user_id: Optional[int] = None,
 ):
     from app.main import templates
 
@@ -460,11 +494,22 @@ async def _render_team_dashboard_page(
         per_page=per_page,
         search=search,
         status=status,
-        team_type=team_type
+        team_type=team_type,
+        import_status=import_status,
+        imported_by_user_id=imported_by_user_id,
     )
-    team_stats = await team_service.get_stats(db, team_type=team_type)
+    team_stats = await team_service.get_stats(db, team_type=team_type) if import_status == IMPORT_STATUS_CLASSIFIED and team_type else {"total": teams_result.get("total", 0), "available": 0, "total_seats": 0, "remaining_seats": 0}
 
-    if team_type == TEAM_TYPE_STANDARD:
+    if import_status == IMPORT_STATUS_PENDING:
+        stats = {
+            "total_teams": team_stats["total"],
+            "available_teams": team_stats["total"],
+            "total_codes": 0,
+            "used_codes": 0,
+            "total_seats": 0,
+            "remaining_seats": 0,
+        }
+    elif team_type == TEAM_TYPE_STANDARD:
         code_stats = await redemption_service.get_stats(db)
         stats = {
             "total_teams": team_stats["total"],
@@ -488,7 +533,8 @@ async def _render_team_dashboard_page(
             "user": current_user,
             "active_page": active_page,
             "page_title": page_title,
-            "team_mode": team_type,
+            "team_mode": team_type or TEAM_TYPE_STANDARD,
+            "is_pending_mode": import_status == IMPORT_STATUS_PENDING,
             "teams": teams_result.get("teams", []),
             "stats": stats,
             "search": search,
@@ -572,6 +618,124 @@ async def warranty_teams_dashboard(
             status_code=500,
             detail=f"加载质保 Team 页面失败: {str(e)}"
         )
+
+
+@router.get("/pending-teams", response_class=HTMLResponse)
+async def pending_teams_dashboard(
+    request: Request,
+    page: int = 1,
+    per_page: int = 20,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """总管理员查看子管理员导入的待分类 Team。"""
+    return await _render_team_dashboard_page(
+        request=request,
+        db=db,
+        current_user=current_user,
+        page=page,
+        per_page=per_page,
+        search=search,
+        status=status,
+        team_type=None,
+        active_page="pending_teams",
+        page_title="待分类 Team",
+        import_status=IMPORT_STATUS_PENDING,
+    )
+
+
+@router.get("/import-only", response_class=HTMLResponse)
+async def import_only_page(
+    request: Request,
+    page: int = 1,
+    per_page: int = 20,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_team_import_admin)
+):
+    """子管理员专用导入页；总管理员也可访问用于验证。"""
+    imported_by_user_id = current_user.get("id") if is_import_admin_user(current_user) else None
+    return await _render_team_dashboard_page(
+        request=request,
+        db=db,
+        current_user=current_user,
+        page=page,
+        per_page=per_page,
+        search=search,
+        status=status,
+        team_type=None,
+        active_page="import_only",
+        page_title="导入 Team / 我的导入",
+        import_status=IMPORT_STATUS_PENDING,
+        imported_by_user_id=imported_by_user_id,
+    )
+
+
+@router.get("/sub-admins", response_class=HTMLResponse)
+async def sub_admins_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    from app.main import templates
+
+    sub_admins = await auth_service.list_sub_admins(db)
+    return templates.TemplateResponse(
+        request,
+        "admin/sub_admins/index.html",
+        {
+            "request": request,
+            "user": current_user,
+            "active_page": "sub_admins",
+            "sub_admins": sub_admins,
+        }
+    )
+
+
+@router.post("/sub-admins")
+async def create_sub_admin(
+    payload: SubAdminCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin),
+):
+    result = await auth_service.create_sub_admin(payload.username, payload.password, db)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK if result.get("success") else status.HTTP_400_BAD_REQUEST,
+        content=result,
+    )
+
+
+@router.post("/sub-admins/{user_id}/toggle")
+async def toggle_sub_admin(
+    user_id: int,
+    payload: SubAdminToggleRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin),
+):
+    result = await auth_service.toggle_sub_admin(user_id, payload.is_active, db)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK if result.get("success") else status.HTTP_404_NOT_FOUND,
+        content=result,
+    )
+
+
+@router.post("/sub-admins/{user_id}/reset-password")
+async def reset_sub_admin_password(
+    user_id: int,
+    payload: SubAdminResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin),
+):
+    result = await auth_service.reset_sub_admin_password(user_id, payload.password, db)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK if result.get("success") else status.HTTP_400_BAD_REQUEST,
+        content=result,
+    )
+
+
 
 
 @router.post("/teams/{team_id}/delete")
@@ -711,13 +875,50 @@ async def transfer_team_type(
         )
 
 
+@router.post("/teams/{team_id}/classify")
+async def classify_pending_team(
+    team_id: int,
+    classify_data: TeamClassifyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """总管理员将待分类 Team 归类到普通账号、质保账号或质保 Team。"""
+    try:
+        target = (classify_data.target or "").strip().lower()
+        if target not in {
+            CLASSIFY_TARGET_STANDARD,
+            CLASSIFY_TARGET_WARRANTY_CODE,
+            CLASSIFY_TARGET_WARRANTY_TEAM,
+        }:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "分类目标无效"}
+            )
+
+        result = await team_service.classify_pending_team(
+            team_id=team_id,
+            target=target,
+            db_session=db,
+            warranty_days=classify_data.warranty_days,
+        )
+        return JSONResponse(
+            status_code=status.HTTP_200_OK if result.get("success") else status.HTTP_400_BAD_REQUEST,
+            content=result,
+        )
+    except Exception as e:
+        logger.error("分类待分类 Team 失败: %s", e)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"分类失败: {str(e)}"}
+        )
+
 
 
 @router.post("/teams/import")
 async def team_import(
     import_data: TeamImportRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(require_team_import_admin)
 ):
     """
     处理 Team 导入
@@ -731,8 +932,38 @@ async def team_import(
         导入结果
     """
     try:
+        is_import_admin = is_import_admin_user(current_user)
         team_type = _normalize_team_type(import_data.team_type)
-        logger.info(f"管理员导入 Team: import_type={import_data.import_type}, team_type={team_type}")
+        generate_warranty_codes = import_data.generate_warranty_codes
+        generate_codes_on_import = True
+        import_status = IMPORT_STATUS_CLASSIFIED
+        imported_by_user_id = None
+        imported_by_username = current_user.get("username")
+
+        if is_import_admin:
+            team_type = TEAM_TYPE_STANDARD
+            generate_warranty_codes = False
+            generate_codes_on_import = False
+            import_status = IMPORT_STATUS_PENDING
+            imported_by_user_id = current_user.get("id")
+
+        logger.info(
+            "后台用户导入 Team: user=%s role=%s import_type=%s team_type=%s import_status=%s",
+            current_user.get("username"),
+            current_user.get("role"),
+            import_data.import_type,
+            team_type,
+            import_status,
+        )
+
+        import_context_kwargs = {}
+        if is_import_admin:
+            import_context_kwargs = {
+                "generate_codes_on_import": generate_codes_on_import,
+                "import_status": import_status,
+                "imported_by_user_id": imported_by_user_id,
+                "imported_by_username": imported_by_username,
+            }
 
         if import_data.import_type == "single":
             # 单个导入 - 允许通过 AT, RT 或 ST 导入
@@ -754,8 +985,9 @@ async def team_import(
                 session_token=import_data.session_token,
                 client_id=import_data.client_id,
                 team_type=team_type,
-                generate_warranty_codes=import_data.generate_warranty_codes,
+                generate_warranty_codes=generate_warranty_codes,
                 warranty_days=import_data.warranty_days,
+                **import_context_kwargs,
             )
 
             if not result["success"]:
@@ -773,8 +1005,9 @@ async def team_import(
                     text=import_data.content,
                     db_session=db,
                     team_type=team_type,
-                    generate_warranty_codes=import_data.generate_warranty_codes,
+                    generate_warranty_codes=generate_warranty_codes,
                     warranty_days=import_data.warranty_days,
+                    **import_context_kwargs,
                 ):
                     yield json.dumps(status_item, ensure_ascii=False) + "\n"
 

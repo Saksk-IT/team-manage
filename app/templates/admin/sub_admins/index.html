@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}子管理员 - GPT Team 管理系统{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>子管理员管理</h2>
+</div>
+
+<div class="content-section">
+    <div class="section-header">
+        <h3>新增子管理员</h3>
+    </div>
+    <form id="createSubAdminForm" onsubmit="createSubAdmin(event)" class="settings-form">
+        <div class="form-row">
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" name="username" class="form-control" required maxlength="100" placeholder="例如 importer01">
+            </div>
+            <div class="form-group">
+                <label>初始密码</label>
+                <input type="password" name="password" class="form-control" required minlength="6" placeholder="至少 6 位">
+            </div>
+            <div class="form-group" style="align-self: flex-end;">
+                <button type="submit" class="btn btn-primary">创建</button>
+            </div>
+        </div>
+        <small class="form-text">子管理员只能导入 Team 并查看本人导入历史。</small>
+    </form>
+</div>
+
+<div class="content-section">
+    <div class="section-header">
+        <h3>子管理员列表</h3>
+    </div>
+    {% if sub_admins %}
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>用户名</th>
+                    <th>角色</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in sub_admins %}
+                <tr>
+                    <td>{{ item.id }}</td>
+                    <td>{{ item.username }}</td>
+                    <td>导入子管理员</td>
+                    <td>
+                        {% if item.is_active %}
+                        <span class="status-badge status-active">启用</span>
+                        {% else %}
+                        <span class="status-badge status-banned">禁用</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ item.created_at|format_datetime }}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="toggleSubAdmin({{ item.id }}, {{ 'false' if item.is_active else 'true' }})">
+                                {{ '禁用' if item.is_active else '启用' }}
+                            </button>
+                            <button type="button" class="btn btn-sm btn-warning" onclick="resetSubAdminPassword({{ item.id }}, '{{ item.username|escape_js }}')">
+                                重置密码
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><p>暂无子管理员</p></div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function createSubAdmin(event) {
+    event.preventDefault();
+    const form = event.target;
+    const username = form.username.value.trim();
+    const password = form.password.value;
+    const result = await apiCall('/admin/sub-admins', {
+        method: 'POST',
+        body: JSON.stringify({ username, password })
+    });
+    if (result.success) {
+        showToast('子管理员已创建', 'success');
+        setTimeout(() => location.reload(), 800);
+    } else {
+        showToast(result.error || '创建失败', 'error');
+    }
+}
+
+async function toggleSubAdmin(userId, isActive) {
+    const confirmed = await showSystemConfirm({
+        title: isActive ? '确认启用' : '确认禁用',
+        message: isActive ? '确定要启用该子管理员吗？' : '确定要禁用该子管理员吗？',
+        confirmText: '确认',
+        danger: !isActive,
+    });
+    if (!confirmed) return;
+
+    const result = await apiCall(`/admin/sub-admins/${userId}/toggle`, {
+        method: 'POST',
+        body: JSON.stringify({ is_active: isActive })
+    });
+    if (result.success) {
+        showToast('状态已更新', 'success');
+        setTimeout(() => location.reload(), 800);
+    } else {
+        showToast(result.error || '操作失败', 'error');
+    }
+}
+
+async function resetSubAdminPassword(userId, username) {
+    const password = prompt(`请输入 ${username} 的新密码（至少 6 位）`);
+    if (!password) return;
+    const result = await apiCall(`/admin/sub-admins/${userId}/reset-password`, {
+        method: 'POST',
+        body: JSON.stringify({ password })
+    });
+    if (result.success) {
+        showToast('密码已重置', 'success');
+    } else {
+        showToast(result.error || '重置失败', 'error');
+    }
+}
+</script>
+{% endblock %}

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.services.auth import auth_service
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ router = APIRouter(
 # 请求模型
 class LoginRequest(BaseModel):
     """登录请求"""
+    username: Optional[str] = Field(None, description="用户名；留空或 admin 表示总管理员")
     password: str = Field(..., description="管理员密码", min_length=1)
 
 
@@ -40,6 +41,7 @@ class LoginResponse(BaseModel):
     success: bool
     message: Optional[str] = None
     error: Optional[str] = None
+    redirect_url: Optional[str] = None
 
 
 class LogoutResponse(BaseModel):
@@ -75,30 +77,50 @@ async def login(
     try:
         logger.info("管理员登录请求")
 
-        # 验证密码
-        result = await auth_service.verify_admin_login(
-            login_data.password,
-            db
-        )
+        username = (login_data.username or "admin").strip().lower()
 
-        if not result["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=result["error"]
+        if username in {"", "admin"}:
+            result = await auth_service.verify_admin_login(
+                login_data.password,
+                db
             )
 
-        # 设置 Session
-        request.session["user"] = {
-            "username": "admin",
-            "is_admin": True
-        }
+            if not result["success"]:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=result["error"]
+                )
 
-        logger.info("管理员登录成功，Session 已创建")
+            request.session["user"] = {
+                "username": "admin",
+                "is_admin": True,
+                "role": "super_admin",
+                "is_super_admin": True,
+            }
+            redirect_url = "/admin"
+        else:
+            result = await auth_service.verify_sub_admin_login(
+                username,
+                login_data.password,
+                db
+            )
+
+            if not result["success"]:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=result["error"]
+                )
+
+            request.session["user"] = result["user"]
+            redirect_url = "/admin/import-only"
+
+        logger.info("后台用户登录成功，Session 已创建: %s", username)
 
         return LoginResponse(
             success=True,
             message="登录成功",
-            error=None
+            error=None,
+            redirect_url=redirect_url
         )
 
     except HTTPException:
@@ -146,7 +168,7 @@ async def change_password(
     request: Request,
     password_data: ChangePasswordRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_admin)
 ):
     """
     修改管理员密码

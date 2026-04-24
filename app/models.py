@@ -9,6 +9,24 @@ from app.database import Base
 from app.utils.time_utils import get_now
 
 
+class AdminUser(Base):
+    """后台用户表（子管理员）"""
+    __tablename__ = "admin_users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(100), unique=True, nullable=False, comment="登录用户名")
+    password_hash = Column(String(255), nullable=False, comment="密码哈希")
+    role = Column(String(30), nullable=False, default="import_admin", comment="角色: import_admin")
+    is_active = Column(Boolean, nullable=False, default=True, comment="是否启用")
+    created_at = Column(DateTime, default=get_now, nullable=False, comment="创建时间")
+    updated_at = Column(DateTime, default=get_now, onupdate=get_now, nullable=False, comment="更新时间")
+
+    __table_args__ = (
+        Index("idx_admin_users_username", "username", unique=True),
+        Index("idx_admin_users_role", "role"),
+    )
+
+
 class Team(Base):
     """Team 信息表"""
     __tablename__ = "teams"
@@ -37,6 +55,9 @@ class Team(Base):
     warranty_unavailable_at = Column(DateTime, comment="质保不可用标记时间")
     error_count = Column(Integer, default=0, comment="连续报错次数")
     last_sync = Column(DateTime, comment="最后同步时间")
+    import_status = Column(String(20), nullable=False, default="classified", comment="导入状态: pending/classified")
+    imported_by_user_id = Column(Integer, ForeignKey("admin_users.id"), comment="导入的子管理员 ID")
+    imported_by_username = Column(String(100), comment="导入人用户名快照")
     created_at = Column(DateTime, default=get_now, comment="创建时间")
 
     # 关系
@@ -47,6 +68,8 @@ class Team(Base):
     __table_args__ = (
         Index("idx_status", "status"),
         Index("idx_team_type", "team_type"),
+        Index("idx_team_import_status", "import_status"),
+        Index("idx_team_imported_by_user_id", "imported_by_user_id"),
     )
 
 

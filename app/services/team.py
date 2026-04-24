@@ -26,6 +26,11 @@ DEFAULT_TEAM_MAX_MEMBERS = 5
 STANDARD_TRANSFER_CODE_COUNT = 4
 TEAM_TYPE_STANDARD = "standard"
 TEAM_TYPE_WARRANTY = "warranty"
+IMPORT_STATUS_PENDING = "pending"
+IMPORT_STATUS_CLASSIFIED = "classified"
+CLASSIFY_TARGET_STANDARD = "standard"
+CLASSIFY_TARGET_WARRANTY_CODE = "warranty_code"
+CLASSIFY_TARGET_WARRANTY_TEAM = "warranty_team"
 IMPORT_RETRY_ATTEMPTS = 3
 IMPORT_RETRY_DELAYS_SECONDS = (1, 2)
 ProgressCallback = Optional[Callable[[Dict[str, Any]], Awaitable[None]]]
@@ -738,6 +743,10 @@ class TeamService:
         team_type: str = TEAM_TYPE_STANDARD,
         generate_warranty_codes: bool = False,
         warranty_days: int = 30,
+        generate_codes_on_import: bool = True,
+        import_status: str = IMPORT_STATUS_CLASSIFIED,
+        imported_by_user_id: Optional[int] = None,
+        imported_by_username: Optional[str] = None,
     ) -> Dict[str, Any]:
         retry_identifier = self._get_import_retry_identifier(access_token, email, account_id)
         last_result: Optional[Dict[str, Any]] = None
@@ -754,6 +763,10 @@ class TeamService:
                 team_type=team_type,
                 generate_warranty_codes=generate_warranty_codes,
                 warranty_days=warranty_days,
+                generate_codes_on_import=generate_codes_on_import,
+                import_status=import_status,
+                imported_by_user_id=imported_by_user_id,
+                imported_by_username=imported_by_username,
             )
 
             if result.get("success"):
@@ -804,6 +817,10 @@ class TeamService:
         team_type: str = TEAM_TYPE_STANDARD,
         generate_warranty_codes: bool = False,
         warranty_days: int = 30,
+        generate_codes_on_import: bool = True,
+        import_status: str = IMPORT_STATUS_CLASSIFIED,
+        imported_by_user_id: Optional[int] = None,
+        imported_by_username: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         单个导入 Team
@@ -1108,7 +1125,10 @@ class TeamService:
                     status=status,
                     account_role=selected_account.get("account_user_role"),
                     device_code_auth_enabled=device_code_auth_enabled,
-                    last_sync=get_now()
+                    last_sync=get_now(),
+                    import_status=import_status if import_status in {IMPORT_STATUS_PENDING, IMPORT_STATUS_CLASSIFIED} else IMPORT_STATUS_CLASSIFIED,
+                    imported_by_user_id=imported_by_user_id,
+                    imported_by_username=imported_by_username,
                 )
 
                 db_session.add(team)
@@ -1127,7 +1147,7 @@ class TeamService:
                 remaining_seats = max(max_members - current_members, 0)
                 generated_codes = []
                 normalized_warranty_days = max(int(warranty_days or 30), 1)
-                if team_type == TEAM_TYPE_STANDARD and remaining_seats > 0:
+                if generate_codes_on_import and team_type == TEAM_TYPE_STANDARD and remaining_seats > 0:
                     generate_result = await self.redemption_service.generate_code_batch(
                         db_session=db_session,
                         count=remaining_seats,
@@ -1436,6 +1456,84 @@ class TeamService:
             logger.error(f"转移 Team 类型失败: {e}")
             return {"success": False, "error": f"转移失败: {str(e)}"}
 
+    async def classify_pending_team(
+        self,
+        team_id: int,
+        target: str,
+        db_session: AsyncSession,
+        warranty_days: int = 30,
+    ) -> Dict[str, Any]:
+        """将待分类 Team 归档为普通、质保兑换码账号或质保 Team。"""
+        normalized_target = (target or "").strip().lower()
+        if normalized_target not in {
+            CLASSIFY_TARGET_STANDARD,
+            CLASSIFY_TARGET_WARRANTY_CODE,
+            CLASSIFY_TARGET_WARRANTY_TEAM,
+        }:
+            return {"success": False, "error": "分类目标无效"}
+
+        try:
+            team = await db_session.scalar(select(Team).where(Team.id == team_id))
+            if not team:
+                return {"success": False, "error": f"Team ID {team_id} 不存在"}
+
+            if (team.import_status or IMPORT_STATUS_CLASSIFIED) != IMPORT_STATUS_PENDING:
+                return {"success": False, "error": "该 Team 不在待分类列表中"}
+
+            cleanup_result = await self._clear_bound_codes_for_team(team.id, db_session)
+            normalized_warranty_days = max(int(warranty_days or 30), 1)
+            generated_codes: List[str] = []
+
+            team.import_status = IMPORT_STATUS_CLASSIFIED
+            team.bound_code_type = TEAM_TYPE_STANDARD
+
+            if normalized_target == CLASSIFY_TARGET_WARRANTY_TEAM:
+                team.team_type = TEAM_TYPE_WARRANTY
+                message = "已归类为质保 Team"
+            else:
+                team.team_type = TEAM_TYPE_STANDARD
+                has_warranty = normalized_target == CLASSIFY_TARGET_WARRANTY_CODE
+                team.bound_code_type = TEAM_TYPE_WARRANTY if has_warranty else TEAM_TYPE_STANDARD
+                remaining_seats = max((team.max_members or DEFAULT_TEAM_MAX_MEMBERS) - (team.current_members or 0), 0)
+
+                if remaining_seats > 0:
+                    generate_result = await self.redemption_service.generate_code_batch(
+                        db_session=db_session,
+                        count=remaining_seats,
+                        bound_team_id=team.id,
+                        has_warranty=has_warranty,
+                        warranty_days=normalized_warranty_days,
+                        commit=False,
+                    )
+                    if not generate_result.get("success"):
+                        raise Exception(generate_result.get("error") or "自动生成绑定兑换码失败")
+                    generated_codes = generate_result.get("codes", [])
+
+                message = (
+                    f"已归类为质保账号，并生成 {len(generated_codes)} 个质保绑定兑换码"
+                    if has_warranty
+                    else f"已归类为普通账号，并生成 {len(generated_codes)} 个绑定兑换码"
+                )
+
+            await db_session.commit()
+            return {
+                "success": True,
+                "team_id": team.id,
+                "target": normalized_target,
+                "team_type": team.team_type,
+                "bound_code_type": team.bound_code_type,
+                "generated_codes": generated_codes,
+                "generated_code_count": len(generated_codes),
+                "cleaned_code_count": cleanup_result["total_cleared"],
+                "message": message,
+                "error": None,
+            }
+        except Exception as e:
+            await db_session.rollback()
+            logger.error("待分类 Team 归类失败: %s", e)
+            return {"success": False, "error": f"分类失败: {str(e)}"}
+
+
     async def import_team_batch(
         self,
         text: str,
@@ -1443,6 +1541,10 @@ class TeamService:
         team_type: str = TEAM_TYPE_STANDARD,
         generate_warranty_codes: bool = False,
         warranty_days: int = 30,
+        generate_codes_on_import: bool = True,
+        import_status: str = IMPORT_STATUS_CLASSIFIED,
+        imported_by_user_id: Optional[int] = None,
+        imported_by_username: Optional[str] = None,
     ):
         """
         批量导入 Team (流式返回进度)
@@ -1512,6 +1614,10 @@ class TeamService:
                     team_type=team_type,
                     generate_warranty_codes=generate_warranty_codes,
                     warranty_days=warranty_days,
+                    generate_codes_on_import=generate_codes_on_import,
+                    import_status=import_status,
+                    imported_by_user_id=imported_by_user_id,
+                    imported_by_username=imported_by_username,
                 )
 
                 if result["success"]:
@@ -2753,7 +2859,9 @@ class TeamService:
         per_page: int = 20,
         search: Optional[str] = None,
         status: Optional[str] = None,
-        team_type: Optional[str] = None
+        team_type: Optional[str] = None,
+        import_status: Optional[str] = IMPORT_STATUS_CLASSIFIED,
+        imported_by_user_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         获取所有 Team 列表 (用于管理员页面)
@@ -2795,6 +2903,12 @@ class TeamService:
 
             if team_type:
                 stmt = stmt.where(Team.team_type == team_type)
+
+            if import_status:
+                stmt = stmt.where(Team.import_status == import_status)
+
+            if imported_by_user_id is not None:
+                stmt = stmt.where(Team.imported_by_user_id == imported_by_user_id)
 
             # 4. 获取总数
             count_stmt = select(func.count()).select_from(stmt.subquery())
@@ -2879,6 +2993,9 @@ class TeamService:
                     "email": team.email,
                     "account_id": team.account_id,
                     "team_type": team.team_type,
+                    "import_status": team.import_status or IMPORT_STATUS_CLASSIFIED,
+                    "imported_by_user_id": team.imported_by_user_id,
+                    "imported_by_username": team.imported_by_username,
                     "bound_code_type": team.bound_code_type or TEAM_TYPE_STANDARD,
                     "bound_code_type_label": "质保" if (team.bound_code_type or TEAM_TYPE_STANDARD) == TEAM_TYPE_WARRANTY else "普通",
                     "team_name": team.team_name,

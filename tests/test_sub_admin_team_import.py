@@ -1,0 +1,217 @@
+import os
+import tempfile
+import unittest
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from app.database import Base
+from app.models import AdminUser, RedemptionCode, Team
+from app.services.auth import AuthService
+from app.services.team import (
+    CLASSIFY_TARGET_STANDARD,
+    CLASSIFY_TARGET_WARRANTY_CODE,
+    CLASSIFY_TARGET_WARRANTY_TEAM,
+    IMPORT_STATUS_CLASSIFIED,
+    IMPORT_STATUS_PENDING,
+    TEAM_TYPE_STANDARD,
+    TEAM_TYPE_WARRANTY,
+    TeamService,
+)
+
+
+class SubAdminAuthTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        fd, self.db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        self.engine = create_async_engine(f"sqlite+aiosqlite:///{self.db_path}", future=True)
+        self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    async def asyncTearDown(self):
+        await self.engine.dispose()
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+
+    async def test_create_and_login_sub_admin(self):
+        service = AuthService()
+        async with self.Session() as session:
+            create_result = await service.create_sub_admin("Importer01", "secret123", session)
+            login_result = await service.verify_sub_admin_login("importer01", "secret123", session)
+
+        self.assertTrue(create_result["success"])
+        self.assertTrue(login_result["success"])
+        self.assertEqual(login_result["user"]["role"], "import_admin")
+        self.assertFalse(login_result["user"]["is_super_admin"])
+
+
+class PendingTeamClassificationTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        fd, self.db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        self.engine = create_async_engine(f"sqlite+aiosqlite:///{self.db_path}", future=True)
+        self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        self.service = TeamService()
+
+    async def asyncTearDown(self):
+        await self.engine.dispose()
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+
+    async def _create_pending_team(self, session, username="importer01"):
+        admin = AdminUser(
+            username=username,
+            password_hash="hash",
+            role="import_admin",
+            is_active=True,
+        )
+        session.add(admin)
+        await session.flush()
+        team = Team(
+            email=f"{username}@example.com",
+            access_token_encrypted="enc",
+            account_id=f"acc-{username}",
+            team_type=TEAM_TYPE_STANDARD,
+            bound_code_type=TEAM_TYPE_STANDARD,
+            team_name="Pending Team",
+            status="active",
+            current_members=1,
+            max_members=5,
+            import_status=IMPORT_STATUS_PENDING,
+            imported_by_user_id=admin.id,
+            imported_by_username=admin.username,
+        )
+        session.add(team)
+        await session.commit()
+        return admin, team
+
+    async def test_pending_team_visibility_can_be_limited_to_importer(self):
+        async with self.Session() as session:
+            admin1, team1 = await self._create_pending_team(session, "importer01")
+            await self._create_pending_team(session, "importer02")
+
+            own_result = await self.service.get_all_teams(
+                session,
+                import_status=IMPORT_STATUS_PENDING,
+                imported_by_user_id=admin1.id,
+            )
+            all_result = await self.service.get_all_teams(
+                session,
+                import_status=IMPORT_STATUS_PENDING,
+            )
+
+        self.assertTrue(own_result["success"])
+        self.assertEqual(own_result["total"], 1)
+        self.assertEqual(own_result["teams"][0]["id"], team1.id)
+        self.assertEqual(all_result["total"], 2)
+
+    async def test_classify_pending_team_as_standard_generates_standard_codes(self):
+        async with self.Session() as session:
+            _, team = await self._create_pending_team(session)
+            result = await self.service.classify_pending_team(
+                team.id,
+                CLASSIFY_TARGET_STANDARD,
+                session,
+            )
+            codes = (await session.execute(select(RedemptionCode))).scalars().all()
+            refreshed = await session.get(Team, team.id)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(refreshed.import_status, IMPORT_STATUS_CLASSIFIED)
+        self.assertEqual(refreshed.team_type, TEAM_TYPE_STANDARD)
+        self.assertEqual(refreshed.bound_code_type, TEAM_TYPE_STANDARD)
+        self.assertEqual(len(codes), 4)
+        self.assertTrue(all(not code.has_warranty for code in codes))
+
+    async def test_classify_pending_team_as_warranty_code_generates_warranty_codes(self):
+        async with self.Session() as session:
+            _, team = await self._create_pending_team(session)
+            result = await self.service.classify_pending_team(
+                team.id,
+                CLASSIFY_TARGET_WARRANTY_CODE,
+                session,
+                warranty_days=45,
+            )
+            codes = (await session.execute(select(RedemptionCode))).scalars().all()
+            refreshed = await session.get(Team, team.id)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(refreshed.import_status, IMPORT_STATUS_CLASSIFIED)
+        self.assertEqual(refreshed.team_type, TEAM_TYPE_STANDARD)
+        self.assertEqual(refreshed.bound_code_type, TEAM_TYPE_WARRANTY)
+        self.assertEqual(len(codes), 4)
+        self.assertTrue(all(code.has_warranty for code in codes))
+        self.assertTrue(all(code.warranty_days == 45 for code in codes))
+
+    async def test_classify_pending_team_as_warranty_team_does_not_generate_codes(self):
+        async with self.Session() as session:
+            _, team = await self._create_pending_team(session)
+            result = await self.service.classify_pending_team(
+                team.id,
+                CLASSIFY_TARGET_WARRANTY_TEAM,
+                session,
+            )
+            code_count = await session.scalar(select(func.count(RedemptionCode.id)))
+            refreshed = await session.get(Team, team.id)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(refreshed.import_status, IMPORT_STATUS_CLASSIFIED)
+        self.assertEqual(refreshed.team_type, TEAM_TYPE_WARRANTY)
+        self.assertEqual(code_count, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+class SubAdminImportRouteTests(unittest.IsolatedAsyncioTestCase):
+    async def test_sub_admin_single_import_is_forced_to_pending_without_codes(self):
+        from unittest.mock import AsyncMock, patch
+        from app.routes.admin import TeamImportRequest, team_import
+
+        mocked_result = {
+            "success": True,
+            "team_id": 1,
+            "team_ids": [1],
+            "email": "owner@example.com",
+            "imported_teams": [],
+            "generated_codes": [],
+            "generated_code_count": 0,
+            "message": "ok",
+            "error": None,
+        }
+        current_user = {
+            "id": 7,
+            "username": "importer01",
+            "is_admin": True,
+            "role": "import_admin",
+            "is_super_admin": False,
+        }
+
+        with patch(
+            "app.routes.admin.team_service.import_team_single",
+            new=AsyncMock(return_value=mocked_result),
+        ) as mocked_import:
+            response = await team_import(
+                import_data=TeamImportRequest(
+                    import_type="single",
+                    team_type="warranty",
+                    access_token="eyJ.payload",
+                    generate_warranty_codes=True,
+                    warranty_days=45,
+                ),
+                db="db-session",
+                current_user=current_user,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        mocked_import.assert_awaited_once()
+        kwargs = mocked_import.await_args.kwargs
+        self.assertEqual(kwargs["team_type"], TEAM_TYPE_STANDARD)
+        self.assertFalse(kwargs["generate_warranty_codes"])
+        self.assertFalse(kwargs["generate_codes_on_import"])
+        self.assertEqual(kwargs["import_status"], IMPORT_STATUS_PENDING)
+        self.assertEqual(kwargs["imported_by_user_id"], 7)
+        self.assertEqual(kwargs["imported_by_username"], "importer01")
