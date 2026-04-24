@@ -50,6 +50,18 @@ class WarrantyService:
         "failed": "质保失败",
     }
 
+    WARRANTY_EMAIL_STATUS_LABELS = {
+        "active": "有效",
+        "claims_exhausted": "次数耗尽",
+        "expired": "已过期",
+        "inactive": "未启用",
+    }
+
+    WARRANTY_EMAIL_SOURCE_LABELS = {
+        "auto_redeem": "质保兑换码自动入列",
+        "manual": "管理员手动维护",
+    }
+
     def __init__(self):
         """初始化质保服务"""
         from app.services.team import TeamService
@@ -97,19 +109,16 @@ class WarrantyService:
 
         if remaining_claims <= 0 and not entry.expires_at:
             status = "inactive"
-            status_label = "未启用"
         elif remaining_claims <= 0:
             status = "claims_exhausted"
-            status_label = "次数耗尽"
         elif remaining_days is None:
             status = "inactive"
-            status_label = "未启用"
         elif remaining_days <= 0:
             status = "expired"
-            status_label = "已过期"
         else:
             status = "active"
-            status_label = "有效"
+
+        source = entry.source or "auto_redeem"
 
         return {
             "id": entry.id,
@@ -117,12 +126,12 @@ class WarrantyService:
             "remaining_claims": remaining_claims,
             "remaining_days": remaining_days,
             "expires_at": entry.expires_at.isoformat() if entry.expires_at else None,
-            "source": entry.source or "auto_redeem",
-            "source_label": "质保兑换码自动入列" if (entry.source or "auto_redeem") == "auto_redeem" else "管理员手动维护",
+            "source": source,
+            "source_label": self.WARRANTY_EMAIL_SOURCE_LABELS.get(source, "未知来源"),
             "last_redeem_code": entry.last_redeem_code,
             "last_warranty_team_id": entry.last_warranty_team_id,
             "status": status,
-            "status_label": status_label,
+            "status_label": self.WARRANTY_EMAIL_STATUS_LABELS.get(status, "未知"),
             "created_at": entry.created_at.isoformat() if entry.created_at else None,
             "updated_at": entry.updated_at.isoformat() if entry.updated_at else None
         }
@@ -306,9 +315,16 @@ class WarrantyService:
     async def list_warranty_email_entries(
         self,
         db_session: AsyncSession,
-        search: Optional[str] = None
+        search: Optional[str] = None,
+        status_filter: Optional[str] = None,
+        source_filter: Optional[str] = None,
+        remaining_claims_min: Optional[int] = None,
+        remaining_claims_max: Optional[int] = None,
+        remaining_days_min: Optional[int] = None,
+        remaining_days_max: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         stmt = select(WarrantyEmailEntry)
+        db_filters = []
         normalized_search = (search or "").strip()
         if normalized_search:
             search_pattern = f"%{normalized_search}%"
@@ -322,13 +338,60 @@ class WarrantyService:
             ]
             if matched_emails:
                 search_filters.append(func.lower(WarrantyEmailEntry.email).in_(matched_emails))
-            stmt = stmt.where(
-                or_(*search_filters)
-            )
+            db_filters.append(or_(*search_filters))
+
+        normalized_source = (source_filter or "").strip().lower()
+        if normalized_source in self.WARRANTY_EMAIL_SOURCE_LABELS:
+            db_filters.append(func.coalesce(WarrantyEmailEntry.source, "auto_redeem") == normalized_source)
+
+        if db_filters:
+            stmt = stmt.where(and_(*db_filters))
 
         stmt = stmt.order_by(WarrantyEmailEntry.updated_at.desc(), WarrantyEmailEntry.created_at.desc())
         result = await db_session.execute(stmt)
-        return [self.serialize_warranty_email_entry(entry) for entry in result.scalars().all()]
+        entries = [self.serialize_warranty_email_entry(entry) for entry in result.scalars().all()]
+
+        normalized_status = (status_filter or "").strip().lower()
+        if normalized_status in self.WARRANTY_EMAIL_STATUS_LABELS:
+            entries = [entry for entry in entries if entry["status"] == normalized_status]
+
+        return [
+            entry
+            for entry in entries
+            if self._warranty_entry_matches_remaining_filters(
+                entry=entry,
+                remaining_claims_min=remaining_claims_min,
+                remaining_claims_max=remaining_claims_max,
+                remaining_days_min=remaining_days_min,
+                remaining_days_max=remaining_days_max,
+            )
+        ]
+
+    def _warranty_entry_matches_remaining_filters(
+        self,
+        entry: Dict[str, Any],
+        remaining_claims_min: Optional[int] = None,
+        remaining_claims_max: Optional[int] = None,
+        remaining_days_min: Optional[int] = None,
+        remaining_days_max: Optional[int] = None,
+    ) -> bool:
+        remaining_claims = entry.get("remaining_claims")
+        remaining_days = entry.get("remaining_days")
+
+        if remaining_claims_min is not None and remaining_claims < remaining_claims_min:
+            return False
+        if remaining_claims_max is not None and remaining_claims > remaining_claims_max:
+            return False
+
+        if remaining_days_min is not None or remaining_days_max is not None:
+            if remaining_days is None:
+                return False
+            if remaining_days_min is not None and remaining_days < remaining_days_min:
+                return False
+            if remaining_days_max is not None and remaining_days > remaining_days_max:
+                return False
+
+        return True
 
     async def _find_warranty_entry_emails_by_redeem_code(
         self,
@@ -416,6 +479,70 @@ class WarrantyService:
         await db_session.commit()
         await db_session.refresh(target_entry)
         return target_entry
+
+    async def bulk_update_warranty_email_entries(
+        self,
+        db_session: AsyncSession,
+        entry_ids: List[int],
+        update_remaining_days: bool = False,
+        remaining_days: Optional[int] = None,
+        update_remaining_claims: bool = False,
+        remaining_claims: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        normalized_ids = self._normalize_warranty_entry_ids(entry_ids)
+        if not normalized_ids:
+            raise ValueError("请先选择要修改的质保邮箱")
+
+        if not update_remaining_days and not update_remaining_claims:
+            raise ValueError("请至少选择一个要批量修改的字段")
+
+        expires_at = None
+        if update_remaining_days:
+            if remaining_days is None:
+                raise ValueError("请填写剩余天数")
+            expires_at = self._build_warranty_entry_expires_at(remaining_days)
+
+        remaining_claims_int = None
+        if update_remaining_claims:
+            if remaining_claims is None:
+                raise ValueError("请填写剩余次数")
+            try:
+                remaining_claims_int = int(remaining_claims)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("剩余次数必须是非负整数") from exc
+            if remaining_claims_int < 0:
+                raise ValueError("剩余次数必须是非负整数")
+
+        result = await db_session.execute(
+            select(WarrantyEmailEntry).where(WarrantyEmailEntry.id.in_(normalized_ids))
+        )
+        entries = result.scalars().all()
+        if not entries:
+            raise ValueError("未找到可更新的质保邮箱记录")
+
+        for entry in entries:
+            if update_remaining_days:
+                entry.expires_at = expires_at
+            if update_remaining_claims:
+                entry.remaining_claims = remaining_claims_int
+
+        await db_session.commit()
+        return {
+            "requested_count": len(normalized_ids),
+            "updated_count": len(entries),
+        }
+
+    def _normalize_warranty_entry_ids(self, entry_ids: List[int]) -> List[int]:
+        normalized_ids = []
+        for entry_id in entry_ids or []:
+            try:
+                entry_id_int = int(entry_id)
+            except (TypeError, ValueError):
+                continue
+            if entry_id_int > 0:
+                normalized_ids.append(entry_id_int)
+
+        return list(dict.fromkeys(normalized_ids))
 
     async def delete_warranty_email_entry(
         self,

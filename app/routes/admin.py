@@ -357,6 +357,14 @@ class WarrantyEmailSaveRequest(BaseModel):
     remaining_claims: int = Field(..., description="剩余次数")
 
 
+class BulkWarrantyEmailUpdateRequest(BaseModel):
+    entry_ids: List[int] = Field(..., min_length=1, description="质保邮箱记录 ID 列表")
+    update_remaining_days: bool = Field(False, description="是否修改剩余天数")
+    remaining_days: Optional[int] = Field(None, ge=0, description="剩余天数")
+    update_remaining_claims: bool = Field(False, description="是否修改剩余次数")
+    remaining_claims: Optional[int] = Field(None, ge=0, description="剩余次数")
+
+
 class FrontAnnouncementSettingsRequest(BaseModel):
     """前台公告设置请求"""
     enabled: bool = Field(..., description="是否启用前台公告")
@@ -2861,14 +2869,75 @@ async def upload_customer_service_image(
 async def warranty_emails_page(
     request: Request,
     search: Optional[str] = None,
+    status_filter: Optional[str] = None,
+    source_filter: Optional[str] = None,
+    remaining_claims_min: Optional[str] = None,
+    remaining_claims_max: Optional[str] = None,
+    remaining_days_min: Optional[str] = None,
+    remaining_days_max: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
     try:
         from app.main import templates
 
-        logger.info("管理员访问质保邮箱列表页 search=%s", search)
-        entries = await warranty_service.list_warranty_email_entries(db, search)
+        normalized_status = _normalize_optional_filter_text(status_filter)
+        if normalized_status and normalized_status not in warranty_service.WARRANTY_EMAIL_STATUS_LABELS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="无效的质保邮箱状态筛选"
+            )
+
+        normalized_source = _normalize_optional_filter_text(source_filter)
+        if normalized_source and normalized_source not in warranty_service.WARRANTY_EMAIL_SOURCE_LABELS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="无效的质保邮箱来源筛选"
+            )
+
+        parsed_remaining_claims_min = _parse_optional_int_filter(
+            remaining_claims_min,
+            label="剩余次数最小值",
+            min_value=0
+        )
+        parsed_remaining_claims_max = _parse_optional_int_filter(
+            remaining_claims_max,
+            label="剩余次数最大值",
+            min_value=0
+        )
+        parsed_remaining_days_min = _parse_optional_int_filter(
+            remaining_days_min,
+            label="剩余天数最小值",
+            min_value=0
+        )
+        parsed_remaining_days_max = _parse_optional_int_filter(
+            remaining_days_max,
+            label="剩余天数最大值",
+            min_value=0
+        )
+        _validate_code_filter_range(parsed_remaining_claims_min, parsed_remaining_claims_max, "剩余次数")
+        _validate_code_filter_range(parsed_remaining_days_min, parsed_remaining_days_max, "剩余天数")
+
+        logger.info(
+            "管理员访问质保邮箱列表页 search=%s status=%s source=%s claims=%s-%s days=%s-%s",
+            search,
+            normalized_status,
+            normalized_source,
+            parsed_remaining_claims_min,
+            parsed_remaining_claims_max,
+            parsed_remaining_days_min,
+            parsed_remaining_days_max,
+        )
+        entries = await warranty_service.list_warranty_email_entries(
+            db_session=db,
+            search=search,
+            status_filter=normalized_status,
+            source_filter=normalized_source,
+            remaining_claims_min=parsed_remaining_claims_min,
+            remaining_claims_max=parsed_remaining_claims_max,
+            remaining_days_min=parsed_remaining_days_min,
+            remaining_days_max=parsed_remaining_days_max,
+        )
         return templates.TemplateResponse(
             request,
             "admin/warranty_emails/index.html",
@@ -2877,9 +2946,44 @@ async def warranty_emails_page(
                 "user": current_user,
                 "active_page": "warranty_emails",
                 "entries": entries,
-                "search": search or ""
+                "search": search or "",
+                "warranty_email_filters": {
+                    "status_filter": normalized_status or "",
+                    "source_filter": normalized_source or "",
+                    "remaining_claims_min": (
+                        parsed_remaining_claims_min
+                        if parsed_remaining_claims_min is not None
+                        else ""
+                    ),
+                    "remaining_claims_max": (
+                        parsed_remaining_claims_max
+                        if parsed_remaining_claims_max is not None
+                        else ""
+                    ),
+                    "remaining_days_min": (
+                        parsed_remaining_days_min
+                        if parsed_remaining_days_min is not None
+                        else ""
+                    ),
+                    "remaining_days_max": (
+                        parsed_remaining_days_max
+                        if parsed_remaining_days_max is not None
+                        else ""
+                    ),
+                },
+                "has_warranty_email_filters": any([
+                    search,
+                    normalized_status,
+                    normalized_source,
+                    parsed_remaining_claims_min is not None,
+                    parsed_remaining_claims_max is not None,
+                    parsed_remaining_days_min is not None,
+                    parsed_remaining_days_max is not None,
+                ])
             }
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"加载质保邮箱列表页失败: {e}")
         raise HTTPException(
@@ -3037,6 +3141,41 @@ async def save_warranty_email(
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"保存失败: {str(e)}"}
+        )
+
+
+@router.post("/warranty-emails/bulk-update")
+async def bulk_update_warranty_emails(
+    payload: BulkWarrantyEmailUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        result = await warranty_service.bulk_update_warranty_email_entries(
+            db_session=db,
+            entry_ids=payload.entry_ids,
+            update_remaining_days=payload.update_remaining_days,
+            remaining_days=payload.remaining_days,
+            update_remaining_claims=payload.update_remaining_claims,
+            remaining_claims=payload.remaining_claims,
+        )
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": "质保邮箱批量更新完成",
+                **result,
+            }
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"success": False, "error": str(e)}
+        )
+    except Exception as e:
+        logger.error(f"批量更新质保邮箱失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"批量更新失败: {str(e)}"}
         )
 
 

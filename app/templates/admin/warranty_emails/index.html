@@ -40,12 +40,55 @@
         <h3>邮箱列表</h3>
     </div>
 
-    <form method="get" style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem;">
-        <input type="text" name="search" value="{{ search or '' }}" class="form-control" style="max-width: 320px;" placeholder="搜索邮箱或兑换码">
-        <button type="submit" class="btn btn-secondary">搜索</button>
-        {% if search %}
-        <a href="/admin/warranty-emails" class="btn btn-secondary">清空</a>
-        {% endif %}
+    <form method="get" action="/admin/warranty-emails" class="warranty-email-filter-form">
+        <label class="warranty-filter-field warranty-filter-field-wide">
+            关键词
+            <input type="text" name="search" value="{{ search or '' }}" class="form-control" placeholder="搜索邮箱或兑换码">
+        </label>
+        <label class="warranty-filter-field">
+            筛选状态
+            <select name="status_filter" class="form-control">
+                <option value="" {% if not warranty_email_filters.status_filter %}selected{% endif %}>全部状态</option>
+                <option value="active" {% if warranty_email_filters.status_filter == 'active' %}selected{% endif %}>有效</option>
+                <option value="claims_exhausted" {% if warranty_email_filters.status_filter == 'claims_exhausted' %}selected{% endif %}>次数耗尽</option>
+                <option value="expired" {% if warranty_email_filters.status_filter == 'expired' %}selected{% endif %}>已过期</option>
+                <option value="inactive" {% if warranty_email_filters.status_filter == 'inactive' %}selected{% endif %}>未启用</option>
+            </select>
+        </label>
+        <div class="warranty-filter-field warranty-filter-range-field">
+            <span>剩余次数</span>
+            <div class="warranty-filter-range-inputs">
+                <input type="number" name="remaining_claims_min" value="{{ warranty_email_filters.remaining_claims_min }}" min="0" class="form-control" placeholder="最小">
+                <span>-</span>
+                <input type="number" name="remaining_claims_max" value="{{ warranty_email_filters.remaining_claims_max }}" min="0" class="form-control" placeholder="最大">
+            </div>
+        </div>
+        <div class="warranty-filter-field warranty-filter-range-field">
+            <span>剩余天数</span>
+            <div class="warranty-filter-range-inputs">
+                <input type="number" name="remaining_days_min" value="{{ warranty_email_filters.remaining_days_min }}" min="0" class="form-control" placeholder="最小">
+                <span>-</span>
+                <input type="number" name="remaining_days_max" value="{{ warranty_email_filters.remaining_days_max }}" min="0" class="form-control" placeholder="最大">
+            </div>
+        </div>
+        <label class="warranty-filter-field">
+            来源
+            <select name="source_filter" class="form-control">
+                <option value="" {% if not warranty_email_filters.source_filter %}selected{% endif %}>全部来源</option>
+                <option value="auto_redeem" {% if warranty_email_filters.source_filter == 'auto_redeem' %}selected{% endif %}>质保兑换码自动入列</option>
+                <option value="manual" {% if warranty_email_filters.source_filter == 'manual' %}selected{% endif %}>管理员手动维护</option>
+            </select>
+        </label>
+        <div class="warranty-filter-actions">
+            <button type="submit" class="btn btn-secondary">
+                <i data-lucide="filter" style="width: 16px; height: 16px;"></i> 筛选
+            </button>
+            {% if has_warranty_email_filters %}
+            <a href="/admin/warranty-emails" class="btn btn-secondary">
+                <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i> 清空
+            </a>
+            {% endif %}
+        </div>
     </form>
     <p class="form-help" style="margin-bottom: 1rem;">支持输入邮箱、最近普通兑换码，或历史已使用兑换码自动关联对应质保记录。</p>
 
@@ -53,6 +96,9 @@
         <table class="data-table">
             <thead>
                 <tr>
+                    <th style="width: 40px;">
+                        <input type="checkbox" id="selectAllWarrantyEmails" onclick="toggleSelectAllWarrantyEmails(this)" style="width: auto; margin: 0;">
+                    </th>
                     <th>邮箱</th>
                     <th>状态</th>
                     <th>剩余次数</th>
@@ -67,6 +113,9 @@
             <tbody>
                 {% for entry in entries %}
                 <tr>
+                    <td>
+                        <input type="checkbox" class="warranty-email-checkbox" value="{{ entry.id }}" onchange="updateWarrantyEmailSelectionCount()" style="width: auto; margin: 0;">
+                    </td>
                     <td>{{ entry.email }}</td>
                     <td>
                         <span class="status-badge
@@ -104,11 +153,55 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="9" class="empty-state-cell">暂无质保邮箱记录</td>
+                    <td colspan="10" class="empty-state-cell">暂无质保邮箱记录</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+
+    <div id="warrantyEmailBulkActionBar" class="bulk-action-bar" style="display: none;">
+        <div class="bulk-info">
+            已选择 <span id="warrantyEmailSelectedCount">0</span> 个质保邮箱
+        </div>
+        <div class="bulk-actions">
+            <button type="button" onclick="showBulkUpdateWarrantyEmailModal()" class="btn btn-primary">
+                <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i> 批量修改剩余值
+            </button>
+            <button type="button" onclick="deselectAllWarrantyEmails()" class="btn btn-secondary">取消全选</button>
+        </div>
+    </div>
+</div>
+
+<div id="bulkUpdateWarrantyEmailModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>批量修改剩余天数 / 次数</h3>
+            <button class="modal-close" onclick="hideModal('bulkUpdateWarrantyEmailModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="alert alert-info" style="margin-bottom: 1rem;">
+                您正在批量修改 <strong id="bulkWarrantyEmailSelectedCount">0</strong> 个质保邮箱。
+            </div>
+            <form id="bulkUpdateWarrantyEmailForm" onsubmit="handleBulkUpdateWarrantyEmails(event)">
+                <div class="form-group">
+                    <label class="bulk-update-toggle">
+                        <input type="checkbox" id="bulkUpdateRemainingDaysEnabled" checked onchange="syncBulkWarrantyEmailFieldState()">
+                        <span>修改剩余天数</span>
+                    </label>
+                    <input type="number" id="bulkUpdateRemainingDays" class="form-control" min="0" value="30" placeholder="0 表示立即过期">
+                </div>
+                <div class="form-group">
+                    <label class="bulk-update-toggle">
+                        <input type="checkbox" id="bulkUpdateRemainingClaimsEnabled" checked onchange="syncBulkWarrantyEmailFieldState()">
+                        <span>修改剩余次数</span>
+                    </label>
+                    <input type="number" id="bulkUpdateRemainingClaims" class="form-control" min="0" value="10">
+                </div>
+                <p class="form-help">可取消某一项勾选，仅修改另一项；剩余天数和剩余次数均为非负整数。</p>
+                <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">保存批量修改</button>
+            </form>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -139,6 +232,123 @@
 
     .editor-active {
         box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.25);
+    }
+
+    .warranty-email-filter-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 0.75rem;
+        align-items: end;
+        margin-bottom: 1rem;
+    }
+
+    .warranty-filter-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        margin: 0;
+        min-width: 0;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-muted);
+    }
+
+    .warranty-filter-field-wide,
+    .warranty-filter-range-field {
+        grid-column: span 2;
+    }
+
+    .warranty-filter-range-inputs {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .warranty-filter-range-inputs span {
+        color: var(--text-dim);
+        font-size: 0.75rem;
+    }
+
+    .warranty-filter-actions {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .bulk-action-bar {
+        position: fixed;
+        bottom: 2rem;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--bg-surface);
+        padding: 1rem 2rem;
+        border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        gap: 2rem;
+        z-index: 100;
+        border: 1px solid var(--border-color);
+    }
+
+    .bulk-info {
+        font-weight: 500;
+        color: var(--text-color);
+    }
+
+    .bulk-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .bulk-update-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        margin-bottom: 0.5rem;
+    }
+
+    .bulk-update-toggle input {
+        width: auto;
+        margin: 0;
+    }
+
+    @media (max-width: 768px) {
+        .warranty-email-filter-form {
+            grid-template-columns: 1fr;
+        }
+
+        .warranty-filter-field-wide,
+        .warranty-filter-range-field {
+            grid-column: span 1;
+        }
+
+        .warranty-filter-range-inputs {
+            grid-template-columns: 1fr;
+        }
+
+        .warranty-filter-range-inputs span {
+            display: none;
+        }
+
+        .bulk-action-bar {
+            bottom: 1rem;
+            left: 1rem;
+            right: 1rem;
+            transform: none;
+            padding: 1rem;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .bulk-actions,
+        .bulk-actions .btn {
+            width: 100%;
+        }
     }
 </style>
 {% endblock %}
@@ -245,6 +455,130 @@
             showToast('网络错误', 'error');
         }
     });
+
+    function getSelectedWarrantyEmailIds() {
+        return Array.from(document.querySelectorAll('.warranty-email-checkbox:checked'))
+            .map((checkbox) => Number(checkbox.value))
+            .filter((entryId) => Number.isInteger(entryId) && entryId > 0);
+    }
+
+    function toggleSelectAllWarrantyEmails(checkbox) {
+        document.querySelectorAll('.warranty-email-checkbox').forEach((item) => {
+            item.checked = checkbox.checked;
+        });
+        updateWarrantyEmailSelectionCount();
+    }
+
+    function deselectAllWarrantyEmails() {
+        const selectAll = document.getElementById('selectAllWarrantyEmails');
+        if (selectAll) {
+            selectAll.checked = false;
+        }
+        document.querySelectorAll('.warranty-email-checkbox').forEach((item) => {
+            item.checked = false;
+        });
+        updateWarrantyEmailSelectionCount();
+    }
+
+    function updateWarrantyEmailSelectionCount() {
+        const count = getSelectedWarrantyEmailIds().length;
+        const countText = document.getElementById('warrantyEmailSelectedCount');
+        const actionBar = document.getElementById('warrantyEmailBulkActionBar');
+        const selectAll = document.getElementById('selectAllWarrantyEmails');
+        const allCheckboxes = Array.from(document.querySelectorAll('.warranty-email-checkbox'));
+
+        if (countText) {
+            countText.textContent = String(count);
+        }
+        if (actionBar) {
+            actionBar.style.display = count > 0 ? 'flex' : 'none';
+        }
+        if (selectAll && allCheckboxes.length > 0) {
+            selectAll.checked = count === allCheckboxes.length;
+            selectAll.indeterminate = count > 0 && count < allCheckboxes.length;
+        }
+    }
+
+    function syncBulkWarrantyEmailFieldState() {
+        const daysEnabled = document.getElementById('bulkUpdateRemainingDaysEnabled')?.checked;
+        const claimsEnabled = document.getElementById('bulkUpdateRemainingClaimsEnabled')?.checked;
+        const daysInput = document.getElementById('bulkUpdateRemainingDays');
+        const claimsInput = document.getElementById('bulkUpdateRemainingClaims');
+
+        if (daysInput) {
+            daysInput.disabled = !daysEnabled;
+        }
+        if (claimsInput) {
+            claimsInput.disabled = !claimsEnabled;
+        }
+    }
+
+    function showBulkUpdateWarrantyEmailModal() {
+        const selectedIds = getSelectedWarrantyEmailIds();
+        if (selectedIds.length === 0) {
+            showToast('请先选择要修改的质保邮箱', 'error');
+            return;
+        }
+
+        document.getElementById('bulkWarrantyEmailSelectedCount').textContent = String(selectedIds.length);
+        syncBulkWarrantyEmailFieldState();
+        showModal('bulkUpdateWarrantyEmailModal');
+    }
+
+    async function handleBulkUpdateWarrantyEmails(event) {
+        event.preventDefault();
+        const entryIds = getSelectedWarrantyEmailIds();
+        const updateRemainingDays = document.getElementById('bulkUpdateRemainingDaysEnabled').checked;
+        const updateRemainingClaims = document.getElementById('bulkUpdateRemainingClaimsEnabled').checked;
+        const remainingDaysValue = document.getElementById('bulkUpdateRemainingDays').value.trim();
+        const remainingClaimsValue = document.getElementById('bulkUpdateRemainingClaims').value.trim();
+        const remainingDays = updateRemainingDays ? Number(remainingDaysValue) : null;
+        const remainingClaims = updateRemainingClaims ? Number(remainingClaimsValue) : null;
+
+        if (entryIds.length === 0) {
+            showToast('请先选择要修改的质保邮箱', 'error');
+            return;
+        }
+
+        if (!updateRemainingDays && !updateRemainingClaims) {
+            showToast('请至少选择一个要批量修改的字段', 'error');
+            return;
+        }
+
+        if (updateRemainingDays && (!remainingDaysValue || !Number.isInteger(remainingDays) || remainingDays < 0)) {
+            showToast('剩余天数必须是非负整数', 'error');
+            return;
+        }
+
+        if (updateRemainingClaims && (!remainingClaimsValue || !Number.isInteger(remainingClaims) || remainingClaims < 0)) {
+            showToast('剩余次数必须是非负整数', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/warranty-emails/bulk-update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    entry_ids: entryIds,
+                    update_remaining_days: updateRemainingDays,
+                    remaining_days: remainingDays,
+                    update_remaining_claims: updateRemainingClaims,
+                    remaining_claims: remainingClaims,
+                })
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                showToast(data.message || '质保邮箱批量更新完成', 'success');
+                hideModal('bulkUpdateWarrantyEmailModal');
+                setTimeout(() => window.location.reload(), 300);
+            } else {
+                showToast(data.error || '批量更新失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    }
 
     async function deleteWarrantyEmail(entryId, email) {
         const confirmed = await showSystemConfirm({
