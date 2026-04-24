@@ -125,12 +125,14 @@ function createFrozenRecords(records) {
         const cardNumber = digitsOnly(record.cardNumber || record.cardFull || '');
         const cardExpiry = formatCardExpiry(record.cardExpiry || record.expiry || record.expiration || '');
         const phone = normalizeText(record.phone || record.phoneFull || '');
+        const rawText = normalizeText(record.rawText || '');
 
         return Object.freeze({
             id: String(record.id || `${Date.now()}-${index + 1}`),
             sequence: Number.isInteger(record.sequence) ? record.sequence : index + 1,
             name: normalizeText(record.name),
             address: normalizeText(record.address),
+            rawText,
             note: redactSensitiveText(record.note || ''),
             cardNumber,
             cardMasked: normalizeText(record.cardMasked),
@@ -150,6 +152,7 @@ function buildRecord(values) {
         sequence: values.sequence,
         name: normalizeText(values.name),
         address: normalizeText(values.address),
+        rawText: normalizeText(values.rawText),
         note: redactSensitiveText(values.note || ''),
         cardNumber: digitsOnly(values.cardNumber || ''),
         cardMasked: normalizeText(values.cardMasked),
@@ -160,6 +163,21 @@ function buildRecord(values) {
         importedAt: new Date().toISOString(),
         warnings: Object.freeze((values.warnings || []).map(normalizeText).filter(Boolean)),
     });
+}
+
+function parsePlainTextRecord(line, sequence) {
+    const rawText = normalizeText(line);
+    if (!rawText) {
+        return { error: '内容为空' };
+    }
+
+    return {
+        record: buildRecord({
+            sequence,
+            rawText,
+        }),
+        skippedSensitive: 0,
+    };
 }
 
 function validateNameAddress(name, address) {
@@ -240,9 +258,14 @@ function parseGenericRecord(parts, sequence) {
 }
 
 function parseRecordLine(line, sequence) {
+    const rawLine = String(line || '').trim();
     const parts = line.split(/\s*-{4,}\s*/).map(normalizeText).filter(Boolean);
     if (parts.length < 2) {
-        return { error: '缺少有效分隔符 ----' };
+        if (isLikelyCardNumber(rawLine) || hasSecretUrl(rawLine)) {
+            return { error: '缺少有效分隔符 ----' };
+        }
+
+        return parsePlainTextRecord(rawLine, sequence);
     }
 
     if (isLikelyCardNumber(parts[0]) || hasSecretUrl(parts.join(' '))) {
@@ -291,9 +314,11 @@ function loadRecordState() {
 
         const parsedValue = JSON.parse(rawValue);
         const parsedRecords = Array.isArray(parsedValue?.records) ? parsedValue.records : [];
-        currentRecords = createFrozenRecords(parsedRecords.filter((record) =>
-            typeof record?.name === 'string' && typeof record?.address === 'string'
-        ));
+        currentRecords = createFrozenRecords(parsedRecords.filter((record) => {
+            const hasStructuredFields = typeof record?.name === 'string' && typeof record?.address === 'string';
+            const hasPlainTextField = typeof record?.rawText === 'string';
+            return hasStructuredFields || hasPlainTextField;
+        }));
         currentSavedAt = typeof parsedValue?.savedAt === 'string' ? parsedValue.savedAt : '';
         currentInvalidLines = Object.freeze([]);
     } catch (_error) {
@@ -313,6 +338,7 @@ function persistRecordState(records) {
             sequence: record.sequence,
             name: record.name,
             address: record.address,
+            rawText: record.rawText,
             note: record.note,
             cardNumber: record.cardNumber,
             cardMasked: record.cardMasked,
@@ -386,6 +412,7 @@ function buildSearchableRecordText(record) {
     return [
         record.name,
         record.address,
+        record.rawText,
         record.note,
         record.cardNumber,
         record.cardMasked,
@@ -442,7 +469,11 @@ function renderRecordCard(record) {
     head.className = 'record-card__head';
     const title = document.createElement('h3');
     title.className = 'record-card__title';
-    title.appendChild(createCopyValueButton('姓名', record.name));
+    if (record.rawText) {
+        title.textContent = '纯文本';
+    } else {
+        title.appendChild(createCopyValueButton('姓名', record.name));
+    }
     const badge = document.createElement('span');
     badge.className = 'record-card__badge';
     badge.textContent = `#${record.sequence}`;
@@ -452,13 +483,17 @@ function renderRecordCard(record) {
     const phoneDisplayValue = record.phone || record.phoneMasked;
     const fields = document.createElement('div');
     fields.className = 'record-card__fields';
-    fields.append(
-        createCopyField('地址', record.address),
-        createCopyField('卡号', cardDisplayValue, record.cardNumber || record.cardLast4 || cardDisplayValue),
-        createCopyField('有效期', record.cardExpiry),
-        createCopyField('电话', phoneDisplayValue),
-        createCopyField('备注', record.note)
-    );
+    if (record.rawText) {
+        fields.append(createCopyField('内容', record.rawText));
+    } else {
+        fields.append(
+            createCopyField('地址', record.address),
+            createCopyField('卡号', cardDisplayValue, record.cardNumber || record.cardLast4 || cardDisplayValue),
+            createCopyField('有效期', record.cardExpiry),
+            createCopyField('电话', phoneDisplayValue),
+            createCopyField('备注', record.note)
+        );
+    }
 
     card.append(head, fields);
     if (record.warnings.length) {

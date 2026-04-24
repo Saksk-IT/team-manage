@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>本地记录工作台</title>
     <link rel="icon" type="image/png" href="/static/favicon.png">
-    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260424-records-expiry">
-    <link rel="stylesheet" href="/static/css/local_records.css?v=20260424-records-expiry">
+    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260424-records-plain-text">
+    <link rel="stylesheet" href="/static/css/local_records.css?v=20260424-records-plain-text">
 </head>
 
 <body>
@@ -20,6 +20,7 @@
             <div class="workbench-bar__meta">
                 <span><code>姓名----地址</code></span>
                 <span><code>卡信息----姓名----地址</code> 会保留卡号、有效期、电话等本地可用字段</span>
+                <span>单行纯文本（例如 <code>----123----</code>）会按“内容”原样显示</span>
                 <span>完整卡号、电话与有效期仅本地保存；不会保存 CVV 或短信 API Key</span>
                 <a href="/local-tools">验证码工具</a>
             </div>
@@ -46,7 +47,7 @@
                 <textarea
                     id="recordBatchInput"
                     class="batch-textarea"
-                    placeholder="示例：&#10;Alex Demo----123 Main St Apt 1, Springfield, IL 62701, US&#10;4111111111111111----2029/3----123----+1 555 123 4567----短信接口----Pat Example----456 Oak Ave, Seattle WA 98101, US"
+                    placeholder="示例：&#10;Alex Demo----123 Main St Apt 1, Springfield, IL 62701, US&#10;4111111111111111----2029/3----123----+1 555 123 4567----短信接口----Pat Example----456 Oak Ave, Seattle WA 98101, US&#10;----123----"
                 ></textarea>
 
                 <div class="feedback-row">
@@ -97,7 +98,7 @@
         </section>
     </main>
 
-    <script src="/static/js/local_records.js?v=20260424-records-expiry"></script>
+    <script src="/static/js/local_records.js?v=20260424-records-plain-text"></script>
 </body>
 
 </html>

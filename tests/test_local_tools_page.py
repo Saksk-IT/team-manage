@@ -170,6 +170,99 @@ process.stdout.write(JSON.stringify({{
         self.assertNotIn("到期日", " ".join(payload["warnings"]))
         self.assertNotIn("987", payload["storedValues"])
 
+    def test_local_record_parser_imports_delimiter_wrapped_plain_text(self):
+        if not shutil.which("node"):
+            self.skipTest("node is required for local_records.js behavior check")
+
+        static_root = Path(__file__).resolve().parents[1] / "app" / "static"
+        script_path = static_root / "js" / "local_records.js"
+        node_script = f"""
+const fs = require('fs');
+const vm = require('vm');
+function createElement(tag) {{
+  return {{
+    tag,
+    style: {{}},
+    className: '',
+    classList: {{ add() {{}}, remove() {{}} }},
+    dataset: {{}},
+    children: [],
+    hidden: false,
+    value: '',
+    textContent: '',
+    innerHTML: '',
+    setAttribute() {{}},
+    addEventListener() {{}},
+    append(...nodes) {{ this.children.push(...nodes); }},
+    appendChild(node) {{ this.children.push(node); return node; }},
+    removeChild() {{}},
+    select() {{}},
+  }};
+}}
+const elements = new Proxy({{}}, {{
+  get(target, key) {{
+    target[key] = target[key] || createElement(String(key));
+    return target[key];
+  }}
+}});
+const sandbox = {{
+  console,
+  Date,
+  Object,
+  String,
+  Number,
+  Array,
+  JSON,
+  RegExp,
+  navigator: {{}},
+  window: {{
+    localStorage: {{
+      getItem() {{ return null; }},
+      setItem() {{}},
+      removeItem() {{}},
+    }},
+  }},
+  document: {{
+    getElementById(id) {{ return elements[id]; }},
+    createElement,
+    body: createElement('body'),
+    execCommand() {{ return true; }},
+  }},
+}};
+vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync({json.dumps(str(script_path))}, 'utf8'), sandbox);
+const parsed = sandbox.parseRecordBatch('Alex Demo----123 Test St\\n\\n----123----');
+const record = parsed.records[1];
+function collectText(node) {{
+  if (!node) return '';
+  return [node.textContent || '', ...(node.children || []).map(collectText)].join('|');
+}}
+const renderedText = collectText(sandbox.renderRecordCard(record));
+process.stdout.write(JSON.stringify({{
+  count: parsed.records.length,
+  invalidCount: parsed.invalidLines.length,
+  rawText: record && record.rawText,
+  sequence: record && record.sequence,
+  searchableText: record && sandbox.buildSearchableRecordText(record),
+  renderedText,
+}}));
+"""
+        completed = subprocess.run(
+            ["node", "-e", node_script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        payload = json.loads(completed.stdout)
+
+        self.assertEqual(2, payload["count"])
+        self.assertEqual(0, payload["invalidCount"])
+        self.assertEqual(2, payload["sequence"])
+        self.assertEqual("----123----", payload["rawText"])
+        self.assertIn("----123----", payload["searchableText"])
+        self.assertIn("纯文本", payload["renderedText"])
+        self.assertIn("----123----", payload["renderedText"])
+
     async def test_local_tool_fetch_page_rejects_non_http_url(self):
         with self.assertRaises(HTTPException) as context:
             await fetch_local_tool_page(LocalToolFetchRequest(url="javascript:alert(1)"))
