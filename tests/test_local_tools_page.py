@@ -1,4 +1,7 @@
 import unittest
+import json
+import shutil
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -43,10 +46,10 @@ class LocalToolsPageTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("本地记录工作台", html)
         self.assertIn("批量导入后形成记录", html)
-        self.assertIn("点击姓名、地址、卡号等字段内容即可复制", html)
+        self.assertIn("点击姓名、地址、卡号、有效期等字段内容即可复制", html)
         self.assertIn("数据仅保存在当前浏览器本地", html)
-        self.assertIn("完整卡号与电话仅本地保存", html)
-        self.assertIn("搜索姓名、地址、卡号或电话", html)
+        self.assertIn("完整卡号、电话与有效期仅本地保存", html)
+        self.assertIn("搜索姓名、地址、卡号、有效期或电话", html)
         self.assertIn('id="recordBatchInput"', html)
         self.assertIn('id="importRecordWorkbenchBtn"', html)
         self.assertIn('id="recordItemsGrid"', html)
@@ -62,11 +65,110 @@ class LocalToolsPageTests(unittest.IsolatedAsyncioTestCase):
         stylesheet = (static_root / "css" / "local_records.css").read_text(encoding="utf-8")
 
         self.assertIn("cardNumber", script)
+        self.assertIn("cardExpiry", script)
+        self.assertIn("formatCardExpiry", script)
         self.assertIn("createCopyField('卡号'", script)
+        self.assertIn("createCopyField('有效期'", script)
         self.assertIn("record-card__copy-value", script)
         self.assertIn("record-card__copy-value", stylesheet)
         self.assertNotIn("createRecordButton('复制姓名'", script)
         self.assertNotIn("复制卡尾号", script)
+        self.assertNotIn("createCopyField('CVV'", script)
+
+    def test_local_record_parser_normalizes_year_month_expiry_without_saving_cvv(self):
+        if not shutil.which("node"):
+            self.skipTest("node is required for local_records.js behavior check")
+
+        static_root = Path(__file__).resolve().parents[1] / "app" / "static"
+        script_path = static_root / "js" / "local_records.js"
+        node_script = f"""
+const fs = require('fs');
+const vm = require('vm');
+function createElement(tag) {{
+  return {{
+    tag,
+    style: {{}},
+    className: '',
+    classList: {{ add() {{}}, remove() {{}} }},
+    dataset: {{}},
+    children: [],
+    hidden: false,
+    value: '',
+    textContent: '',
+    innerHTML: '',
+    setAttribute() {{}},
+    addEventListener() {{}},
+    append(...nodes) {{ this.children.push(...nodes); }},
+    appendChild(node) {{ this.children.push(node); return node; }},
+    removeChild() {{}},
+    select() {{}},
+  }};
+}}
+const elements = new Proxy({{}}, {{
+  get(target, key) {{
+    target[key] = target[key] || createElement(String(key));
+    return target[key];
+  }}
+}});
+const sandbox = {{
+  console,
+  Date,
+  Object,
+  String,
+  Number,
+  Array,
+  JSON,
+  RegExp,
+  navigator: {{}},
+  window: {{
+    localStorage: {{
+      getItem() {{ return null; }},
+      setItem() {{}},
+      removeItem() {{}},
+    }},
+  }},
+  document: {{
+    getElementById(id) {{ return elements[id]; }},
+    createElement,
+    body: createElement('body'),
+    execCommand() {{ return true; }},
+  }},
+}};
+vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync({json.dumps(str(script_path))}, 'utf8'), sandbox);
+const parsed = sandbox.parseRecordBatch(
+  '4111111111111111----2029/3----987----+15550104567----https://example.com/api/get_sms?key=demo----Pat Example----456 Oak Ave, Seattle WA 98101, US'
+);
+const record = parsed.records[0];
+process.stdout.write(JSON.stringify({{
+  cardExpiry: record.cardExpiry,
+  warnings: record.warnings,
+  storedValues: [
+    record.name,
+    record.address,
+    record.note,
+    record.cardNumber,
+    record.cardMasked,
+    record.cardLast4,
+    record.cardExpiry,
+    record.phone,
+    record.phoneMasked,
+    record.warnings.join(' '),
+  ].join('|'),
+}}));
+"""
+        completed = subprocess.run(
+            ["node", "-e", node_script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        payload = json.loads(completed.stdout)
+
+        self.assertEqual("03/29", payload["cardExpiry"])
+        self.assertIn("CVV", " ".join(payload["warnings"]))
+        self.assertNotIn("到期日", " ".join(payload["warnings"]))
+        self.assertNotIn("987", payload["storedValues"])
 
     async def test_local_tool_fetch_page_rejects_non_http_url(self):
         with self.assertRaises(HTTPException) as context:

@@ -61,6 +61,38 @@ function hasCvvLikeValue(value) {
     return /^\d{3,4}$/.test(String(value || '').trim());
 }
 
+function formatCardExpiry(value) {
+    const normalizedValue = normalizeText(value);
+    if (!normalizedValue) {
+        return '';
+    }
+
+    const yearMonthMatch = normalizedValue.match(/^(\d{4})\s*[\/.-]\s*(\d{1,2})$/);
+    const monthYearMatch = normalizedValue.match(/^(\d{1,2})\s*[\/.-]\s*(\d{2}|\d{4})$/);
+    const matchedParts = (() => {
+        if (yearMonthMatch) {
+            return { month: yearMonthMatch[2], year: yearMonthMatch[1] };
+        }
+
+        if (monthYearMatch) {
+            return { month: monthYearMatch[1], year: monthYearMatch[2] };
+        }
+
+        return null;
+    })();
+
+    if (!matchedParts) {
+        return '';
+    }
+
+    const month = Number(matchedParts.month);
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+        return '';
+    }
+
+    return `${String(month).padStart(2, '0')}/${String(matchedParts.year).slice(-2).padStart(2, '0')}`;
+}
+
 function maskCard(value) {
     const digits = digitsOnly(value);
     if (!isLikelyCardNumber(digits)) {
@@ -91,6 +123,7 @@ function redactSensitiveText(value) {
 function createFrozenRecords(records) {
     return Object.freeze(records.map((record, index) => {
         const cardNumber = digitsOnly(record.cardNumber || record.cardFull || '');
+        const cardExpiry = formatCardExpiry(record.cardExpiry || record.expiry || record.expiration || '');
         const phone = normalizeText(record.phone || record.phoneFull || '');
 
         return Object.freeze({
@@ -102,6 +135,7 @@ function createFrozenRecords(records) {
             cardNumber,
             cardMasked: normalizeText(record.cardMasked),
             cardLast4: digitsOnly(record.cardLast4 || cardNumber).slice(-4),
+            cardExpiry,
             phone,
             phoneMasked: normalizeText(record.phoneMasked),
             importedAt: String(record.importedAt || ''),
@@ -120,6 +154,7 @@ function buildRecord(values) {
         cardNumber: digitsOnly(values.cardNumber || ''),
         cardMasked: normalizeText(values.cardMasked),
         cardLast4: digitsOnly(values.cardLast4 || '').slice(-4),
+        cardExpiry: formatCardExpiry(values.cardExpiry || ''),
         phone: normalizeText(values.phone),
         phoneMasked: normalizeText(values.phoneMasked),
         importedAt: new Date().toISOString(),
@@ -152,11 +187,15 @@ function parsePaymentStyleRecord(parts, sequence) {
     }
 
     const cardDigits = digitsOnly(parts[0]);
+    const cardExpiry = formatCardExpiry(parts[1]);
     const phone = normalizeText(parts[3]);
     const skippedLabels = [
-        parts[1] ? '到期日' : '',
         hasCvvLikeValue(parts[2]) ? 'CVV' : '',
         hasSecretUrl(parts.slice(0, -2).join(' ')) ? '短信 API Key/接口地址' : '',
+    ].filter(Boolean);
+    const warnings = [
+        skippedLabels.length ? `已忽略：${skippedLabels.join('、')}` : '',
+        parts[1] && !cardExpiry ? '有效期格式未识别，已跳过。' : '',
     ].filter(Boolean);
 
     return {
@@ -167,12 +206,11 @@ function parsePaymentStyleRecord(parts, sequence) {
             cardNumber: cardDigits,
             cardMasked: maskCard(parts[0]),
             cardLast4: cardDigits.slice(-4),
+            cardExpiry,
             phone,
             phoneMasked: maskPhone(phone),
-            note: 'CVV、到期日、短信接口等敏感字段已在导入时丢弃。',
-            warnings: skippedLabels.length
-                ? [`已忽略：${skippedLabels.join('、')}`]
-                : [],
+            note: skippedLabels.length ? 'CVV、短信接口等敏感字段已在导入时丢弃。' : '',
+            warnings,
         }),
         skippedSensitive: skippedLabels.length,
     };
@@ -279,6 +317,7 @@ function persistRecordState(records) {
             cardNumber: record.cardNumber,
             cardMasked: record.cardMasked,
             cardLast4: record.cardLast4,
+            cardExpiry: record.cardExpiry,
             phone: record.phone,
             phoneMasked: record.phoneMasked,
             importedAt: record.importedAt,
@@ -351,6 +390,7 @@ function buildSearchableRecordText(record) {
         record.cardNumber,
         record.cardMasked,
         record.cardLast4,
+        record.cardExpiry,
         record.phone,
         record.phoneMasked,
         record.warnings.join(' '),
@@ -415,6 +455,7 @@ function renderRecordCard(record) {
     fields.append(
         createCopyField('地址', record.address),
         createCopyField('卡号', cardDisplayValue, record.cardNumber || record.cardLast4 || cardDisplayValue),
+        createCopyField('有效期', record.cardExpiry),
         createCopyField('电话', phoneDisplayValue),
         createCopyField('备注', record.note)
     );
