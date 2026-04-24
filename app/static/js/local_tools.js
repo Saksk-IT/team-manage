@@ -392,6 +392,18 @@ function createMetaLine(label, value) {
     return line;
 }
 
+function buildResultButtonClass(resultText) {
+    if (resultText === '暂无验证码') {
+        return 'work-item__result work-item__result--empty';
+    }
+
+    if (!resultText || resultText === '待刷新') {
+        return 'work-item__result work-item__result--pending';
+    }
+
+    return 'work-item__result';
+}
+
 function renderItems() {
     const keyword = (searchInput.value || '').trim().toLowerCase();
     const filteredItems = currentItems.filter((item) => !keyword || buildSearchableText(item).includes(keyword));
@@ -413,9 +425,10 @@ function renderItems() {
     itemsGrid.hidden = false;
 
     filteredItems.forEach((item) => {
+        const resultText = buildSiteSummaryText(item.siteInfo);
         const itemCard = document.createElement('article');
         itemCard.className = 'work-item';
-        itemCard.title = `标识：${item.identifier}\n地址：${item.displayUrl}\n站点：${item.siteInfo.host}`;
+        itemCard.title = `标识：${item.identifier}\n结果：${resultText}\n地址：${item.displayUrl}`;
 
         const copyButton = createButton(
             'work-item__copy',
@@ -429,6 +442,18 @@ function renderItems() {
         );
 
         copyButton.setAttribute('aria-label', `复制标识：${item.identifier}`);
+
+        const resultButton = createButton(
+            buildResultButtonClass(resultText),
+            resultText,
+            `点击复制结果：${resultText}`,
+            async () => {
+                await copyText(resultText);
+                setFeedback(`已复制结果：${resultText}`, 'success');
+            }
+        );
+
+        resultButton.setAttribute('aria-label', `复制结果：${resultText}`);
 
         const openButton = createButton(
             'work-item__open',
@@ -444,13 +469,11 @@ function renderItems() {
         const meta = document.createElement('div');
         meta.className = 'work-item__meta';
 
-        const hostLine = createMetaLine('站点', `${item.siteInfo.host}${item.siteInfo.path}`);
-        const codeLine = createMetaLine('结果', buildSiteSummaryText(item.siteInfo));
         const sourceLine = createMetaLine('来源', item.siteInfo.sourceText || '未识别');
         const expireLine = createMetaLine('到期', item.siteInfo.expiresAt || '未提供');
         const timeLine = createMetaLine('刷新', formatCheckedAt(item.siteInfo.checkedAt));
-        meta.append(hostLine, codeLine, sourceLine, expireLine, timeLine);
-        itemCard.append(copyButton, openButton, meta);
+        meta.append(sourceLine, expireLine, timeLine);
+        itemCard.append(copyButton, resultButton, openButton, meta);
         itemsGrid.appendChild(itemCard);
     });
 }
