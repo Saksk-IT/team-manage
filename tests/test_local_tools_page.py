@@ -46,10 +46,10 @@ class LocalToolsPageTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("本地记录工作台", html)
         self.assertIn("批量导入后形成记录", html)
-        self.assertIn("点击姓名、地址、卡号、有效期等字段内容即可复制", html)
+        self.assertIn("点击姓名、地址、卡号、有效期、附加字段等内容即可复制", html)
         self.assertIn("数据仅保存在当前浏览器本地", html)
-        self.assertIn("完整卡号、电话与有效期仅本地保存", html)
-        self.assertIn("搜索姓名、地址、卡号、有效期或电话", html)
+        self.assertIn("完整卡号、电话、有效期与附加字段仅本地保存", html)
+        self.assertIn("搜索姓名、地址、卡号、有效期、附加字段或电话", html)
         self.assertIn('id="recordBatchInput"', html)
         self.assertIn('id="importRecordWorkbenchBtn"', html)
         self.assertIn('id="recordItemsGrid"', html)
@@ -69,13 +69,14 @@ class LocalToolsPageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("formatCardExpiry", script)
         self.assertIn("createCopyField('卡号'", script)
         self.assertIn("createCopyField('有效期'", script)
+        self.assertIn("createCopyField('附加字段'", script)
         self.assertIn("record-card__copy-value", script)
         self.assertIn("record-card__copy-value", stylesheet)
         self.assertNotIn("createRecordButton('复制姓名'", script)
         self.assertNotIn("复制卡尾号", script)
         self.assertNotIn("createCopyField('CVV'", script)
 
-    def test_local_record_parser_normalizes_year_month_expiry_without_saving_cvv(self):
+    def test_local_record_parser_normalizes_expiry_and_keeps_short_extra_code(self):
         if not shutil.which("node"):
             self.skipTest("node is required for local_records.js behavior check")
 
@@ -140,9 +141,16 @@ const parsed = sandbox.parseRecordBatch(
   '4111111111111111----2029/3----987----+15550104567----https://example.com/api/get_sms?key=demo----Pat Example----456 Oak Ave, Seattle WA 98101, US'
 );
 const record = parsed.records[0];
+function collectText(node) {{
+  if (!node) return '';
+  return [node.textContent || '', ...(node.children || []).map(collectText)].join('|');
+}}
+const renderedText = collectText(sandbox.renderRecordCard(record));
 process.stdout.write(JSON.stringify({{
   cardExpiry: record.cardExpiry,
+  extraCode: record.extraCode,
   warnings: record.warnings,
+  renderedText,
   storedValues: [
     record.name,
     record.address,
@@ -151,6 +159,7 @@ process.stdout.write(JSON.stringify({{
     record.cardMasked,
     record.cardLast4,
     record.cardExpiry,
+    record.extraCode,
     record.phone,
     record.phoneMasked,
     record.warnings.join(' '),
@@ -166,9 +175,14 @@ process.stdout.write(JSON.stringify({{
         payload = json.loads(completed.stdout)
 
         self.assertEqual("03/29", payload["cardExpiry"])
-        self.assertIn("CVV", " ".join(payload["warnings"]))
+        self.assertEqual("987", payload["extraCode"])
+        self.assertIn("987", payload["storedValues"])
+        self.assertIn("附加字段", payload["renderedText"])
+        self.assertIn("987", payload["renderedText"])
+        self.assertNotIn("CVV", " ".join(payload["warnings"]))
         self.assertNotIn("到期日", " ".join(payload["warnings"]))
-        self.assertNotIn("987", payload["storedValues"])
+        self.assertNotIn("https://example.com/api/get_sms", payload["storedValues"])
+        self.assertNotIn("key=demo", payload["storedValues"])
 
     def test_local_record_parser_imports_delimiter_wrapped_plain_text(self):
         if not shutil.which("node"):

@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>本地记录工作台</title>
     <link rel="icon" type="image/png" href="/static/favicon.png">
-    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260424-records-plain-text">
-    <link rel="stylesheet" href="/static/css/local_records.css?v=20260424-records-plain-text">
+    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260424-records-extra-code">
+    <link rel="stylesheet" href="/static/css/local_records.css?v=20260424-records-extra-code">
 </head>
 
 <body>
@@ -15,13 +15,13 @@
         <header class="workbench-bar">
             <div class="workbench-bar__title">
                 <h1>本地记录工作台</h1>
-                <p>批量导入后形成记录，点击姓名、地址、卡号、有效期等字段内容即可复制；数据仅保存在当前浏览器本地。</p>
+                <p>批量导入后形成记录，点击姓名、地址、卡号、有效期、附加字段等内容即可复制；数据仅保存在当前浏览器本地。</p>
             </div>
             <div class="workbench-bar__meta">
                 <span><code>姓名----地址</code></span>
-                <span><code>卡信息----姓名----地址</code> 会保留卡号、有效期、电话等本地可用字段</span>
+                <span><code>卡信息----姓名----地址</code> 会保留卡号、有效期、第三段附加字段、电话等本地可用字段</span>
                 <span>单行纯文本（例如 <code>----123----</code>）会按“内容”原样显示</span>
-                <span>完整卡号、电话与有效期仅本地保存；不会保存 CVV 或短信 API Key</span>
+                <span>完整卡号、电话、有效期与附加字段仅本地保存；不会保存短信 API Key</span>
                 <a href="/local-tools">验证码工具</a>
             </div>
         </header>
@@ -52,7 +52,7 @@
 
                 <div class="feedback-row">
                     <p id="recordFeedback" class="feedback" aria-live="polite"></p>
-                    <p class="privacy-tip">提示：完整卡号、电话与有效期仅保存在当前浏览器本地；有效期会按 MM/YY 保存，CVV、短信接口地址会在解析时丢弃。</p>
+                    <p class="privacy-tip">提示：完整卡号、电话、有效期与附加字段仅保存在当前浏览器本地；有效期会按 MM/YY 保存，短信接口地址会在解析时丢弃。</p>
                 </div>
 
                 <div id="recordInvalidLinesBox" class="invalid-lines" hidden>
@@ -65,11 +65,11 @@
                 <div class="panel__header panel__header--data">
                     <div>
                         <h2>本地记录</h2>
-                        <p>点击字段内容即可复制；数字和有效期会完整显示，不再只显示尾号。</p>
+                        <p>点击字段内容即可复制；数字、有效期和附加字段会完整显示，不再只显示尾号。</p>
                     </div>
 
                     <div class="panel-tools">
-                        <input id="recordSearchInput" type="search" class="search-input" placeholder="搜索姓名、地址、卡号、有效期或电话">
+                        <input id="recordSearchInput" type="search" class="search-input" placeholder="搜索姓名、地址、卡号、有效期、附加字段或电话">
                     </div>
                 </div>
 
@@ -98,7 +98,7 @@
         </section>
     </main>
 
-    <script src="/static/js/local_records.js?v=20260424-records-plain-text"></script>
+    <script src="/static/js/local_records.js?v=20260424-records-extra-code"></script>
 </body>
 
 </html>

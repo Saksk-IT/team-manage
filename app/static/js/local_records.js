@@ -57,10 +57,6 @@ function hasSecretUrl(value) {
     return /https?:\/\/\S+/i.test(String(value || '')) && /(?:[?&](?:key|token|api_key)=|\/api\/)/i.test(String(value || ''));
 }
 
-function hasCvvLikeValue(value) {
-    return /^\d{3,4}$/.test(String(value || '').trim());
-}
-
 function formatCardExpiry(value) {
     const normalizedValue = normalizeText(value);
     if (!normalizedValue) {
@@ -126,6 +122,7 @@ function createFrozenRecords(records) {
         const cardExpiry = formatCardExpiry(record.cardExpiry || record.expiry || record.expiration || '');
         const phone = normalizeText(record.phone || record.phoneFull || '');
         const rawText = normalizeText(record.rawText || '');
+        const extraCode = normalizeText(record.extraCode || '');
 
         return Object.freeze({
             id: String(record.id || `${Date.now()}-${index + 1}`),
@@ -138,6 +135,7 @@ function createFrozenRecords(records) {
             cardMasked: normalizeText(record.cardMasked),
             cardLast4: digitsOnly(record.cardLast4 || cardNumber).slice(-4),
             cardExpiry,
+            extraCode,
             phone,
             phoneMasked: normalizeText(record.phoneMasked),
             importedAt: String(record.importedAt || ''),
@@ -158,6 +156,7 @@ function buildRecord(values) {
         cardMasked: normalizeText(values.cardMasked),
         cardLast4: digitsOnly(values.cardLast4 || '').slice(-4),
         cardExpiry: formatCardExpiry(values.cardExpiry || ''),
+        extraCode: normalizeText(values.extraCode),
         phone: normalizeText(values.phone),
         phoneMasked: normalizeText(values.phoneMasked),
         importedAt: new Date().toISOString(),
@@ -206,9 +205,11 @@ function parsePaymentStyleRecord(parts, sequence) {
 
     const cardDigits = digitsOnly(parts[0]);
     const cardExpiry = formatCardExpiry(parts[1]);
+    const extraCode = hasSecretUrl(parts[2]) || isLikelyCardNumber(parts[2])
+        ? ''
+        : normalizeText(parts[2]);
     const phone = normalizeText(parts[3]);
     const skippedLabels = [
-        hasCvvLikeValue(parts[2]) ? 'CVV' : '',
         hasSecretUrl(parts.slice(0, -2).join(' ')) ? '短信 API Key/接口地址' : '',
     ].filter(Boolean);
     const warnings = [
@@ -225,9 +226,10 @@ function parsePaymentStyleRecord(parts, sequence) {
             cardMasked: maskCard(parts[0]),
             cardLast4: cardDigits.slice(-4),
             cardExpiry,
+            extraCode,
             phone,
             phoneMasked: maskPhone(phone),
-            note: skippedLabels.length ? 'CVV、短信接口等敏感字段已在导入时丢弃。' : '',
+            note: skippedLabels.length ? '短信接口等敏感字段已在导入时丢弃。' : '',
             warnings,
         }),
         skippedSensitive: skippedLabels.length,
@@ -344,6 +346,7 @@ function persistRecordState(records) {
             cardMasked: record.cardMasked,
             cardLast4: record.cardLast4,
             cardExpiry: record.cardExpiry,
+            extraCode: record.extraCode,
             phone: record.phone,
             phoneMasked: record.phoneMasked,
             importedAt: record.importedAt,
@@ -418,6 +421,7 @@ function buildSearchableRecordText(record) {
         record.cardMasked,
         record.cardLast4,
         record.cardExpiry,
+        record.extraCode,
         record.phone,
         record.phoneMasked,
         record.warnings.join(' '),
@@ -490,6 +494,7 @@ function renderRecordCard(record) {
             createCopyField('地址', record.address),
             createCopyField('卡号', cardDisplayValue, record.cardNumber || record.cardLast4 || cardDisplayValue),
             createCopyField('有效期', record.cardExpiry),
+            createCopyField('附加字段', record.extraCode),
             createCopyField('电话', phoneDisplayValue),
             createCopyField('备注', record.note)
         );
