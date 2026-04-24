@@ -493,6 +493,74 @@ async function handleFileImport(file) {
     setFeedback(`已读取文件：${file.name}，请确认后点击“解析并保存到本地”。`, 'success');
 }
 
+function isReadableContentType(contentType) {
+    const normalizedContentType = String(contentType || '').toLowerCase();
+    return (
+        normalizedContentType.includes('text/') ||
+        normalizedContentType.includes('json') ||
+        normalizedContentType.includes('html') ||
+        !normalizedContentType
+    );
+}
+
+async function fetchPageContentDirect(openUrl) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
+
+    try {
+        const response = await fetch(openUrl, {
+            method: 'GET',
+            mode: 'cors',
+            cache: 'no-store',
+            signal: controller.signal,
+            headers: {
+                Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+            },
+        });
+        const contentType = response.headers.get('content-type') || '';
+        const rawText = isReadableContentType(contentType) ? await response.text() : '';
+
+        return {
+            ok: response.ok,
+            status: response.status,
+            contentType,
+            rawText,
+        };
+    } finally {
+        window.clearTimeout(timeoutId);
+    }
+}
+
+async function fetchPageContentViaServer(openUrl) {
+    const response = await fetch('/local-tools/fetch-page', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: openUrl }),
+    });
+
+    if (!response.ok) {
+        throw new Error('proxy-fetch-failed');
+    }
+
+    const payload = await response.json();
+    return {
+        ok: Boolean(payload.success),
+        status: payload.status_code || 0,
+        contentType: payload.content_type || '',
+        rawText: payload.text || '',
+    };
+}
+
+async function fetchPageContent(openUrl) {
+    try {
+        return await fetchPageContentDirect(openUrl);
+    } catch (_directError) {
+        return await fetchPageContentViaServer(openUrl);
+    }
+}
+
 async function fetchSiteInfoForItem(item) {
     const checkedAt = new Date().toISOString();
     const fallbackInfo = buildSiteInfo(item.openUrl, {
@@ -502,33 +570,19 @@ async function fetchSiteInfoForItem(item) {
     });
 
     try {
-        const controller = new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
-        const response = await fetch(item.openUrl, {
-            method: 'GET',
-            mode: 'cors',
-            cache: 'no-store',
-            signal: controller.signal,
-            headers: {
-                Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
-            },
-        });
-        window.clearTimeout(timeoutId);
+        const pageContent = await fetchPageContent(item.openUrl);
 
-        if (!response.ok) {
+        if (!pageContent.ok) {
             return buildSiteInfo(item.openUrl, {
                 ...fallbackInfo,
-                statusText: `HTTP ${response.status}`,
+                statusText: `HTTP ${pageContent.status}`,
                 checkedAt,
             });
         }
 
-        const contentType = response.headers.get('content-type') || '';
-        const normalizedContentType = contentType.toLowerCase();
-
-        if (normalizedContentType.includes('text/') || normalizedContentType.includes('json') || normalizedContentType.includes('html') || !normalizedContentType) {
-            const rawText = await response.text();
-            const readableContent = extractReadablePageContent(rawText, contentType);
+        const contentType = pageContent.contentType || '';
+        if (isReadableContentType(contentType)) {
+            const readableContent = extractReadablePageContent(pageContent.rawText, contentType);
             const verificationInfo = parseVerificationContent(readableContent.text);
 
             if (verificationInfo.codeText || verificationInfo.expiresAt || verificationInfo.sourceText) {
