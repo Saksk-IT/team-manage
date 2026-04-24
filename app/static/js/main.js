@@ -168,6 +168,7 @@ function handleImportWarrantyToggle(checkbox, hiddenInputId, daysGroupId, teamTy
 function showImportTeamModal(teamType = TEAM_TYPE_STANDARD) {
     currentImportTeamType = teamType === TEAM_TYPE_WARRANTY ? TEAM_TYPE_WARRANTY : TEAM_TYPE_STANDARD;
     const meta = getImportModeMeta(currentImportTeamType);
+    const initialTabId = isImportOnlyPage() ? 'batchImport' : 'singleImport';
 
     const singleTeamTypeInput = document.getElementById('singleImportTeamType');
     const batchTeamTypeInput = document.getElementById('batchImportTeamType');
@@ -193,7 +194,7 @@ function showImportTeamModal(teamType = TEAM_TYPE_STANDARD) {
 
     setImportWarrantyOptionsVisibility(currentImportTeamType);
     updateBatchImportCodes([], currentImportTeamType, false);
-    switchModalTab('importTeamModal', 'singleImport');
+    switchModalTab('importTeamModal', initialTabId);
     showModal('importTeamModal');
 }
 

@@ -145,19 +145,23 @@
 
     <!-- 导入 Team 模态框 -->
     <div id="importTeamModal" class="modal-overlay">
+        {% set is_import_only_modal = active_page == 'import_only' %}
         <div class="modal">
             <div class="modal-header">
                 <h3 id="importTeamModalTitle">导入 Team</h3>
                 <button class="modal-close" onclick="hideModal('importTeamModal')">&times;</button>
             </div>
             <div class="modal-body">
+                {% if not is_import_only_modal %}
                 <div class="modal-tabs">
                     <button class="modal-tab-btn active"
                         onclick="switchModalTab('importTeamModal', 'singleImport')">单个导入</button>
                     <button class="modal-tab-btn"
                         onclick="switchModalTab('importTeamModal', 'batchImport')">批量导入</button>
                 </div>
+                {% endif %}
 
+                {% if not is_import_only_modal %}
                 <div id="singleImport" class="import-panel">
                     <form id="singleImportForm" onsubmit="handleSingleImport(event)">
                         <input type="hidden" id="singleImportTeamType" name="teamType" value="standard">
@@ -222,8 +226,9 @@
                         <textarea id="singleImportCodes" class="form-control" rows="8" readonly placeholder="导入成功后会显示自动生成的兑换码"></textarea>
                     </div>
                 </div>
+                {% endif %}
 
-                <div id="batchImport" class="import-panel" style="display: none;">
+                <div id="batchImport" class="import-panel" {% if not is_import_only_modal %}style="display: none;"{% endif %}>
                     <form id="batchImportForm" onsubmit="handleBatchImport(event)">
                         <input type="hidden" id="batchImportTeamType" name="teamType" value="standard">
                         <input type="hidden" id="batchImportGenerateWarrantyCodes" name="generateWarrantyCodes" value="false">
