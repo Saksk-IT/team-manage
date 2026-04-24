@@ -191,7 +191,27 @@ function validateNameAddress(name, address) {
     return '';
 }
 
-function parsePaymentStyleRecord(parts, sequence) {
+function normalizePaymentStyleParts(parts) {
+    if (
+        parts.length >= 8 &&
+        !isLikelyCardNumber(parts[0]) &&
+        !hasSecretUrl(parts[0]) &&
+        isLikelyCardNumber(parts[1]) &&
+        formatCardExpiry(parts[2])
+    ) {
+        return Object.freeze({
+            parts: Object.freeze(parts.slice(1)),
+            ignoredPrefix: normalizeText(parts[0]),
+        });
+    }
+
+    return Object.freeze({
+        parts: Object.freeze(parts),
+        ignoredPrefix: '',
+    });
+}
+
+function parsePaymentStyleRecord(parts, sequence, ignoredPrefix = '') {
     if (parts.length < 7) {
         return { error: '包含卡号但缺少姓名或地址字段' };
     }
@@ -209,8 +229,10 @@ function parsePaymentStyleRecord(parts, sequence) {
         ? ''
         : normalizeText(parts[2]);
     const phone = normalizeText(parts[3]);
+    const hasSecretEndpoint = hasSecretUrl(parts.slice(0, -2).join(' '));
     const skippedLabels = [
-        hasSecretUrl(parts.slice(0, -2).join(' ')) ? '短信 API Key/接口地址' : '',
+        ignoredPrefix ? '无用前缀' : '',
+        hasSecretEndpoint ? '短信 API Key/接口地址' : '',
     ].filter(Boolean);
     const warnings = [
         skippedLabels.length ? `已忽略：${skippedLabels.join('、')}` : '',
@@ -229,10 +251,10 @@ function parsePaymentStyleRecord(parts, sequence) {
             extraCode,
             phone,
             phoneMasked: maskPhone(phone),
-            note: skippedLabels.length ? '短信接口等敏感字段已在导入时丢弃。' : '',
+            note: hasSecretEndpoint ? '短信接口等敏感字段已在导入时丢弃。' : '',
             warnings,
         }),
-        skippedSensitive: skippedLabels.length,
+        skippedSensitive: hasSecretEndpoint ? 1 : 0,
     };
 }
 
@@ -270,8 +292,9 @@ function parseRecordLine(line, sequence) {
         return parsePlainTextRecord(rawLine, sequence);
     }
 
-    if (isLikelyCardNumber(parts[0]) || hasSecretUrl(parts.join(' '))) {
-        return parsePaymentStyleRecord(parts, sequence);
+    const paymentStyle = normalizePaymentStyleParts(parts);
+    if (isLikelyCardNumber(paymentStyle.parts[0]) || hasSecretUrl(paymentStyle.parts.join(' '))) {
+        return parsePaymentStyleRecord(paymentStyle.parts, sequence, paymentStyle.ignoredPrefix);
     }
 
     return parseGenericRecord(parts, sequence);

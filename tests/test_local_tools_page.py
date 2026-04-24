@@ -23,6 +23,50 @@ class LocalToolsPageTests(unittest.IsolatedAsyncioTestCase):
     def _build_record_request(self) -> Request:
         return Request({"type": "http", "method": "GET", "path": "/local-tools/records", "headers": []})
 
+    def _run_local_records_node(self, node_body: str) -> dict:
+        if not shutil.which("node"):
+            self.skipTest("node is required for local_records.js behavior check")
+
+        static_root = Path(__file__).resolve().parents[1] / "app" / "static"
+        script_path = static_root / "js" / "local_records.js"
+        node_script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const noop = () => {{}};
+function createElement(tag) {{
+  return {{ tag, style: {{}}, className: '', dataset: {{}}, children: [], hidden: false,
+    value: '', textContent: '', innerHTML: '', classList: {{ add: noop, remove: noop }},
+    setAttribute: noop, addEventListener: noop, removeChild: noop, select: noop,
+    append(...nodes) {{ this.children.push(...nodes); }},
+    appendChild(node) {{ this.children.push(node); return node; }},
+  }};
+}}
+const elements = new Proxy({{}}, {{
+  get(target, key) {{ target[key] = target[key] || createElement(String(key)); return target[key]; }}
+}});
+const sandbox = {{
+  console, Date, Object, String, Number, Array, JSON, RegExp, navigator: {{}},
+  window: {{
+    localStorage: {{ getItem() {{ return null; }}, setItem: noop, removeItem: noop }},
+  }},
+  document: {{
+    getElementById(id) {{ return elements[id]; }},
+    createElement, body: createElement('body'),
+    execCommand() {{ return true; }},
+  }},
+}};
+vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync({json.dumps(str(script_path))}, 'utf8'), sandbox);
+{node_body}
+"""
+        completed = subprocess.run(
+            ["node", "-e", node_script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return json.loads(completed.stdout)
+
     async def test_local_tools_page_renders_standalone_local_features(self):
         response = await local_tools_page(request=self._build_request())
         html = response.body.decode("utf-8")
@@ -191,6 +235,47 @@ process.stdout.write(JSON.stringify({{
         self.assertNotIn("CVV", " ".join(payload["warnings"]))
         self.assertNotIn("到期日", " ".join(payload["warnings"]))
         self.assertNotIn("https://example.com/api/get_sms", payload["storedValues"])
+        self.assertNotIn("key=demo", payload["storedValues"])
+
+    def test_local_record_parser_ignores_leading_unused_payment_prefix(self):
+        payload = self._run_local_records_node("""
+const parsed = sandbox.parseRecordBatch(
+  'KW-EXAMPLE-IGNORE-0001 ---- 4111111111111111 ---- 02/30 ---- 902 ---- +15550104567 ---- https://example.com/api/get_sms?key=demo ---- Pat Example ---- 456 Oak Ave, Seattle WA 98101, US'
+);
+const record = parsed.records[0];
+process.stdout.write(JSON.stringify({
+  count: parsed.records.length,
+  invalidCount: parsed.invalidLines.length,
+  cardNumber: record && record.cardNumber,
+  cardExpiry: record && record.cardExpiry,
+  extraCode: record && record.extraCode,
+  phone: record && record.phone,
+  name: record && record.name,
+  address: record && record.address,
+  warnings: record && record.warnings,
+  storedValues: [
+    record.name,
+    record.address,
+    record.note,
+    record.cardNumber,
+    record.cardExpiry,
+    record.extraCode,
+    record.phone,
+    record.warnings.join(' '),
+  ].join('|'),
+}));
+""")
+
+        self.assertEqual(1, payload["count"])
+        self.assertEqual(0, payload["invalidCount"])
+        self.assertEqual("4111111111111111", payload["cardNumber"])
+        self.assertEqual("02/30", payload["cardExpiry"])
+        self.assertEqual("902", payload["extraCode"])
+        self.assertEqual("+15550104567", payload["phone"])
+        self.assertEqual("Pat Example", payload["name"])
+        self.assertEqual("456 Oak Ave, Seattle WA 98101, US", payload["address"])
+        self.assertIn("已忽略", " ".join(payload["warnings"]))
+        self.assertNotIn("KW-EXAMPLE-IGNORE-0001", payload["storedValues"])
         self.assertNotIn("key=demo", payload["storedValues"])
 
     def test_local_record_parser_imports_delimiter_wrapped_plain_text(self):
