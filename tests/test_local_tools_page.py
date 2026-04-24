@@ -4,12 +4,20 @@ from unittest.mock import patch
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from app.routes.local_tools import LocalToolFetchRequest, fetch_local_tool_page, local_tools_page
+from app.routes.local_tools import (
+    LocalToolFetchRequest,
+    fetch_local_tool_page,
+    local_record_workbench_page,
+    local_tools_page,
+)
 
 
 class LocalToolsPageTests(unittest.IsolatedAsyncioTestCase):
     def _build_request(self) -> Request:
         return Request({"type": "http", "method": "GET", "path": "/local-tools", "headers": []})
+
+    def _build_record_request(self) -> Request:
+        return Request({"type": "http", "method": "GET", "path": "/local-tools/records", "headers": []})
 
     async def test_local_tools_page_renders_standalone_local_features(self):
         response = await local_tools_page(request=self._build_request())
@@ -27,6 +35,22 @@ class LocalToolsPageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("/static/js/local_tools.js", html)
         self.assertIn("/static/css/local_tools.css", html)
         self.assertNotIn("管理员", html)
+
+    async def test_local_record_workbench_renders_safe_local_import_page(self):
+        response = await local_record_workbench_page(request=self._build_record_request())
+        html = response.body.decode("utf-8")
+
+        self.assertIn("本地记录工作台", html)
+        self.assertIn("批量导入后形成记录", html)
+        self.assertIn("数据仅保存在当前浏览器本地", html)
+        self.assertIn("不会保存完整卡号、CVV 或短信 API Key", html)
+        self.assertIn('id="recordBatchInput"', html)
+        self.assertIn('id="importRecordWorkbenchBtn"', html)
+        self.assertIn('id="recordItemsGrid"', html)
+        self.assertIn("/static/js/local_records.js", html)
+        self.assertIn("/static/css/local_records.css", html)
+        self.assertNotIn("FULL_CARD_NUMBER", html)
+        self.assertNotIn("CVV_VALUE", html)
 
     async def test_local_tool_fetch_page_rejects_non_http_url(self):
         with self.assertRaises(HTTPException) as context:

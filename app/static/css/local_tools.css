@@ -104,6 +104,16 @@ code {
     color: var(--text-muted);
 }
 
+.workbench-bar__meta a {
+    color: var(--primary-hover);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.workbench-bar__meta a:hover {
+    text-decoration: underline;
+}
+
 .workbench-layout {
     min-height: 0;
     display: grid;

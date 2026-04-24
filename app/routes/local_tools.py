@@ -73,6 +73,19 @@ async def local_tools_page(request: Request):
     )
 
 
+@router.get("/local-tools/records", response_class=HTMLResponse)
+async def local_record_workbench_page(request: Request):
+    from app.main import templates
+
+    return templates.TemplateResponse(
+        request,
+        "tools/local_records.html",
+        {
+            "request": request,
+        }
+    )
+
+
 @router.post("/local-tools/fetch-page")
 async def fetch_local_tool_page(payload: LocalToolFetchRequest):
     """临时读取目标网页文本，供本地工具页刷新验证码信息；不保存任何数据。"""

@@ -1,0 +1,179 @@
+#recordFileInput {
+    display: none;
+}
+
+.record-workbench-page .panel--data {
+    grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.record-items-grid {
+    min-height: 0;
+    overflow: auto;
+    padding-right: 0.15rem;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.7rem;
+    align-content: start;
+}
+
+.record-card {
+    min-width: 0;
+    border: 1px solid var(--border-base);
+    border-radius: var(--radius-md);
+    background: #fff;
+    box-shadow: var(--shadow-sm);
+    padding: 0.82rem;
+    display: grid;
+    gap: 0.68rem;
+}
+
+.record-card__head {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.7rem;
+    align-items: flex-start;
+}
+
+.record-card__title {
+    margin: 0;
+    min-width: 0;
+    font-size: 1rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.record-card__badge {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    padding: 0.22rem 0.52rem;
+    background: var(--primary-soft);
+    color: var(--primary-hover);
+    font-size: 0.74rem;
+    font-weight: 800;
+}
+
+.record-card__address {
+    margin: 0;
+    color: var(--text-muted);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.record-card__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.record-card__button {
+    border: 1px solid var(--border-base);
+    border-radius: var(--radius-md);
+    background: #fff;
+    color: var(--text-main);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 750;
+    padding: 0.62rem 0.68rem;
+    transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.record-card__button:hover {
+    transform: translateY(-1px);
+    border-color: rgba(99, 102, 241, 0.25);
+    color: var(--primary-hover);
+    background: rgba(99, 102, 241, 0.06);
+}
+
+.record-card__button--primary {
+    grid-column: span 2;
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+
+.record-card__button--primary:hover {
+    background: var(--primary-hover);
+    color: #fff;
+}
+
+.record-card__button--muted {
+    color: var(--text-muted);
+    background: #f8fafc;
+}
+
+.record-card__button:disabled {
+    cursor: not-allowed;
+    opacity: 0.62;
+    transform: none;
+}
+
+.record-card__meta {
+    display: grid;
+    gap: 0.32rem;
+    padding-top: 0.58rem;
+    border-top: 1px dashed var(--border-base);
+}
+
+.record-card__meta-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.7rem;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+
+.record-card__meta-line strong {
+    flex: 0 0 auto;
+    color: var(--text-main);
+    font-weight: 650;
+}
+
+.record-card__meta-line span {
+    min-width: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.record-card__warning {
+    margin: 0;
+    border-radius: var(--radius-md);
+    background: var(--warning-soft);
+    color: #92400e;
+    padding: 0.56rem 0.66rem;
+    font-size: 0.78rem;
+    line-height: 1.4;
+}
+
+@media (max-width: 1080px) {
+    .record-items-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .record-items-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .record-card__actions {
+        grid-template-columns: 1fr;
+    }
+
+    .record-card__button--primary {
+        grid-column: span 1;
+    }
+}
+
+@container (max-width: 960px) {
+    .record-items-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@container (max-width: 560px) {
+    .record-items-grid {
+        grid-template-columns: 1fr;
+    }
+}
