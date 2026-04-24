@@ -9,22 +9,23 @@
 .record-items-grid {
     min-height: 0;
     overflow: auto;
-    padding-right: 0.15rem;
+    padding: 0.05rem 0.18rem 0.2rem 0.02rem;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.7rem;
+    gap: 0.85rem;
     align-content: start;
 }
 
 .record-card {
     min-width: 0;
-    border: 1px solid var(--border-base);
-    border-radius: var(--radius-md);
-    background: #fff;
-    box-shadow: var(--shadow-sm);
-    padding: 0.82rem;
+    border: 1px solid rgba(199, 210, 254, 0.72);
+    border-radius: 16px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 252, 0.96));
+    box-shadow: 0 10px 24px -20px rgb(79 70 229 / 0.55), var(--shadow-sm);
+    padding: 0.95rem;
     display: grid;
-    gap: 0.68rem;
+    gap: 0.75rem;
 }
 
 .record-card__head {
@@ -37,7 +38,7 @@
 .record-card__title {
     margin: 0;
     min-width: 0;
-    font-size: 1rem;
+    font-size: 1.03rem;
     line-height: 1.35;
     overflow-wrap: anywhere;
 }
@@ -52,7 +53,7 @@
 .record-card__badge {
     flex: 0 0 auto;
     border-radius: 999px;
-    padding: 0.22rem 0.52rem;
+    padding: 0.2rem 0.58rem;
     background: var(--primary-soft);
     color: var(--primary-hover);
     font-size: 0.74rem;
@@ -61,25 +62,39 @@
 
 .record-card__fields {
     display: grid;
-    gap: 0.4rem;
-    padding-top: 0.58rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.58rem;
+    padding-top: 0.72rem;
     border-top: 1px dashed var(--border-base);
 }
 
 .record-card__field {
     display: grid;
-    grid-template-columns: 4.2rem minmax(0, 1fr);
     align-items: start;
-    gap: 0.55rem;
-    color: var(--text-muted);
+    gap: 0.22rem;
+    min-width: 0;
+    border: 1px solid rgba(226, 232, 240, 0.78);
+    border-radius: 11px;
+    background: rgba(248, 250, 252, 0.9);
+    color: var(--text-main);
     font-size: 0.82rem;
     line-height: 1.35;
+    padding: 0.5rem 0.58rem;
+}
+
+.record-card__field--wide {
+    grid-column: 1 / -1;
+}
+
+.record-card__field--compact {
+    background: rgba(255, 255, 255, 0.78);
 }
 
 .record-card__field strong {
-    flex: 0 0 auto;
-    color: var(--text-main);
-    font-weight: 650;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 760;
+    letter-spacing: 0.02em;
 }
 
 .record-card__copy-value {
@@ -91,10 +106,10 @@
     color: var(--primary-hover);
     cursor: pointer;
     font: inherit;
-    font-weight: 700;
+    font-weight: 760;
     line-height: 1.42;
     overflow-wrap: anywhere;
-    padding: 0.06rem 0.16rem;
+    padding: 0;
     text-align: left;
     transition: background 0.16s ease, color 0.16s ease;
     white-space: normal;
@@ -103,7 +118,7 @@
 
 .record-card__copy-value:hover,
 .record-card__copy-value:focus-visible {
-    background: rgba(99, 102, 241, 0.09);
+    background: rgba(99, 102, 241, 0.08);
     color: var(--primary);
     outline: none;
 }
@@ -116,10 +131,11 @@
 
 .record-card__warning {
     margin: 0;
-    border-radius: var(--radius-md);
+    border: 1px solid rgba(245, 158, 11, 0.18);
+    border-radius: 11px;
     background: var(--warning-soft);
     color: #92400e;
-    padding: 0.56rem 0.66rem;
+    padding: 0.56rem 0.72rem;
     font-size: 0.78rem;
     line-height: 1.4;
 }
@@ -135,8 +151,12 @@
         grid-template-columns: 1fr;
     }
 
-    .record-card__field {
-        grid-template-columns: 3.8rem minmax(0, 1fr);
+    .record-card {
+        padding: 0.82rem;
+    }
+
+    .record-card__fields {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -148,6 +168,10 @@
 
 @container (max-width: 560px) {
     .record-items-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .record-card__fields {
         grid-template-columns: 1fr;
     }
 }

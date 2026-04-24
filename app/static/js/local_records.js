@@ -443,9 +443,16 @@ function createCopyValueButton(label, displayValue, copyValue = displayValue) {
     return button;
 }
 
-function createCopyField(label, displayValue, copyValue = displayValue) {
+function createCopyField(label, displayValue, copyValue = displayValue, options = {}) {
     const line = document.createElement('div');
-    line.className = 'record-card__field';
+    const classNames = ['record-card__field'];
+    if (options.wide) {
+        classNames.push('record-card__field--wide');
+    }
+    if (options.compact) {
+        classNames.push('record-card__field--compact');
+    }
+    line.className = classNames.join(' ');
 
     const strong = document.createElement('strong');
     strong.textContent = `${label}：`;
@@ -463,6 +470,19 @@ function createCopyField(label, displayValue, copyValue = displayValue) {
 
     line.append(strong, valueElement);
     return line;
+}
+
+function appendVisibleCopyFields(container, fields) {
+    fields
+        .filter((field) => field.required || normalizeText(field.displayValue))
+        .forEach((field) => {
+            container.appendChild(createCopyField(
+                field.label,
+                field.displayValue,
+                field.copyValue,
+                field.options || {}
+            ));
+        });
 }
 
 function renderRecordCard(record) {
@@ -488,16 +508,16 @@ function renderRecordCard(record) {
     const fields = document.createElement('div');
     fields.className = 'record-card__fields';
     if (record.rawText) {
-        fields.append(createCopyField('内容', record.rawText));
+        fields.append(createCopyField('内容', record.rawText, record.rawText, { wide: true }));
     } else {
-        fields.append(
-            createCopyField('地址', record.address),
-            createCopyField('卡号', cardDisplayValue, record.cardNumber || record.cardLast4 || cardDisplayValue),
-            createCopyField('有效期', record.cardExpiry),
-            createCopyField('附加字段', record.extraCode),
-            createCopyField('电话', phoneDisplayValue),
-            createCopyField('备注', record.note)
-        );
+        appendVisibleCopyFields(fields, [
+            { label: '地址', displayValue: record.address, required: true, options: { wide: true } },
+            { label: '卡号', displayValue: cardDisplayValue, copyValue: record.cardNumber || record.cardLast4 || cardDisplayValue, options: { compact: true } },
+            { label: '有效期', displayValue: record.cardExpiry, options: { compact: true } },
+            { label: '附加字段', displayValue: record.extraCode, options: { compact: true } },
+            { label: '电话', displayValue: phoneDisplayValue, options: { compact: true } },
+            { label: '备注', displayValue: record.note, options: { wide: true } },
+        ]);
     }
 
     card.append(head, fields);
