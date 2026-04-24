@@ -89,18 +89,25 @@ function redactSensitiveText(value) {
 }
 
 function createFrozenRecords(records) {
-    return Object.freeze(records.map((record, index) => Object.freeze({
-        id: String(record.id || `${Date.now()}-${index + 1}`),
-        sequence: Number.isInteger(record.sequence) ? record.sequence : index + 1,
-        name: normalizeText(record.name),
-        address: normalizeText(record.address),
-        note: redactSensitiveText(record.note || ''),
-        cardMasked: normalizeText(record.cardMasked),
-        cardLast4: digitsOnly(record.cardLast4 || '').slice(-4),
-        phoneMasked: normalizeText(record.phoneMasked),
-        importedAt: String(record.importedAt || ''),
-        warnings: Object.freeze(Array.isArray(record.warnings) ? record.warnings.map(normalizeText).filter(Boolean) : []),
-    })));
+    return Object.freeze(records.map((record, index) => {
+        const cardNumber = digitsOnly(record.cardNumber || record.cardFull || '');
+        const phone = normalizeText(record.phone || record.phoneFull || '');
+
+        return Object.freeze({
+            id: String(record.id || `${Date.now()}-${index + 1}`),
+            sequence: Number.isInteger(record.sequence) ? record.sequence : index + 1,
+            name: normalizeText(record.name),
+            address: normalizeText(record.address),
+            note: redactSensitiveText(record.note || ''),
+            cardNumber,
+            cardMasked: normalizeText(record.cardMasked),
+            cardLast4: digitsOnly(record.cardLast4 || cardNumber).slice(-4),
+            phone,
+            phoneMasked: normalizeText(record.phoneMasked),
+            importedAt: String(record.importedAt || ''),
+            warnings: Object.freeze(Array.isArray(record.warnings) ? record.warnings.map(normalizeText).filter(Boolean) : []),
+        });
+    }));
 }
 
 function buildRecord(values) {
@@ -110,8 +117,10 @@ function buildRecord(values) {
         name: normalizeText(values.name),
         address: normalizeText(values.address),
         note: redactSensitiveText(values.note || ''),
+        cardNumber: digitsOnly(values.cardNumber || ''),
         cardMasked: normalizeText(values.cardMasked),
         cardLast4: digitsOnly(values.cardLast4 || '').slice(-4),
+        phone: normalizeText(values.phone),
         phoneMasked: normalizeText(values.phoneMasked),
         importedAt: new Date().toISOString(),
         warnings: Object.freeze((values.warnings || []).map(normalizeText).filter(Boolean)),
@@ -143,8 +152,8 @@ function parsePaymentStyleRecord(parts, sequence) {
     }
 
     const cardDigits = digitsOnly(parts[0]);
+    const phone = normalizeText(parts[3]);
     const skippedLabels = [
-        isLikelyCardNumber(parts[0]) ? '完整卡号' : '',
         parts[1] ? '到期日' : '',
         hasCvvLikeValue(parts[2]) ? 'CVV' : '',
         hasSecretUrl(parts.slice(0, -2).join(' ')) ? '短信 API Key/接口地址' : '',
@@ -155,13 +164,15 @@ function parsePaymentStyleRecord(parts, sequence) {
             sequence,
             name,
             address,
+            cardNumber: cardDigits,
             cardMasked: maskCard(parts[0]),
             cardLast4: cardDigits.slice(-4),
-            phoneMasked: maskPhone(parts[3]),
-            note: '敏感字段已在导入时丢弃。',
+            phone,
+            phoneMasked: maskPhone(phone),
+            note: 'CVV、到期日、短信接口等敏感字段已在导入时丢弃。',
             warnings: skippedLabels.length
                 ? [`已忽略：${skippedLabels.join('、')}`]
-                : ['已按敏感格式导入，仅保留可用摘要。'],
+                : [],
         }),
         skippedSensitive: skippedLabels.length,
     };
@@ -265,8 +276,10 @@ function persistRecordState(records) {
             name: record.name,
             address: record.address,
             note: record.note,
+            cardNumber: record.cardNumber,
             cardMasked: record.cardMasked,
             cardLast4: record.cardLast4,
+            phone: record.phone,
             phoneMasked: record.phoneMasked,
             importedAt: record.importedAt,
             warnings: record.warnings,
@@ -286,20 +299,31 @@ function clearRecordState() {
 }
 
 async function copyText(text) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-        return;
+    const safeText = String(text || '');
+    if (!safeText) {
+        return false;
     }
 
-    const tempInput = document.createElement('input');
-    tempInput.value = text;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+            await navigator.clipboard.writeText(safeText);
+            return true;
+        } catch (_error) {
+            // 部分本地浏览器环境会拒绝 Clipboard API，继续使用兼容方案。
+        }
+    }
+
+    const tempInput = document.createElement('textarea');
+    tempInput.value = safeText;
     tempInput.setAttribute('readonly', 'readonly');
     tempInput.style.position = 'absolute';
     tempInput.style.left = '-9999px';
+    tempInput.style.top = '0';
     document.body.appendChild(tempInput);
     tempInput.select();
-    document.execCommand('copy');
+    const copied = document.execCommand('copy');
     document.body.removeChild(tempInput);
+    return copied;
 }
 
 function renderRecordInvalidLines(invalidLines) {
@@ -324,35 +348,49 @@ function buildSearchableRecordText(record) {
         record.name,
         record.address,
         record.note,
+        record.cardNumber,
         record.cardMasked,
         record.cardLast4,
+        record.phone,
         record.phoneMasked,
         record.warnings.join(' '),
     ].join(' ').toLowerCase();
 }
 
-function createRecordButton(text, className, title, onClick, disabled = false) {
+function createCopyValueButton(label, displayValue, copyValue = displayValue) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = className;
-    button.textContent = text;
-    button.title = title;
-    button.disabled = disabled;
-    button.addEventListener('click', onClick);
+    button.className = 'record-card__copy-value';
+    button.textContent = displayValue;
+    button.title = `点击复制${label}`;
+    button.setAttribute('aria-label', `点击复制${label}：${displayValue}`);
+    button.dataset.copyValue = copyValue;
+    button.addEventListener('click', async () => {
+        const copied = await copyText(copyValue);
+        setRecordFeedback(copied ? `已复制${label}。` : `复制${label}失败，请手动选择字段内容。`, copied ? 'success' : 'error');
+    });
     return button;
 }
 
-function createMetaLine(label, value) {
+function createCopyField(label, displayValue, copyValue = displayValue) {
     const line = document.createElement('div');
-    line.className = 'record-card__meta-line';
+    line.className = 'record-card__field';
 
     const strong = document.createElement('strong');
     strong.textContent = `${label}：`;
 
-    const span = document.createElement('span');
-    span.textContent = value || '未提供';
+    const safeDisplayValue = normalizeText(displayValue);
+    const safeCopyValue = typeof copyValue === 'string' ? copyValue.trim() : safeDisplayValue;
+    const valueElement = safeDisplayValue
+        ? createCopyValueButton(label, safeDisplayValue, safeCopyValue || safeDisplayValue)
+        : document.createElement('span');
 
-    line.append(strong, span);
+    if (!safeDisplayValue) {
+        valueElement.className = 'record-card__empty-value';
+        valueElement.textContent = '未保存';
+    }
+
+    line.append(strong, valueElement);
     return line;
 }
 
@@ -364,52 +402,24 @@ function renderRecordCard(record) {
     head.className = 'record-card__head';
     const title = document.createElement('h3');
     title.className = 'record-card__title';
-    title.textContent = record.name;
+    title.appendChild(createCopyValueButton('姓名', record.name));
     const badge = document.createElement('span');
     badge.className = 'record-card__badge';
     badge.textContent = `#${record.sequence}`;
     head.append(title, badge);
 
-    const address = document.createElement('p');
-    address.className = 'record-card__address';
-    address.textContent = record.address;
-
-    const actions = document.createElement('div');
-    actions.className = 'record-card__actions';
-    actions.append(
-        createRecordButton('复制姓名', 'record-card__button record-card__button--primary', `复制姓名：${record.name}`, async () => {
-            await copyText(record.name);
-            setRecordFeedback(`已复制姓名：${record.name}`, 'success');
-        }),
-        createRecordButton('复制地址', 'record-card__button', `复制地址：${record.address}`, async () => {
-            await copyText(record.address);
-            setRecordFeedback('已复制地址。', 'success');
-        }),
-        createRecordButton('复制姓名+地址', 'record-card__button', '复制姓名和地址', async () => {
-            await copyText(`${record.name}\n${record.address}`);
-            setRecordFeedback('已复制姓名和地址。', 'success');
-        }),
-        createRecordButton(
-            record.cardLast4 ? '复制卡尾号' : '无卡尾号',
-            'record-card__button record-card__button--muted',
-            record.cardLast4 ? `复制卡尾号：${record.cardLast4}` : '没有可复制的脱敏卡尾号',
-            async () => {
-                await copyText(record.cardLast4);
-                setRecordFeedback(`已复制卡尾号：${record.cardLast4}`, 'success');
-            },
-            !record.cardLast4
-        )
+    const cardDisplayValue = record.cardNumber || record.cardMasked || (record.cardLast4 ? `尾号 ${record.cardLast4}` : '');
+    const phoneDisplayValue = record.phone || record.phoneMasked;
+    const fields = document.createElement('div');
+    fields.className = 'record-card__fields';
+    fields.append(
+        createCopyField('地址', record.address),
+        createCopyField('卡号', cardDisplayValue, record.cardNumber || record.cardLast4 || cardDisplayValue),
+        createCopyField('电话', phoneDisplayValue),
+        createCopyField('备注', record.note)
     );
 
-    const meta = document.createElement('div');
-    meta.className = 'record-card__meta';
-    meta.append(
-        createMetaLine('卡号', record.cardMasked || '未保存'),
-        createMetaLine('电话', record.phoneMasked || '未保存'),
-        createMetaLine('备注', record.note || '无')
-    );
-
-    card.append(head, address, actions, meta);
+    card.append(head, fields);
     if (record.warnings.length) {
         const warning = document.createElement('p');
         warning.className = 'record-card__warning';

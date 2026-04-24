@@ -42,6 +42,13 @@
     overflow-wrap: anywhere;
 }
 
+.record-card__title .record-card__copy-value {
+    color: var(--text-main);
+    font-size: 1rem;
+    font-weight: 800;
+    padding: 0;
+}
+
 .record-card__badge {
     flex: 0 0 auto;
     border-radius: 999px;
@@ -52,87 +59,58 @@
     font-weight: 800;
 }
 
-.record-card__address {
-    margin: 0;
-    color: var(--text-muted);
-    line-height: 1.45;
-    overflow-wrap: anywhere;
-}
-
-.record-card__actions {
+.record-card__fields {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.5rem;
-}
-
-.record-card__button {
-    border: 1px solid var(--border-base);
-    border-radius: var(--radius-md);
-    background: #fff;
-    color: var(--text-main);
-    cursor: pointer;
-    font: inherit;
-    font-size: 0.86rem;
-    font-weight: 750;
-    padding: 0.62rem 0.68rem;
-    transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
-}
-
-.record-card__button:hover {
-    transform: translateY(-1px);
-    border-color: rgba(99, 102, 241, 0.25);
-    color: var(--primary-hover);
-    background: rgba(99, 102, 241, 0.06);
-}
-
-.record-card__button--primary {
-    grid-column: span 2;
-    background: var(--primary);
-    color: #fff;
-    border-color: var(--primary);
-}
-
-.record-card__button--primary:hover {
-    background: var(--primary-hover);
-    color: #fff;
-}
-
-.record-card__button--muted {
-    color: var(--text-muted);
-    background: #f8fafc;
-}
-
-.record-card__button:disabled {
-    cursor: not-allowed;
-    opacity: 0.62;
-    transform: none;
-}
-
-.record-card__meta {
-    display: grid;
-    gap: 0.32rem;
+    gap: 0.4rem;
     padding-top: 0.58rem;
     border-top: 1px dashed var(--border-base);
 }
 
-.record-card__meta-line {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.7rem;
+.record-card__field {
+    display: grid;
+    grid-template-columns: 4.2rem minmax(0, 1fr);
+    align-items: start;
+    gap: 0.55rem;
     color: var(--text-muted);
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     line-height: 1.35;
 }
 
-.record-card__meta-line strong {
+.record-card__field strong {
     flex: 0 0 auto;
     color: var(--text-main);
     font-weight: 650;
 }
 
-.record-card__meta-line span {
+.record-card__copy-value {
     min-width: 0;
-    text-align: right;
+    width: 100%;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--primary-hover);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+    line-height: 1.42;
+    overflow-wrap: anywhere;
+    padding: 0.06rem 0.16rem;
+    text-align: left;
+    transition: background 0.16s ease, color 0.16s ease;
+    white-space: normal;
+    word-break: break-word;
+}
+
+.record-card__copy-value:hover,
+.record-card__copy-value:focus-visible {
+    background: rgba(99, 102, 241, 0.09);
+    color: var(--primary);
+    outline: none;
+}
+
+.record-card__empty-value {
+    min-width: 0;
+    color: var(--text-muted);
     overflow-wrap: anywhere;
 }
 
@@ -157,12 +135,8 @@
         grid-template-columns: 1fr;
     }
 
-    .record-card__actions {
-        grid-template-columns: 1fr;
-    }
-
-    .record-card__button--primary {
-        grid-column: span 1;
+    .record-card__field {
+        grid-template-columns: 3.8rem minmax(0, 1fr);
     }
 }
 

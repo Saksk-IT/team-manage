@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import HTTPException
@@ -42,8 +43,10 @@ class LocalToolsPageTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("本地记录工作台", html)
         self.assertIn("批量导入后形成记录", html)
+        self.assertIn("点击姓名、地址、卡号等字段内容即可复制", html)
         self.assertIn("数据仅保存在当前浏览器本地", html)
-        self.assertIn("不会保存完整卡号、CVV 或短信 API Key", html)
+        self.assertIn("完整卡号与电话仅本地保存", html)
+        self.assertIn("搜索姓名、地址、卡号或电话", html)
         self.assertIn('id="recordBatchInput"', html)
         self.assertIn('id="importRecordWorkbenchBtn"', html)
         self.assertIn('id="recordItemsGrid"', html)
@@ -51,6 +54,19 @@ class LocalToolsPageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("/static/css/local_records.css", html)
         self.assertNotIn("FULL_CARD_NUMBER", html)
         self.assertNotIn("CVV_VALUE", html)
+        self.assertNotIn("点击按钮复制需要的字段", html)
+
+    async def test_local_record_workbench_static_assets_use_clickable_values(self):
+        static_root = Path(__file__).resolve().parents[1] / "app" / "static"
+        script = (static_root / "js" / "local_records.js").read_text(encoding="utf-8")
+        stylesheet = (static_root / "css" / "local_records.css").read_text(encoding="utf-8")
+
+        self.assertIn("cardNumber", script)
+        self.assertIn("createCopyField('卡号'", script)
+        self.assertIn("record-card__copy-value", script)
+        self.assertIn("record-card__copy-value", stylesheet)
+        self.assertNotIn("createRecordButton('复制姓名'", script)
+        self.assertNotIn("复制卡尾号", script)
 
     async def test_local_tool_fetch_page_rejects_non_http_url(self):
         with self.assertRaises(HTTPException) as context:

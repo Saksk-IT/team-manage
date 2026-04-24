@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>本地记录工作台</title>
     <link rel="icon" type="image/png" href="/static/favicon.png">
-    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260424-records">
-    <link rel="stylesheet" href="/static/css/local_records.css?v=20260424-records">
+    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260424-records-click-copy">
+    <link rel="stylesheet" href="/static/css/local_records.css?v=20260424-records-click-copy">
 </head>
 
 <body>
@@ -15,12 +15,12 @@
         <header class="workbench-bar">
             <div class="workbench-bar__title">
                 <h1>本地记录工作台</h1>
-                <p>批量导入后形成记录，方便复制姓名、地址与脱敏卡尾号；数据仅保存在当前浏览器本地。</p>
+                <p>批量导入后形成记录，点击姓名、地址、卡号等字段内容即可复制；数据仅保存在当前浏览器本地。</p>
             </div>
             <div class="workbench-bar__meta">
                 <span><code>姓名----地址</code></span>
-                <span><code>卡信息----姓名----地址</code> 会自动安全降级</span>
-                <span>不会保存完整卡号、CVV 或短信 API Key</span>
+                <span><code>卡信息----姓名----地址</code> 会保留本地可用字段</span>
+                <span>完整卡号与电话仅本地保存；不会保存 CVV 或短信 API Key</span>
                 <a href="/local-tools">验证码工具</a>
             </div>
         </header>
@@ -46,12 +46,12 @@
                 <textarea
                     id="recordBatchInput"
                     class="batch-textarea"
-                    placeholder="示例：&#10;Alex Demo----123 Main St Apt 1, Springfield, IL 62701, US&#10;卡号----到期日----安全码----电话----短信接口----Pat Example----456 Oak Ave, Seattle WA 98101, US"
+                    placeholder="示例：&#10;Alex Demo----123 Main St Apt 1, Springfield, IL 62701, US&#10;4111111111111111----12/29----123----+1 555 123 4567----短信接口----Pat Example----456 Oak Ave, Seattle WA 98101, US"
                 ></textarea>
 
                 <div class="feedback-row">
                     <p id="recordFeedback" class="feedback" aria-live="polite"></p>
-                    <p class="privacy-tip">提示：完整卡号、CVV、到期日、短信接口地址会在浏览器端解析时丢弃。</p>
+                    <p class="privacy-tip">提示：完整卡号与电话仅保存在当前浏览器本地；CVV、到期日、短信接口地址会在解析时丢弃。</p>
                 </div>
 
                 <div id="recordInvalidLinesBox" class="invalid-lines" hidden>
@@ -64,11 +64,11 @@
                 <div class="panel__header panel__header--data">
                     <div>
                         <h2>本地记录</h2>
-                        <p>点击按钮复制需要的字段；卡相关仅提供脱敏显示与尾号复制。</p>
+                        <p>点击字段内容即可复制；数字会完整显示，不再只显示尾号。</p>
                     </div>
 
                     <div class="panel-tools">
-                        <input id="recordSearchInput" type="search" class="search-input" placeholder="搜索姓名、地址或尾号">
+                        <input id="recordSearchInput" type="search" class="search-input" placeholder="搜索姓名、地址、卡号或电话">
                     </div>
                 </div>
 
@@ -97,7 +97,7 @@
         </section>
     </main>
 
-    <script src="/static/js/local_records.js?v=20260424-records"></script>
+    <script src="/static/js/local_records.js?v=20260424-records-click-copy"></script>
 </body>
 
 </html>
