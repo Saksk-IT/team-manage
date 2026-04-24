@@ -191,8 +191,8 @@
 
         document.getElementById('warrantyEntryId').value = entry.id || '';
         document.getElementById('warrantyEmail').value = entry.email || '';
-        remainingDaysInput.value = remainingDaysInput.defaultValue;
-        remainingClaimsInput.value = remainingClaimsInput.defaultValue;
+        remainingDaysInput.value = entry.remaining_days === null || entry.remaining_days === undefined ? '' : String(entry.remaining_days);
+        remainingClaimsInput.value = entry.remaining_claims === null || entry.remaining_claims === undefined ? '0' : String(entry.remaining_claims);
         setWarrantyEditorMode(true, entry);
         document.getElementById('warrantyEmail')?.focus();
         window.scrollTo({ top: 0, behavior: 'smooth' });
