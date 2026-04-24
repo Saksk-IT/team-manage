@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>本地记录工作台</title>
     <link rel="icon" type="image/png" href="/static/favicon.png">
-    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260424-records-card-ui">
-    <link rel="stylesheet" href="/static/css/local_records.css?v=20260424-records-card-ui">
+    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260424-records-cvv-label">
+    <link rel="stylesheet" href="/static/css/local_records.css?v=20260424-records-cvv-label">
 </head>
 
 <body>
@@ -15,7 +15,7 @@
         <header class="workbench-bar">
             <div class="workbench-bar__title">
                 <h1>本地记录工作台</h1>
-                <p>批量导入后形成记录，点击姓名、地址、卡号、有效期、附加字段等内容即可复制；数据仅保存在当前浏览器本地。</p>
+                <p>批量导入后形成记录，点击姓名、地址、卡号、有效期、CVV 等内容即可复制；数据仅保存在当前浏览器本地。</p>
             </div>
             <div class="workbench-bar__meta">
                 <a href="/local-tools">验证码工具</a>
@@ -48,7 +48,7 @@
 
                 <div class="feedback-row">
                     <p id="recordFeedback" class="feedback" aria-live="polite"></p>
-                    <p class="privacy-tip">提示：完整卡号、电话、有效期与附加字段仅保存在当前浏览器本地；有效期会按 MM/YY 保存，短信接口地址会在解析时丢弃。</p>
+                    <p class="privacy-tip">提示：完整卡号、电话、有效期与 CVV 仅保存在当前浏览器本地；有效期会按 MM/YY 保存，短信接口地址会在解析时丢弃。</p>
                 </div>
 
                 <div id="recordInvalidLinesBox" class="invalid-lines" hidden>
@@ -61,11 +61,11 @@
                 <div class="panel__header panel__header--data">
                     <div>
                         <h2>本地记录</h2>
-                        <p>点击字段内容即可复制；数字、有效期和附加字段会完整显示，不再只显示尾号。</p>
+                        <p>点击字段内容即可复制；数字、有效期和 CVV 会完整显示，不再只显示尾号。</p>
                     </div>
 
                     <div class="panel-tools">
-                        <input id="recordSearchInput" type="search" class="search-input" placeholder="搜索姓名、地址、卡号、有效期、附加字段或电话">
+                        <input id="recordSearchInput" type="search" class="search-input" placeholder="搜索姓名、地址、卡号、有效期、CVV 或电话">
                     </div>
                 </div>
 
@@ -94,7 +94,7 @@
         </section>
     </main>
 
-    <script src="/static/js/local_records.js?v=20260424-records-card-ui"></script>
+    <script src="/static/js/local_records.js?v=20260424-records-cvv-label"></script>
 </body>
 
 </html>

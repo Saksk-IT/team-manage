@@ -514,7 +514,7 @@ function renderRecordCard(record) {
             { label: '地址', displayValue: record.address, required: true, options: { wide: true } },
             { label: '卡号', displayValue: cardDisplayValue, copyValue: record.cardNumber || record.cardLast4 || cardDisplayValue, options: { compact: true } },
             { label: '有效期', displayValue: record.cardExpiry, options: { compact: true } },
-            { label: '附加字段', displayValue: record.extraCode, options: { compact: true } },
+            { label: 'CVV', displayValue: record.extraCode, options: { compact: true } },
             { label: '电话', displayValue: phoneDisplayValue, options: { compact: true } },
             { label: '备注', displayValue: record.note, options: { wide: true } },
         ]);
