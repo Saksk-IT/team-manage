@@ -240,7 +240,7 @@ process.stdout.write(JSON.stringify({{
     def test_local_record_parser_ignores_leading_unused_payment_prefix(self):
         payload = self._run_local_records_node("""
 const parsed = sandbox.parseRecordBatch(
-  'KW-EXAMPLE-IGNORE-0001 ---- 4111111111111111 ---- 02/30 ---- 902 ---- +15550104567 ---- https://example.com/api/get_sms?key=demo ---- Pat Example ---- 456 Oak Ave, Seattle WA 98101, US'
+  'KW-EXAMPLE-IGNORE-0001 4111111111111111 ---- 02/30 ---- 902 ---- +15550104567 ---- https://example.com/api/get_sms?key=demo ---- Pat Example ---- 456 Oak Ave, Seattle WA 98101, US'
 );
 const record = parsed.records[0];
 process.stdout.write(JSON.stringify({
@@ -276,6 +276,7 @@ process.stdout.write(JSON.stringify({
         self.assertEqual("456 Oak Ave, Seattle WA 98101, US", payload["address"])
         self.assertIn("已忽略", " ".join(payload["warnings"]))
         self.assertNotIn("KW-EXAMPLE-IGNORE-0001", payload["storedValues"])
+        self.assertNotIn("0001", payload["cardNumber"])
         self.assertNotIn("key=demo", payload["storedValues"])
 
     def test_local_record_parser_imports_delimiter_wrapped_plain_text(self):

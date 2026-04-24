@@ -191,6 +191,24 @@ function validateNameAddress(name, address) {
     return '';
 }
 
+function splitInlinePaymentPrefix(value) {
+    const tokens = normalizeText(value).split(/\s+/).filter(Boolean);
+    if (tokens.length < 2) {
+        return null;
+    }
+
+    const cardCandidate = tokens[tokens.length - 1];
+    const ignoredPrefix = normalizeText(tokens.slice(0, -1).join(' '));
+    if (!ignoredPrefix || !isLikelyCardNumber(cardCandidate)) {
+        return null;
+    }
+
+    return Object.freeze({
+        cardPart: cardCandidate,
+        ignoredPrefix,
+    });
+}
+
 function normalizePaymentStyleParts(parts) {
     if (
         parts.length >= 8 &&
@@ -202,6 +220,18 @@ function normalizePaymentStyleParts(parts) {
         return Object.freeze({
             parts: Object.freeze(parts.slice(1)),
             ignoredPrefix: normalizeText(parts[0]),
+        });
+    }
+
+    const inlinePrefix = splitInlinePaymentPrefix(parts[0]);
+    if (
+        parts.length >= 7 &&
+        inlinePrefix &&
+        formatCardExpiry(parts[1])
+    ) {
+        return Object.freeze({
+            parts: Object.freeze([inlinePrefix.cardPart].concat(parts.slice(1))),
+            ignoredPrefix: inlinePrefix.ignoredPrefix,
         });
     }
 
