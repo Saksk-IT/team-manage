@@ -223,7 +223,7 @@
     border-radius: 13px;
     background: rgba(255, 255, 255, 0.86);
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(7.4rem, 1fr) max-content auto;
     gap: 0.42rem;
     padding: 0.5rem;
 }
@@ -231,7 +231,8 @@
 .record-card__linked-identifier,
 .record-card__linked-result,
 .record-card__linked-open,
-.record-card__linked-email-address {
+.record-card__linked-email-address,
+.record-card__linked-email-result {
     border: none;
     border-radius: 11px;
     cursor: pointer;
@@ -242,7 +243,8 @@
 .record-card__linked-identifier:hover,
 .record-card__linked-result:hover,
 .record-card__linked-open:hover,
-.record-card__linked-email-address:hover {
+.record-card__linked-email-address:hover,
+.record-card__linked-email-result:hover {
     transform: translateY(-1px);
 }
 
@@ -302,6 +304,42 @@
     padding: 0.56rem 0.66rem;
 }
 
+.record-card__linked-email-result {
+    min-width: 0;
+    max-width: 7.2rem;
+    grid-column: 2 / 3;
+    grid-row: 1 / 2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: #f8fafc;
+    color: var(--text-muted);
+    border: 1px solid var(--border-base);
+    font-size: 0.84rem;
+    font-weight: 800;
+    line-height: 1.25;
+    padding: 0.56rem 0.66rem;
+}
+
+.record-card__linked-email-result--success {
+    background: var(--success-soft);
+    color: #047857;
+    border-color: rgba(16, 185, 129, 0.18);
+    letter-spacing: 0.08em;
+}
+
+.record-card__linked-email-result--warning {
+    background: var(--warning-soft);
+    color: #92400e;
+    border-color: rgba(245, 158, 11, 0.24);
+}
+
+.record-card__linked-email-result--pending {
+    background: #f8fafc;
+    color: var(--text-muted);
+    border-color: var(--border-base);
+}
+
 .record-card__linked-result--empty {
     background: var(--warning-soft);
     color: #92400e;
@@ -328,7 +366,8 @@
     line-height: 1;
 }
 
-.record-card__linked-result:disabled {
+.record-card__linked-result:disabled,
+.record-card__linked-email-result:disabled {
     cursor: progress;
     opacity: 0.72;
     transform: none;
@@ -374,6 +413,7 @@
     }
 
     .record-card__linked-email-address,
+    .record-card__linked-email-result,
     .record-card__linked-email-meta {
         grid-column: 1 / -1;
         max-width: none;

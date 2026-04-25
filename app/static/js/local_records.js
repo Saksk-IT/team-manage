@@ -285,6 +285,22 @@ function createFrozenToolItem(toolItem, sequence) {
     });
 }
 
+function buildRecordEmailInboxInfo(overrides = {}) {
+    if (typeof buildInboxInfo === 'function') {
+        return buildInboxInfo(overrides);
+    }
+
+    return Object.freeze({
+        summary: '',
+        copyText: '',
+        verificationCode: '',
+        messageCount: 0,
+        checkedAt: '',
+        statusText: '待取件',
+        ...overrides,
+    });
+}
+
 function createFrozenEmailAccount(emailAccount, sequence) {
     if (!emailAccount || typeof emailAccount !== 'object') {
         return null;
@@ -308,6 +324,7 @@ function createFrozenEmailAccount(emailAccount, sequence) {
         apiUrl: String(emailAccount.apiUrl || '').trim(),
         host: normalizeText(emailAccount.host),
         statusText: normalizeText(emailAccount.statusText || '待取件'),
+        inbox: buildRecordEmailInboxInfo(emailAccount.inbox || {}),
     });
 }
 
@@ -1030,6 +1047,9 @@ function buildSearchableEmailText(emailAccount) {
         emailAccount.apiUrl,
         emailAccount.uiUrl,
         emailAccount.statusText,
+        emailAccount.inbox?.summary,
+        emailAccount.inbox?.copyText,
+        emailAccount.inbox?.verificationCode,
     ].join(' ');
 }
 
@@ -1216,7 +1236,40 @@ function buildEmailAccountMetaText(emailAccount) {
     return emailAccount.host || emailAccount.displayUrl || '邮箱';
 }
 
-function renderLinkedEmailAccount(emailAccount) {
+function buildRecordEmailResultText(emailAccount) {
+    if (emailAccount.inbox?.verificationCode) {
+        return emailAccount.inbox.verificationCode;
+    }
+
+    if (/^\d{6}$/.test(emailAccount.inbox?.copyText || '')) {
+        return emailAccount.inbox.copyText;
+    }
+
+    if (!emailAccount.inbox?.checkedAt && (!emailAccount.statusText || emailAccount.statusText === '待取件')) {
+        return '待刷新';
+    }
+
+    return emailAccount.inbox?.statusText || emailAccount.statusText || '待刷新';
+}
+
+function buildRecordEmailResultButtonClass(emailAccount) {
+    const resultText = buildRecordEmailResultText(emailAccount);
+    if (/^\d{6}$/.test(resultText)) {
+        return 'record-card__linked-email-result record-card__linked-email-result--success';
+    }
+
+    if (resultText.includes('暂无') || resultText.includes('失败') || resultText.includes('超时')) {
+        return 'record-card__linked-email-result record-card__linked-email-result--warning';
+    }
+
+    if (!resultText || resultText === '待刷新') {
+        return 'record-card__linked-email-result record-card__linked-email-result--pending';
+    }
+
+    return 'record-card__linked-email-result';
+}
+
+function renderLinkedEmailAccount(emailAccount, recordId) {
     const panel = document.createElement('section');
     panel.className = 'record-card__linked-email';
 
@@ -1231,11 +1284,22 @@ function renderLinkedEmailAccount(emailAccount) {
     );
     copyButton.setAttribute('aria-label', `复制邮箱：${emailAccount.email}`);
 
+    const resultText = buildRecordEmailResultText(emailAccount);
+    const resultButton = createRecordActionButton(
+        buildRecordEmailResultButtonClass(emailAccount),
+        resultText,
+        `点击取件并复制验证码：${emailAccount.email}`,
+        async () => {
+            await refreshAndCopyEmailAccountResult(recordId, resultButton);
+        }
+    );
+    resultButton.setAttribute('aria-label', `取件并复制验证码：${emailAccount.email}`);
+
     const meta = document.createElement('span');
     meta.className = 'record-card__linked-email-meta';
     meta.textContent = buildEmailAccountMetaText(emailAccount);
 
-    panel.append(copyButton, meta);
+    panel.append(copyButton, resultButton, meta);
     return panel;
 }
 
@@ -1287,7 +1351,7 @@ function renderRecordCard(record) {
         card.appendChild(renderLinkedToolItem(record.toolItem, record.id));
     }
     if (record.emailAccount) {
-        card.appendChild(renderLinkedEmailAccount(record.emailAccount));
+        card.appendChild(renderLinkedEmailAccount(record.emailAccount, record.id));
     }
     return card;
 }
@@ -1451,6 +1515,60 @@ async function expandRecordEmailSourceLinks(parseResult) {
     });
 }
 
+function mergeRecordEmailDiscovery(account, discovery) {
+    return Object.freeze({
+        ...account,
+        email: discovery.email || account.email,
+        password: discovery.password || account.password,
+        uid: discovery.uid || account.uid,
+        sourceName: discovery.sourceName || account.sourceName,
+        host: discovery.host || account.host,
+        uiUrl: discovery.uiUrl || account.uiUrl,
+        apiUrl: discovery.apiUrl || account.apiUrl,
+    });
+}
+
+async function fetchInboxForRecordEmailAccount(account) {
+    if (typeof discoverEmailApiLinks !== 'function' || typeof parseInboxContent !== 'function') {
+        throw new Error('email-core-unavailable');
+    }
+
+    const checkedAt = new Date().toISOString();
+    const primaryUrl = account.apiUrl || account.sourceUrl;
+    const primaryContent = await fetchPageContent(primaryUrl);
+    const primaryDiscovery = discoverEmailApiLinks(primaryContent.rawText, primaryContent.contentType, primaryUrl, account);
+    const discoveredAccount = mergeRecordEmailDiscovery(account, primaryDiscovery);
+
+    if (!primaryContent.ok) {
+        return Object.freeze({
+            ...discoveredAccount,
+            statusText: `取件失败 HTTP ${primaryContent.status}`,
+            inbox: buildRecordEmailInboxInfo({
+                summary: `取件失败 HTTP ${primaryContent.status}`,
+                checkedAt,
+                statusText: '取件失败',
+            }),
+        });
+    }
+
+    const shouldFetchDiscoveredApi = discoveredAccount.apiUrl && discoveredAccount.apiUrl !== primaryUrl;
+    const inboxContent = shouldFetchDiscoveredApi
+        ? await fetchPageContent(discoveredAccount.apiUrl)
+        : primaryContent;
+    const inboxDiscovery = discoverEmailApiLinks(inboxContent.rawText, inboxContent.contentType, discoveredAccount.apiUrl || primaryUrl, discoveredAccount);
+    const finalAccount = mergeRecordEmailDiscovery(discoveredAccount, inboxDiscovery);
+    const parsedInbox = parseInboxContent(inboxContent.rawText, inboxContent.contentType);
+
+    return Object.freeze({
+        ...finalAccount,
+        statusText: parsedInbox.statusText || '已取件',
+        inbox: buildRecordEmailInboxInfo({
+            ...parsedInbox,
+            checkedAt,
+        }),
+    });
+}
+
 async function fetchSiteInfoForToolItem(toolItem) {
     const checkedAt = new Date().toISOString();
     const fallbackInfo = {
@@ -1561,6 +1679,66 @@ async function refreshAndCopyToolItemResult(recordId, resultButton) {
     } catch (_error) {
         renderRecords();
         setRecordFeedback(`刷新失败：${targetToolItem.identifier}`, 'error');
+    }
+}
+
+async function refreshAndCopyEmailAccountResult(recordId, resultButton) {
+    const targetIndex = currentRecords.findIndex((record) => record.id === recordId);
+    const targetRecord = currentRecords[targetIndex];
+    const targetEmailAccount = targetRecord?.emailAccount;
+
+    if (!targetEmailAccount) {
+        setRecordFeedback('没有找到要取件的邮箱。', 'warning');
+        renderRecords();
+        return;
+    }
+
+    resultButton.disabled = true;
+    resultButton.textContent = '取件中';
+
+    try {
+        const nextEmailAccount = await fetchInboxForRecordEmailAccount(targetEmailAccount);
+        const nextRecords = createFrozenRecords(currentRecords.map((record, index) => (
+            index === targetIndex
+                ? Object.freeze({
+                    ...record,
+                    emailAccount: nextEmailAccount,
+                })
+                : record
+        )));
+        persistRecordState(nextRecords);
+        renderRecords();
+
+        const nextResultText = buildRecordEmailResultText(nextEmailAccount);
+        const shouldCopy = /^\d{6}$/.test(nextResultText);
+        const copied = shouldCopy ? await copyText(nextResultText) : false;
+        setRecordFeedback(
+            shouldCopy && copied
+                ? `已取件并复制验证码：${nextResultText}`
+                : `已取件：${nextEmailAccount.email}，${nextResultText}`,
+            shouldCopy && copied ? 'success' : 'warning'
+        );
+    } catch (error) {
+        const checkedAt = new Date().toISOString();
+        const failedRecords = createFrozenRecords(currentRecords.map((record, index) => (
+            index === targetIndex
+                ? Object.freeze({
+                    ...record,
+                    emailAccount: Object.freeze({
+                        ...targetEmailAccount,
+                        statusText: error?.name === 'AbortError' ? '取件超时' : '取件失败',
+                        inbox: buildRecordEmailInboxInfo({
+                            summary: error?.name === 'AbortError' ? '取件超时' : '目标站点限制读取或接口异常',
+                            checkedAt,
+                            statusText: '取件失败',
+                        }),
+                    }),
+                })
+                : record
+        )));
+        persistRecordState(failedRecords);
+        renderRecords();
+        setRecordFeedback(`取件失败：${targetEmailAccount.email}`, 'error');
     }
 }
 
