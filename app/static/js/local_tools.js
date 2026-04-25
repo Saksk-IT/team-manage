@@ -252,6 +252,26 @@ function clearLocalState() {
     currentSavedAt = '';
 }
 
+function splitBatchLine(line) {
+    const dashParts = line.split(/\s*-{4,}\s*/);
+    if (dashParts.length >= 2) {
+        return Object.freeze({
+            identifier: (dashParts[0] || '').trim(),
+            openUrl: dashParts.slice(1).join('----').trim(),
+        });
+    }
+
+    const pipeIndex = line.indexOf('|');
+    if (pipeIndex >= 0) {
+        return Object.freeze({
+            identifier: line.slice(0, pipeIndex).trim(),
+            openUrl: line.slice(pipeIndex + 1).trim(),
+        });
+    }
+
+    return null;
+}
+
 function parseBatchContent(content) {
     const normalizedLines = String(content || '')
         .split(/\r?\n/)
@@ -259,16 +279,15 @@ function parseBatchContent(content) {
         .filter((line) => line);
 
     const parseResult = normalizedLines.reduce((result, line, index) => {
-        const parts = line.split(/\s*-{4,}\s*/);
-        if (parts.length < 2) {
+        const parsedLine = splitBatchLine(line);
+        if (!parsedLine) {
             return {
                 ...result,
-                invalidLines: result.invalidLines.concat([{ lineNumber: index + 1, reason: '缺少有效分隔符 ----' }]),
+                invalidLines: result.invalidLines.concat([{ lineNumber: index + 1, reason: '缺少有效分隔符 ---- 或 |' }]),
             };
         }
 
-        const identifier = (parts[0] || '').trim();
-        const openUrl = parts.slice(1).join('----').trim();
+        const { identifier, openUrl } = parsedLine;
 
         if (!identifier) {
             return {

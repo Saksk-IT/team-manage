@@ -67,6 +67,55 @@ vm.runInContext(fs.readFileSync({json.dumps(str(script_path))}, 'utf8'), sandbox
         )
         return json.loads(completed.stdout)
 
+    def _run_local_tools_node(self, node_body: str) -> dict:
+        if not shutil.which("node"):
+            self.skipTest("node is required for local_tools.js behavior check")
+
+        static_root = Path(__file__).resolve().parents[1] / "app" / "static"
+        script_path = static_root / "js" / "local_tools.js"
+        node_script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const noop = () => {{}};
+function createElement(tag) {{
+  return {{ tag, style: {{}}, className: '', dataset: {{}}, children: [], hidden: false,
+    value: '', textContent: '', innerHTML: '', disabled: false,
+    classList: {{ add: noop, remove: noop }},
+    setAttribute: noop, addEventListener: noop, removeChild: noop, select: noop,
+    append(...nodes) {{ this.children.push(...nodes); }},
+    appendChild(node) {{ this.children.push(node); return node; }},
+  }};
+}}
+const elements = new Proxy({{}}, {{
+  get(target, key) {{ target[key] = target[key] || createElement(String(key)); return target[key]; }}
+}});
+const sandbox = {{
+  console, Date, Object, String, Number, Array, JSON, RegExp, URL,
+  navigator: {{}},
+  window: {{
+    localStorage: {{ getItem() {{ return null; }}, setItem: noop, removeItem: noop }},
+    setTimeout,
+    clearTimeout,
+    open: noop,
+  }},
+  document: {{
+    getElementById(id) {{ return elements[id]; }},
+    createElement, body: createElement('body'),
+    execCommand() {{ return true; }},
+  }},
+}};
+vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync({json.dumps(str(script_path))}, 'utf8'), sandbox);
+{node_body}
+"""
+        completed = subprocess.run(
+            ["node", "-e", node_script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return json.loads(completed.stdout)
+
     async def test_local_tools_page_renders_standalone_local_features(self):
         response = await local_tools_page(request=self._build_request())
         html = response.body.decode("utf-8")
@@ -78,11 +127,38 @@ vm.runInContext(fs.readFileSync({json.dumps(str(script_path))}, 'utf8'), sandbox
         self.assertIn('id="importLocalToolsBtn"', html)
         self.assertIn('id="refreshAllSiteInfoBtn"', html)
         self.assertIn("点击完整标识即可复制", html)
+        self.assertIn("<code>标识|地址</code>", html)
         self.assertIn('class="workbench-layout"', html)
         self.assertIn('class="items-grid items-grid--workbench"', html)
         self.assertIn("/static/js/local_tools.js", html)
         self.assertIn("/static/css/local_tools.css", html)
         self.assertNotIn("管理员", html)
+
+    def test_local_tools_parser_accepts_phone_pipe_url_lines(self):
+        payload = self._run_local_tools_node("""
+const parsed = sandbox.parseBatchContent(
+  '+15722232948|https://example.com/api/get_sms?key=demo\\n' +
+  '+15728673707 | https://example.org/api/get_sms?key=demo2\\n' +
+  'missing delimiter'
+);
+process.stdout.write(JSON.stringify({
+  count: parsed.items.length,
+  invalidCount: parsed.invalidLines.length,
+  firstIdentifier: parsed.items[0] && parsed.items[0].identifier,
+  firstOpenUrl: parsed.items[0] && parsed.items[0].openUrl,
+  firstDisplayUrl: parsed.items[0] && parsed.items[0].displayUrl,
+  secondIdentifier: parsed.items[1] && parsed.items[1].identifier,
+  invalidReason: parsed.invalidLines[0] && parsed.invalidLines[0].reason,
+}));
+""")
+
+        self.assertEqual(2, payload["count"])
+        self.assertEqual(1, payload["invalidCount"])
+        self.assertEqual("+15722232948", payload["firstIdentifier"])
+        self.assertEqual("https://example.com/api/get_sms?key=demo", payload["firstOpenUrl"])
+        self.assertEqual("https://example.com/api/get_sms", payload["firstDisplayUrl"])
+        self.assertEqual("+15728673707", payload["secondIdentifier"])
+        self.assertIn("---- 或 |", payload["invalidReason"])
 
     async def test_local_record_workbench_renders_safe_local_import_page(self):
         response = await local_record_workbench_page(request=self._build_record_request())

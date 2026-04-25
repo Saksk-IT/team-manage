@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>本地快捷导入工具</title>
     <link rel="icon" type="image/png" href="/static/favicon.png">
-    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260424-item-refresh">
+    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260425-pipe-format">
 </head>
 
 <body>
@@ -17,7 +17,7 @@
                 <p>工作台模式：左侧导入，右侧查看与操作；数据仅保存在当前浏览器本地。</p>
             </div>
             <div class="workbench-bar__meta">
-                <span><code>标识----地址</code></span>
+                <span><code>标识|地址</code> 或 <code>标识----地址</code></span>
                 <span>点击完整标识即可复制</span>
                 <span>点击结果即可复制验证码</span>
                 <span>点 <code>↗</code> 打开地址</span>
@@ -31,7 +31,7 @@
                 <div class="panel__header">
                     <div>
                         <h2>导入内容</h2>
-                        <p>支持直接粘贴，或导入本地 txt 文件。</p>
+                        <p>支持直接粘贴 <code>手机号|短信接口</code>，或导入本地 txt 文件。</p>
                     </div>
                 </div>
 
@@ -47,7 +47,7 @@
                 <textarea
                     id="batchContentInput"
                     class="batch-textarea"
-                    placeholder="示例：&#10;user@example.com----https://example.com/login?token=123&#10;+15722257869----------------https://example.com/api/get_sms?key=abc"
+                    placeholder="示例：&#10;+15722257869|https://example.com/api/get_sms?key=abc&#10;user@example.com----https://example.com/login?token=123"
                 ></textarea>
 
                 <div class="feedback-row">
@@ -99,7 +99,7 @@
         </section>
     </main>
 
-    <script src="/static/js/local_tools.js?v=20260424-item-refresh"></script>
+    <script src="/static/js/local_tools.js?v=20260425-pipe-format"></script>
 </body>
 
 </html>
