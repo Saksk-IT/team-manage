@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import tempfile
@@ -9,7 +10,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
 from app.models import RedemptionCode, WarrantyEmailEntry
-from app.routes.admin import codes_list_page
+from app.routes.admin import (
+    BulkWarrantyCodeQuotaUpdateRequest,
+    bulk_update_warranty_code_quota,
+    codes_list_page,
+)
 from app.utils.time_utils import get_now
 
 
@@ -99,6 +104,51 @@ class AdminCodesWarrantySyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('name="code_type"', html)
         self.assertIn('name="created_from"', html)
         self.assertIn('name="remaining_claims_max"', html)
+        self.assertIn('id="bulkWarrantyQuotaModal"', html)
+        self.assertIn('/admin/codes/bulk-warranty-quota-update', html)
+
+    async def test_bulk_warranty_code_quota_update_can_use_current_filters(self):
+        async with self.Session() as session:
+            session.add_all([
+                RedemptionCode(
+                    code="FILTER-WARRANTY-001",
+                    status="unused",
+                    has_warranty=True,
+                    warranty_days=30,
+                    warranty_claims=10,
+                ),
+                RedemptionCode(
+                    code="FILTER-NORMAL-001",
+                    status="unused",
+                    has_warranty=False,
+                    warranty_days=30,
+                    warranty_claims=10,
+                ),
+            ])
+            await session.commit()
+
+            response = await bulk_update_warranty_code_quota(
+                update_data=BulkWarrantyCodeQuotaUpdateRequest(
+                    codes=[],
+                    status_filter="unused",
+                    code_type="warranty",
+                    remaining_days=8,
+                    remaining_claims=2,
+                ),
+                db=session,
+                current_user={"username": "admin"},
+            )
+
+            warranty_code = await session.get(RedemptionCode, 1)
+            normal_code = await session.get(RedemptionCode, 2)
+
+        payload = json.loads(response.body.decode("utf-8"))
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["updated_count"], 1)
+        self.assertEqual(warranty_code.warranty_days, 8)
+        self.assertEqual(warranty_code.warranty_claims, 2)
+        self.assertEqual(normal_code.warranty_days, 30)
+        self.assertEqual(normal_code.warranty_claims, 10)
 
 
 if __name__ == "__main__":

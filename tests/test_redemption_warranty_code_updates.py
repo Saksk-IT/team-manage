@@ -82,6 +82,64 @@ class RedemptionWarrantyCodeUpdateTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(refreshed_code.has_warranty)
         self.assertEqual(refreshed_code.warranty_days, 30)
 
+    async def test_bulk_update_unused_warranty_code_quota_only_updates_eligible_codes(self):
+        async with self.Session() as session:
+            session.add_all([
+                RedemptionCode(
+                    code="UNUSED-WARRANTY-001",
+                    status="unused",
+                    has_warranty=True,
+                    warranty_days=30,
+                    warranty_claims=10,
+                ),
+                RedemptionCode(
+                    code="UNUSED-NORMAL-001",
+                    status="unused",
+                    has_warranty=False,
+                    warranty_days=30,
+                    warranty_claims=10,
+                ),
+                RedemptionCode(
+                    code="USED-WARRANTY-001",
+                    status="used",
+                    has_warranty=True,
+                    warranty_days=30,
+                    warranty_claims=10,
+                ),
+            ])
+            await session.commit()
+
+            result = await self.service.bulk_update_unused_warranty_code_quota(
+                codes=[
+                    "UNUSED-WARRANTY-001",
+                    "UNUSED-NORMAL-001",
+                    "USED-WARRANTY-001",
+                ],
+                db_session=session,
+                remaining_days=12,
+                remaining_claims=3,
+            )
+
+            updated_code = await session.scalar(
+                select(RedemptionCode).where(RedemptionCode.code == "UNUSED-WARRANTY-001")
+            )
+            normal_code = await session.scalar(
+                select(RedemptionCode).where(RedemptionCode.code == "UNUSED-NORMAL-001")
+            )
+            used_code = await session.scalar(
+                select(RedemptionCode).where(RedemptionCode.code == "USED-WARRANTY-001")
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["updated_count"], 1)
+        self.assertEqual(result["skipped_count"], 2)
+        self.assertEqual(updated_code.warranty_days, 12)
+        self.assertEqual(updated_code.warranty_claims, 3)
+        self.assertEqual(normal_code.warranty_days, 30)
+        self.assertEqual(normal_code.warranty_claims, 10)
+        self.assertEqual(used_code.warranty_days, 30)
+        self.assertEqual(used_code.warranty_claims, 10)
+
 
 if __name__ == "__main__":
     unittest.main()

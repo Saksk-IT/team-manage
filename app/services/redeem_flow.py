@@ -419,7 +419,7 @@ class RedeemFlowService:
                             rc.used_team_id = team_id_final
                             rc.used_at = get_now()
                             if rc.has_warranty:
-                                days = rc.warranty_days or 30
+                                days = rc.warranty_days if rc.warranty_days is not None else 30
                                 rc.warranty_expires_at = get_now() + timedelta(days=days)
 
                             record = RedemptionRecord(

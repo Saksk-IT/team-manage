@@ -471,8 +471,8 @@ class RedemptionService:
                 warranty_entry_join = (
                     WarrantyEmailEntry.email == func.lower(func.trim(RedemptionCode.used_by_email))
                 )
-                count_stmt = count_stmt.join(WarrantyEmailEntry, warranty_entry_join)
-                stmt = stmt.join(WarrantyEmailEntry, warranty_entry_join)
+                count_stmt = count_stmt.outerjoin(WarrantyEmailEntry, warranty_entry_join)
+                stmt = stmt.outerjoin(WarrantyEmailEntry, warranty_entry_join)
                 filters.append(RedemptionCode.has_warranty.is_(True))
 
             if search:
@@ -522,23 +522,53 @@ class RedemptionService:
                 filters.append(RedemptionCode.has_warranty.is_(True))
                 filters.append(RedemptionCode.warranty_days == warranty_days)
 
+            used_warranty_remaining_filters = []
+            unused_warranty_remaining_filters = []
+            if needs_warranty_entry_filter:
+                used_warranty_remaining_filters.extend([
+                    RedemptionCode.has_warranty.is_(True),
+                    WarrantyEmailEntry.id.isnot(None),
+                ])
+                unused_warranty_remaining_filters.extend([
+                    RedemptionCode.has_warranty.is_(True),
+                    RedemptionCode.status == "unused",
+                ])
+
             if has_remaining_day_filter:
                 now = get_now()
-                filters.append(WarrantyEmailEntry.expires_at.isnot(None))
+                used_warranty_remaining_filters.append(WarrantyEmailEntry.expires_at.isnot(None))
                 if remaining_days_min is not None and remaining_days_min > 0:
-                    filters.append(
+                    used_warranty_remaining_filters.append(
                         WarrantyEmailEntry.expires_at > now + timedelta(days=remaining_days_min - 1)
                     )
+                    unused_warranty_remaining_filters.append(
+                        RedemptionCode.warranty_days >= remaining_days_min
+                    )
+                elif remaining_days_min is not None:
+                    unused_warranty_remaining_filters.append(
+                        RedemptionCode.warranty_days >= remaining_days_min
+                    )
                 if remaining_days_max is not None:
-                    filters.append(
+                    used_warranty_remaining_filters.append(
                         WarrantyEmailEntry.expires_at <= now + timedelta(days=remaining_days_max)
+                    )
+                    unused_warranty_remaining_filters.append(
+                        RedemptionCode.warranty_days <= remaining_days_max
                     )
 
             if remaining_claims_min is not None:
-                filters.append(WarrantyEmailEntry.remaining_claims >= remaining_claims_min)
+                used_warranty_remaining_filters.append(WarrantyEmailEntry.remaining_claims >= remaining_claims_min)
+                unused_warranty_remaining_filters.append(RedemptionCode.warranty_claims >= remaining_claims_min)
 
             if remaining_claims_max is not None:
-                filters.append(WarrantyEmailEntry.remaining_claims <= remaining_claims_max)
+                used_warranty_remaining_filters.append(WarrantyEmailEntry.remaining_claims <= remaining_claims_max)
+                unused_warranty_remaining_filters.append(RedemptionCode.warranty_claims <= remaining_claims_max)
+
+            if needs_warranty_entry_filter:
+                filters.append(or_(
+                    and_(*used_warranty_remaining_filters),
+                    and_(*unused_warranty_remaining_filters),
+                ))
             
             if filters:
                 count_stmt = count_stmt.where(and_(*filters))
@@ -598,6 +628,11 @@ class RedemptionService:
                     if warranty_entry and code.has_warranty
                     else {}
                 )
+                warranty_remaining_days = serialized_warranty_entry.get("remaining_days")
+                warranty_remaining_claims = serialized_warranty_entry.get("remaining_claims")
+                if code.has_warranty and not normalized_used_email:
+                    warranty_remaining_days = code.warranty_days
+                    warranty_remaining_claims = code.warranty_claims
                 code_list.append({
                     "id": code.id,
                     "code": code.code,
@@ -613,9 +648,10 @@ class RedemptionService:
                     "used_at": code.used_at.isoformat() if code.used_at else None,
                     "has_warranty": code.has_warranty,
                     "warranty_days": code.warranty_days,
+                    "warranty_claims": code.warranty_claims,
                     "warranty_expires_at": code.warranty_expires_at.isoformat() if code.warranty_expires_at else None,
-                    "warranty_remaining_days": serialized_warranty_entry.get("remaining_days"),
-                    "warranty_remaining_claims": serialized_warranty_entry.get("remaining_claims"),
+                    "warranty_remaining_days": warranty_remaining_days,
+                    "warranty_remaining_claims": warranty_remaining_claims,
                 })
 
             logger.info(f"获取所有兑换码成功: 第 {page} 页, 共 {len(code_list)} 个 / 总数 {total}")
@@ -1178,6 +1214,116 @@ class RedemptionService:
                 "success": False,
                 "message": None,
                 "error": f"批量更新失败: {str(e)}"
+            }
+
+    async def bulk_update_unused_warranty_code_quota(
+        self,
+        codes: List[str],
+        db_session: AsyncSession,
+        remaining_days: int,
+        remaining_claims: int,
+    ) -> Dict[str, Any]:
+        """批量修改未使用质保兑换码的初始剩余天数和次数"""
+        try:
+            normalized_codes = list(dict.fromkeys([
+                (code or "").strip()
+                for code in codes
+                if (code or "").strip()
+            ]))
+            if not normalized_codes:
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": "请先选择或筛选要修改的兑换码",
+                    "updated_count": 0,
+                    "skipped_count": 0,
+                }
+
+            try:
+                remaining_days_int = int(remaining_days)
+                remaining_claims_int = int(remaining_claims)
+            except (TypeError, ValueError):
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": "剩余天数和剩余次数必须是非负整数",
+                    "updated_count": 0,
+                    "skipped_count": 0,
+                }
+
+            if remaining_days_int < 0 or remaining_claims_int < 0:
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": "剩余天数和剩余次数必须是非负整数",
+                    "updated_count": 0,
+                    "skipped_count": 0,
+                }
+
+            stmt = select(RedemptionCode).where(RedemptionCode.code.in_(normalized_codes))
+            result = await db_session.execute(stmt)
+            existing_codes = result.scalars().all()
+            existing_code_set = {code.code for code in existing_codes}
+            missing_codes = [code for code in normalized_codes if code not in existing_code_set]
+            if missing_codes:
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": f"以下兑换码不存在: {', '.join(missing_codes[:5])}",
+                    "updated_count": 0,
+                    "skipped_count": len(existing_codes),
+                }
+
+            eligible_codes = [
+                code.code
+                for code in existing_codes
+                if code.status == "unused" and code.has_warranty
+            ]
+            skipped_count = len(existing_codes) - len(eligible_codes)
+            if not eligible_codes:
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": "未找到可修改的未使用质保兑换码",
+                    "updated_count": 0,
+                    "skipped_count": skipped_count,
+                }
+
+            update_stmt = (
+                update(RedemptionCode)
+                .where(RedemptionCode.code.in_(eligible_codes))
+                .values({
+                    RedemptionCode.warranty_days: remaining_days_int,
+                    RedemptionCode.warranty_claims: remaining_claims_int,
+                    RedemptionCode.warranty_expires_at: None,
+                })
+            )
+            await db_session.execute(update_stmt)
+            await db_session.commit()
+
+            logger.info(
+                "成功批量修改 %s 个未使用质保兑换码的剩余天数/次数，跳过 %s 个",
+                len(eligible_codes),
+                skipped_count,
+            )
+
+            return {
+                "success": True,
+                "message": f"成功修改 {len(eligible_codes)} 个未使用质保兑换码",
+                "updated_count": len(eligible_codes),
+                "skipped_count": skipped_count,
+                "error": None,
+            }
+
+        except Exception as e:
+            await db_session.rollback()
+            logger.error(f"批量修改未使用质保兑换码剩余次数失败: {e}")
+            return {
+                "success": False,
+                "message": None,
+                "error": f"批量修改失败: {str(e)}",
+                "updated_count": 0,
+                "skipped_count": 0,
             }
 
     async def get_stats(

@@ -145,6 +145,46 @@ class RedemptionWarrantyCodeListingTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["success"])
         self.assertEqual([code["code"] for code in result["codes"]], ["WARRANTY-MATCH-001"])
 
+    async def test_get_all_codes_filters_unused_warranty_codes_by_configured_remaining_values(self):
+        now = get_now()
+        async with self.Session() as session:
+            session.add_all([
+                RedemptionCode(
+                    code="UNUSED-WARRANTY-MATCH",
+                    status="unused",
+                    has_warranty=True,
+                    warranty_days=12,
+                    warranty_claims=6,
+                    created_at=now,
+                ),
+                RedemptionCode(
+                    code="UNUSED-WARRANTY-OUTSIDE",
+                    status="unused",
+                    has_warranty=True,
+                    warranty_days=3,
+                    warranty_claims=1,
+                    created_at=now,
+                ),
+            ])
+            await session.commit()
+
+            result = await self.service.get_all_codes(
+                db_session=session,
+                page=1,
+                per_page=50,
+                status="unused",
+                code_type="warranty",
+                remaining_days_min=10,
+                remaining_days_max=15,
+                remaining_claims_min=5,
+                remaining_claims_max=10,
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual([code["code"] for code in result["codes"]], ["UNUSED-WARRANTY-MATCH"])
+        self.assertEqual(result["codes"][0]["warranty_remaining_days"], 12)
+        self.assertEqual(result["codes"][0]["warranty_remaining_claims"], 6)
+
 
 if __name__ == "__main__":
     unittest.main()

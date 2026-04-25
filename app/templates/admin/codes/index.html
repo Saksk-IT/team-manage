@@ -136,6 +136,9 @@
             <button onclick="showModal('generateCodeModal')" class="btn btn-primary">
                 <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 生成兑换码
             </button>
+            <button onclick="showBulkWarrantyQuotaModal()" class="btn btn-secondary">
+                <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i> 批量改剩余
+            </button>
             <button onclick="showExportModal()" class="btn btn-secondary">
                 <i data-lucide="download" style="width: 16px; height: 16px;"></i> 导出
             </button>
@@ -219,22 +222,14 @@
                     </td>
                     <td>
                         {% if code.has_warranty %}
-                            {% if code.used_by_email %}
-                                {{ code.warranty_remaining_days if code.warranty_remaining_days is not none else '-' }}
-                            {% else %}
-                                待兑换
-                            {% endif %}
+                            {{ code.warranty_remaining_days if code.warranty_remaining_days is not none else '-' }}
                         {% else %}
                         -
                         {% endif %}
                     </td>
                     <td>
                         {% if code.has_warranty %}
-                            {% if code.used_by_email %}
-                                {{ code.warranty_remaining_claims if code.warranty_remaining_claims is not none else '-' }}
-                            {% else %}
-                                待兑换
-                            {% endif %}
+                            {{ code.warranty_remaining_claims if code.warranty_remaining_claims is not none else '-' }}
                         {% else %}
                         -
                         {% endif %}
@@ -247,7 +242,7 @@
                             </button>
                             {% if code.status == 'unused' %}
                             <button
-                                onclick="editCode('{{ code.code }}', {{ 'true' if code.has_warranty else 'false' }}, {{ code.warranty_days or 30 }})"
+                                onclick="editCode('{{ code.code }}', {{ 'true' if code.has_warranty else 'false' }}, {{ code.warranty_days if code.warranty_days is not none else 30 }})"
                                 class="btn btn-sm btn-icon btn-minimal btn-info" title="编辑">
                                 <i data-lucide="edit-3" style="width: 14px; height: 14px;"></i>
                             </button>
@@ -275,6 +270,9 @@
             </button>
             <button onclick="showBulkEditModal()" class="btn btn-primary">
                 <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i> 批量修改质保
+            </button>
+            <button onclick="showBulkWarrantyQuotaModal()" class="btn btn-secondary">
+                <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i> 修改剩余
             </button>
             <button onclick="batchDeleteCodes()" class="btn btn-danger">
                 <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i> 批量删除
@@ -377,6 +375,33 @@
         <button onclick="showModal('generateCodeModal')" class="btn btn-primary">立即生成</button>
     </div>
     {% endif %}
+</div>
+
+<!-- 批量修改未使用质保兑换码剩余天数/次数模态框 -->
+<div id="bulkWarrantyQuotaModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>批量修改质保剩余</h3>
+            <button class="modal-close" onclick="hideModal('bulkWarrantyQuotaModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="alert alert-info" style="margin-bottom: 1rem;">
+                <div id="bulk-warranty-quota-scope">将修改当前筛选结果中的未使用质保兑换码。</div>
+                <small class="text-muted">普通兑换码、已使用兑换码和已过期兑换码会自动跳过。</small>
+            </div>
+            <form id="bulkWarrantyQuotaForm" onsubmit="handleBulkWarrantyQuotaUpdate(event)">
+                <div class="form-group">
+                    <label>剩余天数 *</label>
+                    <input type="number" id="bulk-warranty-remaining-days" class="form-control" value="30" min="0" required>
+                </div>
+                <div class="form-group">
+                    <label>剩余次数 *</label>
+                    <input type="number" id="bulk-warranty-remaining-claims" class="form-control" value="10" min="0" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">确认修改</button>
+            </form>
+        </div>
+    </div>
 </div>
 
 <!-- 批量编辑兑换码模态框 -->
@@ -753,6 +778,22 @@
         };
     }
 
+    function buildEmptyFilterPayload() {
+        return {
+            search: null,
+            status_filter: null,
+            team_id: null,
+            code_type: null,
+            created_from: null,
+            created_to: null,
+            warranty_days: null,
+            remaining_days_min: null,
+            remaining_days_max: null,
+            remaining_claims_min: null,
+            remaining_claims_max: null,
+        };
+    }
+
     // 全选/取消全选
     function toggleSelectAll(checkbox) {
         const checkboxes = document.querySelectorAll('.code-checkbox');
@@ -788,6 +829,70 @@
     function showBulkEditModal() {
         document.getElementById('bulk-selected-count-display').innerText = getSelectedCodes().length;
         showModal('bulkEditCodeModal');
+    }
+
+    function showBulkWarrantyQuotaModal() {
+        const selectedCount = getSelectedCodes().length;
+        const scopeEl = document.getElementById('bulk-warranty-quota-scope');
+        if (scopeEl) {
+            scopeEl.innerText = selectedCount > 0
+                ? `将修改已勾选的 ${selectedCount} 个兑换码中的未使用质保兑换码。`
+                : '将修改当前筛选结果中的未使用质保兑换码。';
+        }
+        showModal('bulkWarrantyQuotaModal');
+    }
+
+    async function handleBulkWarrantyQuotaUpdate(event) {
+        event.preventDefault();
+        const selectedCodes = getSelectedCodes();
+        const remainingDays = Number(document.getElementById('bulk-warranty-remaining-days').value);
+        const remainingClaims = Number(document.getElementById('bulk-warranty-remaining-claims').value);
+        if (!Number.isInteger(remainingDays) || remainingDays < 0 || !Number.isInteger(remainingClaims) || remainingClaims < 0) {
+            showToast('剩余天数和剩余次数必须是非负整数', 'error');
+            return;
+        }
+
+        const scopeText = selectedCodes.length > 0
+            ? `确定要修改已勾选兑换码中的未使用质保兑换码吗？`
+            : '确定要修改当前筛选结果中的未使用质保兑换码吗？';
+        const confirmed = await showSystemConfirm({
+            title: '确认批量修改质保剩余',
+            message: `${scopeText}\n\n剩余天数：${remainingDays}\n剩余次数：${remainingClaims}\n\n普通、已使用或已过期兑换码会自动跳过。`,
+            confirmText: '确认修改',
+        });
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentFilters = buildCurrentFilterPayload(urlParams);
+            const response = await fetch('/admin/codes/bulk-warranty-quota-update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    codes: selectedCodes,
+                    ...(selectedCodes.length > 0 ? buildEmptyFilterPayload() : currentFilters),
+                    remaining_days: remainingDays,
+                    remaining_claims: remainingClaims,
+                })
+            });
+
+            const result = await response.json();
+            if (response.ok && result.success) {
+                const skippedText = result.skipped_count ? `，跳过 ${result.skipped_count} 个` : '';
+                showToast(`${result.message || '批量修改成功'}${skippedText}`, 'success');
+                hideModal('bulkWarrantyQuotaModal');
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                showToast(result.error || '批量修改失败', 'error');
+            }
+        } catch (error) {
+            console.error(error);
+            showToast('网络错误', 'error');
+        }
     }
 
     function showExportModal() {
@@ -950,19 +1055,6 @@
             const urlParams = new URLSearchParams(window.location.search);
             const exportFormat = document.querySelector('input[name="exportFormat"]:checked')?.value || 'excel';
             const currentFilters = buildCurrentFilterPayload(urlParams);
-            const emptyFilters = {
-                search: null,
-                status_filter: null,
-                team_id: null,
-                code_type: null,
-                created_from: null,
-                created_to: null,
-                warranty_days: null,
-                remaining_days_min: null,
-                remaining_days_max: null,
-                remaining_claims_min: null,
-                remaining_claims_max: null,
-            };
             const response = await fetch('/admin/codes/export', {
                 method: 'POST',
                 headers: {
@@ -970,7 +1062,7 @@
                 },
                 body: JSON.stringify({
                     codes: selectedCodes,
-                    ...(selectedCodes.length > 0 ? emptyFilters : currentFilters),
+                    ...(selectedCodes.length > 0 ? buildEmptyFilterPayload() : currentFilters),
                     export_format: exportFormat
                 })
             });

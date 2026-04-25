@@ -585,17 +585,28 @@ class WarrantyService:
             select(WarrantyEmailEntry).where(WarrantyEmailEntry.email == normalized_email)
         )
         entry = result.scalar_one_or_none()
-        default_expires_at = self._build_warranty_entry_expires_at(self.AUTO_WARRANTY_ENTRY_DEFAULT_DAYS)
+        warranty_days = (
+            redemption_code.warranty_days
+            if redemption_code is not None and redemption_code.warranty_days is not None
+            else self.AUTO_WARRANTY_ENTRY_DEFAULT_DAYS
+        )
+        warranty_claims = (
+            redemption_code.warranty_claims
+            if redemption_code is not None and redemption_code.warranty_claims is not None
+            else self.AUTO_WARRANTY_ENTRY_DEFAULT_CLAIMS
+        )
+        warranty_claims = max(int(warranty_claims or 0), 0)
+        default_expires_at = self._build_warranty_entry_expires_at(warranty_days)
 
         if entry:
             entry.last_redeem_code = redeem_code
             if (entry.source or "auto_redeem") == "auto_redeem":
-                entry.remaining_claims = self.AUTO_WARRANTY_ENTRY_DEFAULT_CLAIMS
+                entry.remaining_claims = warranty_claims
                 entry.expires_at = default_expires_at
         else:
             entry = WarrantyEmailEntry(
                 email=normalized_email,
-                remaining_claims=self.AUTO_WARRANTY_ENTRY_DEFAULT_CLAIMS,
+                remaining_claims=warranty_claims,
                 expires_at=default_expires_at,
                 source="auto_redeem",
                 last_redeem_code=redeem_code
@@ -1630,7 +1641,7 @@ class WarrantyService:
                 if code_obj.has_warranty and not expiry_date:
                     start_time = code_obj.used_at or record.redeemed_at # 优先取首次使用时间
                     if start_time:
-                        days = code_obj.warranty_days or 30
+                        days = code_obj.warranty_days if code_obj.warranty_days is not None else 30
                         expiry_date = start_time + timedelta(days=days)
 
                 is_valid = True

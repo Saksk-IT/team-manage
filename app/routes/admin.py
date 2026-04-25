@@ -147,6 +147,24 @@ class BulkCodeUpdateRequest(BaseModel):
     warranty_days: Optional[int] = Field(None, description="质保天数")
 
 
+class BulkWarrantyCodeQuotaUpdateRequest(BaseModel):
+    """批量修改未使用质保兑换码剩余天数/次数请求"""
+    codes: List[str] = Field(default_factory=list, description="勾选的兑换码列表")
+    search: Optional[str] = Field(None, description="搜索关键词")
+    status_filter: Optional[str] = Field(None, description="状态筛选")
+    team_id: Optional[int] = Field(None, description="绑定的 Team ID")
+    code_type: Optional[str] = Field(None, description="兑换码类型筛选: standard/warranty")
+    created_from: Optional[str] = Field(None, description="创建时间起始")
+    created_to: Optional[str] = Field(None, description="创建时间结束")
+    warranty_days: Optional[int] = Field(None, ge=1, description="质保时长筛选")
+    remaining_days_min: Optional[int] = Field(None, ge=0, description="剩余天数最小值")
+    remaining_days_max: Optional[int] = Field(None, ge=0, description="剩余天数最大值")
+    remaining_claims_min: Optional[int] = Field(None, ge=0, description="剩余次数最小值")
+    remaining_claims_max: Optional[int] = Field(None, ge=0, description="剩余次数最大值")
+    remaining_days: int = Field(..., ge=0, description="要设置的剩余天数")
+    remaining_claims: int = Field(..., ge=0, description="要设置的剩余次数")
+
+
 class BulkCodeActionRequest(BaseModel):
     """批量兑换码操作请求"""
     codes: List[str] = Field(..., description="兑换码列表")
@@ -2388,6 +2406,72 @@ async def bulk_update_codes(
                 content=result
             )
         return JSONResponse(content=result)
+    except Exception as e:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": str(e)}
+        )
+
+
+@router.post("/codes/bulk-warranty-quota-update")
+async def bulk_update_warranty_code_quota(
+    update_data: BulkWarrantyCodeQuotaUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """批量修改未使用质保兑换码的剩余天数和剩余次数"""
+    try:
+        selected_codes = [
+            code.strip()
+            for code in update_data.codes
+            if (code or "").strip()
+        ]
+        target_codes = selected_codes
+
+        if not target_codes:
+            code_filter_kwargs = _build_code_filter_kwargs(
+                code_type=update_data.code_type,
+                created_from=update_data.created_from,
+                created_to=update_data.created_to,
+                warranty_days=update_data.warranty_days,
+                remaining_days_min=update_data.remaining_days_min,
+                remaining_days_max=update_data.remaining_days_max,
+                remaining_claims_min=update_data.remaining_claims_min,
+                remaining_claims_max=update_data.remaining_claims_max,
+            )
+            codes_result = await redemption_service.get_all_codes(
+                db,
+                page=1,
+                per_page=100000,
+                search=update_data.search,
+                status=update_data.status_filter,
+                bound_team_id=update_data.team_id,
+                **code_filter_kwargs,
+            )
+            if not codes_result.get("success"):
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "success": False,
+                        "error": codes_result.get("error") or "获取筛选兑换码失败",
+                    },
+                )
+            target_codes = [code["code"] for code in codes_result.get("codes", [])]
+
+        result = await redemption_service.bulk_update_unused_warranty_code_quota(
+            codes=target_codes,
+            db_session=db,
+            remaining_days=update_data.remaining_days,
+            remaining_claims=update_data.remaining_claims,
+        )
+        if not result["success"]:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=result
+            )
+        return JSONResponse(content=result)
+    except HTTPException:
+        raise
     except Exception as e:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

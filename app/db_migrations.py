@@ -145,6 +145,14 @@ def run_auto_migration():
             """)
             migrations_applied.append("redemption_codes.warranty_days")
 
+        if not column_exists(cursor, "redemption_codes", "warranty_claims"):
+            logger.info("添加 redemption_codes.warranty_claims 字段")
+            cursor.execute("""
+                ALTER TABLE redemption_codes
+                ADD COLUMN warranty_claims INTEGER DEFAULT 10
+            """)
+            migrations_applied.append("redemption_codes.warranty_claims")
+
         if not column_exists(cursor, "redemption_codes", "bound_team_id"):
             logger.info("添加 redemption_codes.bound_team_id 字段")
             cursor.execute("""
