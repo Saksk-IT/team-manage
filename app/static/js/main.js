@@ -165,6 +165,23 @@ function handleImportWarrantyToggle(checkbox, hiddenInputId, daysGroupId, teamTy
     updateImportGeneratedCodeTitles(teamType);
 }
 
+function setWarrantyDaysQuickValue(control, days) {
+    const normalizedDays = parseInt(days, 10);
+    if (!Number.isInteger(normalizedDays) || normalizedDays < 1) {
+        return;
+    }
+
+    const group = control?.closest?.('.form-group');
+    const input = group?.querySelector?.('input[name="warrantyDays"]');
+    if (!input) {
+        return;
+    }
+
+    input.value = normalizedDays;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 function showImportTeamModal(teamType = TEAM_TYPE_STANDARD) {
     currentImportTeamType = teamType === TEAM_TYPE_WARRANTY ? TEAM_TYPE_WARRANTY : TEAM_TYPE_STANDARD;
     const meta = getImportModeMeta(currentImportTeamType);

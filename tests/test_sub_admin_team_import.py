@@ -142,6 +142,7 @@ class PendingTeamClassificationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(refreshed.import_status, IMPORT_STATUS_CLASSIFIED)
         self.assertEqual(refreshed.team_type, TEAM_TYPE_STANDARD)
         self.assertEqual(refreshed.bound_code_type, TEAM_TYPE_WARRANTY)
+        self.assertEqual(refreshed.bound_code_warranty_days, 45)
         self.assertEqual(len(codes), 4)
         self.assertTrue(all(code.has_warranty for code in codes))
         self.assertTrue(all(code.warranty_days == 45 for code in codes))

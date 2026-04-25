@@ -1104,6 +1104,7 @@ class TeamService:
                 encrypted_token = encryption_service.encrypt_token(access_token)
                 encrypted_rt = encryption_service.encrypt_token(refresh_token) if refresh_token else None
                 encrypted_st = encryption_service.encrypt_token(session_token) if session_token else None
+                normalized_warranty_days = max(int(warranty_days or 30), 1)
 
                 # 创建 Team 记录
                 team = Team(
@@ -1116,6 +1117,11 @@ class TeamService:
                     account_id=selected_account["account_id"],
                     team_type=team_type,
                     bound_code_type=TEAM_TYPE_WARRANTY if team_type == TEAM_TYPE_STANDARD and generate_warranty_codes else TEAM_TYPE_STANDARD,
+                    bound_code_warranty_days=(
+                        normalized_warranty_days
+                        if team_type == TEAM_TYPE_STANDARD and generate_warranty_codes
+                        else None
+                    ),
                     team_name=selected_account["name"],
                     plan_type=selected_account["plan_type"],
                     subscription_plan=selected_account["subscription_plan"],
@@ -1146,7 +1152,6 @@ class TeamService:
 
                 remaining_seats = max(max_members - current_members, 0)
                 generated_codes = []
-                normalized_warranty_days = max(int(warranty_days or 30), 1)
                 if generate_codes_on_import and team_type == TEAM_TYPE_STANDARD and remaining_seats > 0:
                     generate_result = await self.redemption_service.generate_code_batch(
                         db_session=db_session,
@@ -1400,6 +1405,7 @@ class TeamService:
             cleanup_result = await self._clear_bound_codes_for_team(team.id, db_session)
             team.team_type = normalized_target_type
             team.bound_code_type = TEAM_TYPE_STANDARD
+            team.bound_code_warranty_days = None
 
             generated_codes: List[str] = []
             generated_code_count = 0
@@ -1486,6 +1492,7 @@ class TeamService:
 
             team.import_status = IMPORT_STATUS_CLASSIFIED
             team.bound_code_type = TEAM_TYPE_STANDARD
+            team.bound_code_warranty_days = None
 
             if normalized_target == CLASSIFY_TARGET_WARRANTY_TEAM:
                 team.team_type = TEAM_TYPE_WARRANTY
@@ -1494,6 +1501,7 @@ class TeamService:
                 team.team_type = TEAM_TYPE_STANDARD
                 has_warranty = normalized_target == CLASSIFY_TARGET_WARRANTY_CODE
                 team.bound_code_type = TEAM_TYPE_WARRANTY if has_warranty else TEAM_TYPE_STANDARD
+                team.bound_code_warranty_days = normalized_warranty_days if has_warranty else None
                 remaining_seats = max((team.max_members or DEFAULT_TEAM_MAX_MEMBERS) - (team.current_members or 0), 0)
 
                 if remaining_seats > 0:
@@ -2981,6 +2989,8 @@ class TeamService:
                     bound_codes_map.setdefault(code.bound_team_id, []).append({
                         "code": code.code,
                         "status": code.status,
+                        "has_warranty": bool(code.has_warranty),
+                        "warranty_days": code.warranty_days,
                         "used_by_email": code.used_by_email,
                         "used_at": code.used_at.isoformat() if code.used_at else None,
                         "used_team_id": code.used_team_id,
@@ -2993,6 +3003,24 @@ class TeamService:
             team_list = []
             for team in teams:
                 bound_codes_for_team = bound_codes_map.get(team.id, [])
+                warranty_days_from_codes = sorted({
+                    int(code["warranty_days"])
+                    for code in bound_codes_for_team
+                    if code.get("has_warranty") and code.get("warranty_days")
+                })
+                stored_warranty_days = getattr(team, "bound_code_warranty_days", None)
+                if stored_warranty_days is not None and stored_warranty_days > 0:
+                    bound_code_warranty_days = stored_warranty_days
+                    bound_code_warranty_days_label = f"{stored_warranty_days} 天"
+                elif len(warranty_days_from_codes) == 1:
+                    bound_code_warranty_days = warranty_days_from_codes[0]
+                    bound_code_warranty_days_label = f"{warranty_days_from_codes[0]} 天"
+                elif len(warranty_days_from_codes) > 1:
+                    bound_code_warranty_days = None
+                    bound_code_warranty_days_label = "多种时长"
+                else:
+                    bound_code_warranty_days = None
+                    bound_code_warranty_days_label = None
                 review_status = team.import_status or IMPORT_STATUS_CLASSIFIED
                 if review_status == IMPORT_STATUS_PENDING:
                     review_status_label = "待审核"
@@ -3019,6 +3047,8 @@ class TeamService:
                     "imported_by_username": team.imported_by_username,
                     "bound_code_type": team.bound_code_type or TEAM_TYPE_STANDARD,
                     "bound_code_type_label": "质保" if (team.bound_code_type or TEAM_TYPE_STANDARD) == TEAM_TYPE_WARRANTY else "普通",
+                    "bound_code_warranty_days": bound_code_warranty_days,
+                    "bound_code_warranty_days_label": bound_code_warranty_days_label,
                     "team_name": team.team_name,
                     "plan_type": team.plan_type,
                     "subscription_plan": team.subscription_plan,

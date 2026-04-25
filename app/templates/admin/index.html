@@ -244,6 +244,11 @@
                         title="绑定兑换码类型">
                         {{ team.bound_code_type_label }}
                     </span>
+                    {% if team.bound_code_type == 'warranty' %}
+                    <div class="text-muted small" style="margin-top: 0.25rem;">
+                        质保 {{ team.bound_code_warranty_days_label or '时长未记录' }}
+                    </div>
+                    {% endif %}
                 </td>
                 {% endif %}
                 <td>
@@ -480,6 +485,11 @@
                 <div class="form-group" id="classifyWarrantyDaysGroup" style="display: none;">
                     <label>兑换码质保时长 (天)</label>
                     <input type="number" name="warrantyDays" class="form-control" value="30" min="1" max="3650">
+                    <div class="quick-value-row" aria-label="兑换码质保时长快捷值">
+                        <button type="button" class="quick-value-btn" onclick="setWarrantyDaysQuickValue(this, 30)">30 天</button>
+                        <button type="button" class="quick-value-btn" onclick="setWarrantyDaysQuickValue(this, 15)">15 天</button>
+                        <button type="button" class="quick-value-btn" onclick="setWarrantyDaysQuickValue(this, 7)">7 天</button>
+                    </div>
                     <small class="form-text">默认 30 天 / 10 次，和导入弹窗中的“自动生成质保兑换码”语义一致。</small>
                 </div>
                 <button type="submit" id="classifyConsoleSubmitBtn" class="btn btn-primary">确认进入控制台</button>

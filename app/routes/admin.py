@@ -70,7 +70,7 @@ class TeamImportRequest(BaseModel):
     import_type: str = Field(..., description="导入类型: single 或 batch")
     team_type: str = Field(TEAM_TYPE_STANDARD, description="Team 类型: standard 或 warranty")
     generate_warranty_codes: bool = Field(False, description="是否自动生成质保兑换码")
-    warranty_days: int = Field(30, description="自动生成质保兑换码时的质保天数")
+    warranty_days: int = Field(30, ge=1, description="自动生成质保兑换码时的质保天数")
     access_token: Optional[str] = Field(None, description="AT Token (单个导入)")
     refresh_token: Optional[str] = Field(None, description="Refresh Token (单个导入)")
     session_token: Optional[str] = Field(None, description="Session Token (单个导入)")
@@ -116,7 +116,7 @@ class TeamTransferRequest(BaseModel):
 class TeamClassifyRequest(BaseModel):
     """待分类 Team 归类请求"""
     target: str = Field(..., description="归类目标: standard / warranty_code / warranty_team")
-    warranty_days: int = Field(30, description="质保兑换码天数")
+    warranty_days: int = Field(30, ge=1, description="质保兑换码天数")
 
 
 class SubAdminCreateRequest(BaseModel):
@@ -360,7 +360,7 @@ class BulkActionRequest(BaseModel):
 class BulkTeamClassifyRequest(BulkActionRequest):
     """批量待分类 Team 归类请求"""
     target: str = Field(..., description="归类目标: standard / warranty_code / warranty_team")
-    warranty_days: int = Field(30, description="质保兑换码天数")
+    warranty_days: int = Field(30, ge=1, description="质保兑换码天数")
 
 
 class WarrantySuperCodeConfigRequest(BaseModel):

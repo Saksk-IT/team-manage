@@ -215,6 +215,11 @@ def run_auto_migration():
             WHERE bound_code_type IS NULL OR TRIM(bound_code_type) = ''
         """)
 
+        if not column_exists(cursor, "teams", "bound_code_warranty_days"):
+            logger.info("添加 teams.bound_code_warranty_days 字段")
+            cursor.execute("ALTER TABLE teams ADD COLUMN bound_code_warranty_days INTEGER")
+            migrations_applied.append("teams.bound_code_warranty_days")
+
         if table_exists(cursor, "redemption_codes"):
             cursor.execute("""
                 UPDATE teams
@@ -226,6 +231,30 @@ def run_auto_migration():
                       AND COALESCE(redemption_codes.has_warranty, 0) = 1
                 )
             """)
+            cursor.execute("""
+                UPDATE teams
+                SET bound_code_warranty_days = (
+                    SELECT MAX(redemption_codes.warranty_days)
+                    FROM redemption_codes
+                    WHERE redemption_codes.bound_team_id = teams.id
+                      AND COALESCE(redemption_codes.has_warranty, 0) = 1
+                      AND redemption_codes.warranty_days > 0
+                )
+                WHERE (bound_code_warranty_days IS NULL OR bound_code_warranty_days <= 0)
+                  AND EXISTS (
+                    SELECT 1
+                    FROM redemption_codes
+                    WHERE redemption_codes.bound_team_id = teams.id
+                      AND COALESCE(redemption_codes.has_warranty, 0) = 1
+                      AND redemption_codes.warranty_days > 0
+                  )
+            """)
+
+        cursor.execute("""
+            UPDATE teams
+            SET bound_code_warranty_days = NULL
+            WHERE bound_code_type != 'warranty'
+        """)
 
         if not column_exists(cursor, "teams", "error_count"):
             logger.info("添加 teams.error_count 字段")

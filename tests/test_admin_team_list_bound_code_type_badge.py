@@ -39,6 +39,7 @@ class AdminTeamListBoundCodeTypeBadgeTests(unittest.IsolatedAsyncioTestCase):
                     account_id="acc-warranty",
                     team_name="Warranty Badge Team",
                     bound_code_type="warranty",
+                    bound_code_warranty_days=15,
                     status="active",
                     current_members=1,
                     max_members=5,
@@ -60,6 +61,7 @@ class AdminTeamListBoundCodeTypeBadgeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("账号类型", html)
         self.assertRegex(html, r"<td>\s*Warranty Badge Team\s*</td>\s*<td>\s*<span[^>]*data-bound-code-type=\"warranty\"")
         self.assertRegex(html, r'data-bound-code-type="warranty"[^>]*>\s*质保\s*<')
+        self.assertIn("质保 15 天", html)
 
     async def test_team_list_renders_standard_badge_for_standard_bound_code_team(self):
         async with self.Session() as session:

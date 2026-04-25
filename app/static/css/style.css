@@ -1060,6 +1060,33 @@ body.admin-shell {
     white-space: nowrap;
 }
 
+.quick-value-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.quick-value-btn {
+    border: 1px solid var(--border-color);
+    background: var(--bg-surface);
+    color: var(--text-muted);
+    border-radius: 999px;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    touch-action: manipulation;
+}
+
+.quick-value-btn:hover,
+.quick-value-btn:focus {
+    border-color: var(--primary);
+    color: var(--primary);
+    outline: none;
+}
+
 
 .search-form-grid .form-group {
     margin-bottom: 0;

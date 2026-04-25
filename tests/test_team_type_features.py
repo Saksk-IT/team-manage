@@ -121,10 +121,16 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
 
             codes_result = await session.execute(select(RedemptionCode))
             generated_codes = codes_result.scalars().all()
+            team = await session.get(Team, result["team_id"])
+            list_result = await self.service.get_all_teams(session)
 
         self.assertTrue(result["success"])
         self.assertEqual(result["generated_code_count"], 7)
         self.assertEqual(result["imported_teams"][0]["bound_code_type"], TEAM_TYPE_WARRANTY)
+        self.assertEqual(result["imported_teams"][0]["generated_code_warranty_days"], 45)
+        self.assertEqual(team.bound_code_warranty_days, 45)
+        self.assertEqual(list_result["teams"][0]["bound_code_warranty_days"], 45)
+        self.assertEqual(list_result["teams"][0]["bound_code_warranty_days_label"], "45 天")
         self.assertTrue(all(code.has_warranty for code in generated_codes))
         self.assertTrue(all(code.warranty_days == 45 for code in generated_codes))
 

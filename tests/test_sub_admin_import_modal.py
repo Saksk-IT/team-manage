@@ -34,6 +34,9 @@ class SubAdminImportModalTests(unittest.TestCase):
         self.assertIn("data-import-status", template)
         self.assertIn("/admin/teams/batch-classify/stream", template)
         self.assertIn("requireSelectedPendingReviewTargets", template)
+        self.assertIn("setWarrantyDaysQuickValue(this, 30)", template)
+        self.assertIn("setWarrantyDaysQuickValue(this, 15)", template)
+        self.assertIn("setWarrantyDaysQuickValue(this, 7)", template)
 
 
 if __name__ == "__main__":
