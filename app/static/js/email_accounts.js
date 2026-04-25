@@ -54,12 +54,12 @@ function formatEmailSavedAt(value) {
 
 function formatEmailCheckedAt(value) {
     if (!value) {
-        return '未取件';
+        return '未刷新';
     }
 
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
-        return '未取件';
+        return '未刷新';
     }
 
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
@@ -169,7 +169,9 @@ function createEmailButton(className, text, title, onClick) {
 function createEmailMetaLine(label, value) {
     const line = document.createElement('div');
     line.className = 'email-account-card__meta';
-    line.textContent = `${label}：${value}`;
+    const labelElement = document.createElement('strong');
+    labelElement.textContent = `${label}：`;
+    line.append(labelElement, document.createTextNode(value));
     return line;
 }
 
@@ -190,15 +192,39 @@ function buildEmailSearchText(account) {
 }
 
 function getStatusClass(account) {
-    if (account.inbox.messageCount > 0) {
-        return 'email-account-card__status email-account-card__status--success';
+    if (account.inbox.verificationCode) {
+        return 'email-account-card__result-pill email-account-card__result-pill--success';
     }
 
     if (account.statusText.includes('失败') || account.statusText.includes('暂无')) {
-        return 'email-account-card__status email-account-card__status--warning';
+        return 'email-account-card__result-pill email-account-card__result-pill--warning';
     }
 
-    return 'email-account-card__status';
+    return 'email-account-card__result-pill';
+}
+
+function getEmailResultText(account) {
+    if (account.inbox.verificationCode) {
+        return account.inbox.verificationCode;
+    }
+
+    if (/^\d{6}$/.test(account.inbox.copyText || '')) {
+        return account.inbox.copyText;
+    }
+
+    if (!account.inbox.checkedAt && (!account.statusText || account.statusText === '待取件')) {
+        return '待刷新';
+    }
+
+    return account.statusText || '待刷新';
+}
+
+function getEmailSourceText(account) {
+    if (account.sourceName && account.host) {
+        return `${account.host} · ${account.sourceName}`;
+    }
+
+    return account.host || account.displayUrl || '未识别';
 }
 
 function renderEmailAccounts() {
@@ -224,79 +250,55 @@ function renderEmailAccounts() {
         const accountIndex = currentEmailAccounts.findIndex((currentAccount) => currentAccount === account);
         const card = document.createElement('article');
         card.className = 'email-account-card';
-        card.title = `邮箱：${account.email}\n状态：${account.statusText}\n来源：${account.displayUrl}`;
+        card.tabIndex = 0;
+        card.title = `点击卡片空白区域提取验证码\n邮箱：${account.email}\n来源：${account.displayUrl}`;
 
-        const main = document.createElement('div');
-        main.className = 'email-account-card__main';
+        const top = document.createElement('div');
+        top.className = 'email-account-card__top';
 
-        const title = document.createElement('div');
-        title.className = 'email-account-card__title';
-
-        const email = document.createElement('div');
-        email.className = 'email-account-card__email';
-        email.textContent = account.email;
-
-        const source = document.createElement('div');
-        source.className = 'email-account-card__source';
-        source.textContent = account.sourceName ? `${account.host} · ${account.sourceName}` : account.displayUrl;
-        title.append(email, source);
-
-        const status = document.createElement('span');
-        status.className = getStatusClass(account);
-        status.textContent = account.statusText || '待取件';
-        main.append(title, status);
-
-        const actions = document.createElement('div');
-        actions.className = 'email-account-card__actions';
-
-        const copyButton = createEmailButton('btn btn-primary', '复制邮箱', `复制邮箱：${account.email}`, async () => {
+        const emailButton = createEmailButton('email-account-card__email-copy', account.email, `点击复制：${account.email}`, async (event) => {
+            event.stopPropagation();
             await copyEmailText(account.email);
-            setEmailFeedback(`已复制邮箱：${account.email}`, 'success');
+            setEmailFeedback(`已复制：${account.email}`, 'success');
         });
 
-        const fetchButton = createEmailButton('btn btn-secondary', '取件', `读取邮箱：${account.email}`, async () => {
-            fetchButton.disabled = true;
-            fetchButton.textContent = '取件中';
+        const result = document.createElement('span');
+        result.className = getStatusClass(account);
+        result.textContent = getEmailResultText(account);
+
+        top.append(emailButton, result);
+
+        const meta = document.createElement('div');
+        meta.className = 'email-account-card__compact-meta';
+        meta.append(
+            createEmailMetaLine('来源', getEmailSourceText(account)),
+            createEmailMetaLine('到期', '未提供'),
+            createEmailMetaLine('刷新', formatEmailCheckedAt(account.inbox.checkedAt))
+        );
+
+        const fetchCurrentAccount = async () => {
+            if (card.dataset.fetching === 'true') {
+                return;
+            }
+
+            card.dataset.fetching = 'true';
+            card.classList.add('email-account-card--loading');
+            result.className = 'email-account-card__result-pill email-account-card__result-pill--loading';
+            result.textContent = '刷新中';
             await fetchSingleEmailAccount(accountIndex);
+        };
+
+        card.addEventListener('click', fetchCurrentAccount);
+        card.addEventListener('keydown', (event) => {
+            if (event.target !== card || !['Enter', ' '].includes(event.key)) {
+                return;
+            }
+
+            event.preventDefault();
+            fetchCurrentAccount();
         });
 
-        const openButton = createEmailButton('btn btn-secondary', '打开', `打开取件网址：${account.displayUrl}`, () => {
-            window.open(account.sourceUrl, '_blank', 'noopener,noreferrer');
-        });
-
-        actions.append(copyButton, fetchButton, openButton);
-
-        const links = document.createElement('div');
-        links.className = 'email-account-card__links';
-
-        const copySourceButton = createEmailButton('btn btn-secondary', '复制取件链接', '复制原始取件链接', async () => {
-            await copyEmailText(account.sourceUrl);
-            setEmailFeedback(`已复制取件链接：${account.email}`, 'success');
-        });
-        links.appendChild(copySourceButton);
-
-        if (account.apiUrl) {
-            links.appendChild(createEmailButton('btn btn-secondary', '复制 API', '复制读信 JSON API', async () => {
-                await copyEmailText(account.apiUrl);
-                setEmailFeedback(`已复制 API：${account.email}`, 'success');
-            }));
-        }
-
-        if (account.uiUrl) {
-            links.appendChild(createEmailButton('btn btn-secondary', '打开邮箱 UI', '打开免登录邮箱 UI', () => {
-                window.open(account.uiUrl, '_blank', 'noopener,noreferrer');
-            }));
-        }
-
-        const checkedLine = createEmailMetaLine('最近取件', formatEmailCheckedAt(account.inbox.checkedAt));
-        const uidLine = createEmailMetaLine('UID', account.uid || '未提供');
-        const passLine = createEmailMetaLine('密码', account.password ? '已识别' : '未识别');
-
-        const result = document.createElement('pre');
-        result.className = 'email-account-card__result';
-        result.textContent = account.inbox.copyText || account.inbox.summary || '';
-
-        card.append(main, actions, links, checkedLine, uidLine, passLine, result);
+        card.append(top, meta);
         emailAccountsGrid.appendChild(card);
     });
 }
@@ -554,7 +556,7 @@ async function fetchAllEmailAccounts() {
     const nextAccounts = createFrozenEmailAccounts(fetchedAccounts);
     persistEmailAccountState(nextAccounts);
     renderEmailAccounts();
-    setFetchAllButtonState('取件全部', false);
+    setFetchAllButtonState('刷新全部', false);
     setEmailFeedback(`已完成 ${nextAccounts.length} 个邮箱取件。`, 'success');
 }
 
@@ -621,7 +623,9 @@ clearEmailLocalDataBtn.addEventListener('click', () => {
     }
 });
 
-fetchAllEmailAccountsBtn.addEventListener('click', fetchAllEmailAccounts);
+if (fetchAllEmailAccountsBtn) {
+    fetchAllEmailAccountsBtn.addEventListener('click', fetchAllEmailAccounts);
+}
 
 emailAccountsFileInput.addEventListener('change', (event) => {
     const file = event.target.files && event.target.files[0];

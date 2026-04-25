@@ -696,14 +696,33 @@ process.stdout.write(JSON.stringify({{
         self.assertIn('id="emailAccountBatchInput"', html)
         self.assertIn('id="importEmailAccountsBtn"', html)
         self.assertIn('id="emailAccountsGrid"', html)
-        self.assertIn("复制邮箱", html)
-        self.assertIn("取件", html)
+        self.assertIn("点击邮箱文字复制账号", html)
+        self.assertIn("点击卡片空白区域自动读取读信 JSON", html)
+        self.assertNotIn('id="fetchAllEmailAccountsBtn"', html)
+        self.assertNotIn("复制邮箱", html)
+        self.assertNotIn("取件全部", html)
         self.assertIn("/static/js/email_accounts_core.js", html)
         self.assertIn("/static/js/email_accounts.js", html)
         self.assertIn("/static/css/email_accounts.css", html)
         self.assertIn("验证码工具", html)
         self.assertIn("记录工作台", html)
         self.assertNotIn("管理员", html)
+
+    def test_email_accounts_card_uses_compact_click_actions(self):
+        static_root = Path(__file__).resolve().parents[1] / "app" / "static"
+        script = (static_root / "js" / "email_accounts.js").read_text(encoding="utf-8")
+        stylesheet = (static_root / "css" / "email_accounts.css").read_text(encoding="utf-8")
+
+        self.assertIn("email-account-card__email-copy", script)
+        self.assertIn("点击卡片空白区域提取验证码", script)
+        self.assertIn("fetchSingleEmailAccount(accountIndex)", script)
+        self.assertNotIn("'复制邮箱'", script)
+        self.assertNotIn("'复制取件链接'", script)
+        self.assertNotIn("'复制 API'", script)
+        self.assertNotIn("'打开'", script)
+        self.assertNotIn("'打开邮箱 UI'", script)
+        self.assertIn(".email-account-card__top", stylesheet)
+        self.assertIn(".email-account-card__result-pill", stylesheet)
 
     def test_email_account_parser_accepts_wsaic_read_url(self):
         payload = self._run_email_accounts_node("""

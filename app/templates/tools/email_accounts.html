@@ -7,7 +7,7 @@
     <title>邮箱账户工作台</title>
     <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="stylesheet" href="/static/css/local_tools.css?v=20260426-email-accounts">
-    <link rel="stylesheet" href="/static/css/email_accounts.css?v=20260426-email-accounts">
+    <link rel="stylesheet" href="/static/css/email_accounts.css?v=20260426-email-compact">
 </head>
 
 <body>
@@ -15,7 +15,7 @@
         <header class="workbench-bar">
             <div class="workbench-bar__title">
                 <h1>邮箱账户工作台</h1>
-                <p>粘贴入口取件网址即可识别邮箱密码并导入邮箱，复制邮箱并一键取件；数据仅保存在当前浏览器本地。</p>
+                <p>粘贴入口取件网址即可识别邮箱密码并导入邮箱，点击邮箱复制，点击记录区域提取 6 位验证码；数据仅保存在当前浏览器本地。</p>
             </div>
             <div class="workbench-bar__meta">
                 <span>支持入口页自动识别邮箱密码</span>
@@ -65,12 +65,11 @@
                 <div class="panel__header panel__header--data">
                     <div>
                         <h2>邮箱账户</h2>
-                        <p>点击“复制邮箱”复制账号；点击“取件”会使用自动生成的读信 JSON API 并展示最新邮件摘要。</p>
+                        <p>点击邮箱文字复制账号；点击卡片空白区域自动读取读信 JSON 并显示 6 位验证码。</p>
                     </div>
 
                     <div class="panel-tools">
                         <input id="emailAccountsSearchInput" type="search" class="search-input" placeholder="搜索邮箱、域名或取件结果">
-                        <button id="fetchAllEmailAccountsBtn" type="button" class="btn btn-secondary">取件全部</button>
                     </div>
                 </div>
 
@@ -100,7 +99,7 @@
     </main>
 
     <script src="/static/js/email_accounts_core.js?v=20260426-email-accounts"></script>
-    <script src="/static/js/email_accounts.js?v=20260426-email-accounts"></script>
+    <script src="/static/js/email_accounts.js?v=20260426-email-compact"></script>
 </body>
 
 </html>
