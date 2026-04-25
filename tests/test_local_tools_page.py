@@ -843,8 +843,58 @@ process.stdout.write(JSON.stringify({
         self.assertIn("/m.php", payload["uiUrl"])
         self.assertIn("/api/mail_onek.php", payload["apiUrl"])
         self.assertEqual(1, payload["count"])
-        self.assertIn("Verify email", payload["summary"])
-        self.assertIn("123456", payload["copyText"])
+        self.assertIn("最新验证码", payload["summary"])
+        self.assertEqual("123456", payload["copyText"])
+
+    def test_email_inbox_parser_prefers_latest_json_verification_code(self):
+        payload = self._run_email_accounts_node("""
+const inbox = sandbox.parseInboxContent(JSON.stringify({
+  data: [
+    {
+      from: 'old@example.test',
+      subject: '旧验证码',
+      content: '验证码：111111',
+      time: '2026-04-26 09:00:00'
+    },
+    {
+      from: 'new@example.test',
+      subject: '最新验证码',
+      content: '<p>Your verification code is 222222.</p>',
+      time: '2026-04-26 10:00:00'
+    }
+  ]
+}), 'application/json');
+process.stdout.write(JSON.stringify({
+  summary: inbox.summary,
+  copyText: inbox.copyText,
+  verificationCode: inbox.verificationCode,
+  statusText: inbox.statusText,
+  messageCount: inbox.messageCount,
+}));
+""")
+
+        self.assertEqual("222222", payload["copyText"])
+        self.assertEqual("222222", payload["verificationCode"])
+        self.assertIn("最新验证码", payload["summary"])
+        self.assertEqual("已取验证码", payload["statusText"])
+        self.assertEqual(2, payload["messageCount"])
+
+    def test_email_inbox_parser_uses_first_message_when_no_time(self):
+        payload = self._run_email_accounts_node("""
+const inbox = sandbox.parseInboxContent(JSON.stringify({
+  list: [
+    { subject: 'newest first', body: '验证码 333333' },
+    { subject: 'older second', body: '验证码 444444' }
+  ]
+}), 'application/json');
+process.stdout.write(JSON.stringify({
+  copyText: inbox.copyText,
+  verificationCode: inbox.verificationCode,
+}));
+""")
+
+        self.assertEqual("333333", payload["copyText"])
+        self.assertEqual("333333", payload["verificationCode"])
 
 
 if __name__ == "__main__":

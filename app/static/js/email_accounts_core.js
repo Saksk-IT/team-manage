@@ -517,6 +517,75 @@ function buildMessageCopyText(messages) {
     ].filter(Boolean).join('\n')).join('\n\n');
 }
 
+function parseMessageTimestamp(value) {
+    const normalizedValue = String(value || '').trim();
+    if (!normalizedValue) {
+        return 0;
+    }
+
+    const normalizedDateText = normalizedValue.includes('T')
+        ? normalizedValue
+        : normalizedValue.replace(/\s+/, 'T');
+    const timestamp = Date.parse(normalizedDateText);
+    return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function getMessageCodeSource(message) {
+    return normalizeEmailText([
+        message.subject,
+        message.content,
+    ].filter(Boolean).join(' '));
+}
+
+function extractVerificationCodeFromText(value) {
+    const text = normalizeEmailText(stripHtmlTags(value));
+    const directPatterns = [
+        /(?:验证码|校验码|动态码|安全码|验证代码|verification\s*code|security\s*code|code|otp)[^\d]{0,40}(\d{4,8})/i,
+        /(\d{4,8})[^\d]{0,30}(?:验证码|校验码|动态码|安全码|验证代码|verification\s*code|security\s*code|code|otp)/i,
+    ];
+    const directMatch = directPatterns
+        .map((pattern) => text.match(pattern))
+        .find((match) => match && match[1]);
+    if (directMatch) {
+        return directMatch[1];
+    }
+
+    const standaloneCodes = Array.from(text.matchAll(/(^|[^\d])(\d{4,8})(?!\d)/g))
+        .map((match) => match[2]);
+    const sixDigitCode = standaloneCodes.find((code) => code.length === 6);
+    return sixDigitCode || standaloneCodes[0] || '';
+}
+
+function findLatestVerificationCode(messages) {
+    const hasTimestamp = messages.some((message) => parseMessageTimestamp(message.time) > 0);
+    const rankedMessages = hasTimestamp
+        ? messages
+            .map((message, index) => Object.freeze({
+                message,
+                index,
+                timestamp: parseMessageTimestamp(message.time),
+            }))
+            .sort((left, right) => {
+                if (right.timestamp !== left.timestamp) {
+                    return right.timestamp - left.timestamp;
+                }
+                return left.index - right.index;
+            })
+            .map((item) => item.message)
+        : messages;
+
+    return rankedMessages.reduce((result, message) => {
+        if (result.code) {
+            return result;
+        }
+
+        const code = extractVerificationCodeFromText(getMessageCodeSource(message));
+        return code
+            ? Object.freeze({ code, message })
+            : result;
+    }, Object.freeze({ code: '', message: null }));
+}
+
 function parseInboxContent(rawText, contentType = '') {
     const rawValue = String(rawText || '').trim();
     const normalizedContentType = String(contentType || '').toLowerCase();
@@ -527,6 +596,17 @@ function parseInboxContent(rawText, contentType = '') {
             const parsedJson = JSON.parse(rawValue);
             const messages = collectJsonMessages(parsedJson);
             if (messages.length) {
+                const latestVerification = findLatestVerificationCode(messages);
+                if (latestVerification.code) {
+                    return buildInboxInfo({
+                        summary: `最新验证码：${latestVerification.code}`,
+                        copyText: latestVerification.code,
+                        verificationCode: latestVerification.code,
+                        messageCount: messages.length,
+                        statusText: '已取验证码',
+                    });
+                }
+
                 const firstMessage = messages[0];
                 const firstSummary = firstMessage.subject || firstMessage.content || firstMessage.from || '最新邮件';
                 return buildInboxInfo({
