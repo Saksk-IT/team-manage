@@ -47,6 +47,39 @@ function buildInboxInfo(overrides = {}) {
     });
 }
 
+function buildMailJsonApiUrl(baseUrl, email, password) {
+    if (!email || !password) {
+        return '';
+    }
+
+    try {
+        const parsedBase = new URL(baseUrl);
+        const apiUrl = new URL('/api/mail_onek.php', parsedBase.origin);
+        apiUrl.searchParams.set('email', email);
+        apiUrl.searchParams.set('pass', password);
+        apiUrl.searchParams.set('json', '1');
+        return apiUrl.toString();
+    } catch (_error) {
+        return '';
+    }
+}
+
+function buildMailUiUrl(baseUrl, email, password) {
+    if (!email || !password) {
+        return '';
+    }
+
+    try {
+        const parsedBase = new URL(baseUrl);
+        const uiUrl = new URL('/m.php', parsedBase.origin);
+        uiUrl.searchParams.set('u', email);
+        uiUrl.searchParams.set('p', password);
+        return uiUrl.toString();
+    } catch (_error) {
+        return '';
+    }
+}
+
 function createFrozenEmailAccounts(accounts) {
     return Object.freeze(accounts.map((account, index) => Object.freeze({
         sequence: Number.isInteger(account.sequence) ? account.sequence : index + 1,
@@ -62,6 +95,25 @@ function createFrozenEmailAccounts(accounts) {
         statusText: String(account.statusText || '待取件'),
         inbox: buildInboxInfo(account.inbox || {}),
     })));
+}
+
+function createEmailSourceLinkFromUrl(rawUrl, lineNumber) {
+    const sourceUrl = String(rawUrl || '').trim();
+    const parsedUrl = new URL(sourceUrl);
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        throw new Error('invalid-protocol');
+    }
+
+    return Object.freeze({
+        sequence: lineNumber,
+        lineNumber,
+        sourceUrl,
+        displayUrl: buildEmailDisplayUrl(sourceUrl),
+        sourceName: firstParamValue(parsedUrl, ['n', 'name', 'file']),
+        uid: firstParamValue(parsedUrl, ['uid', 'id']),
+        host: parsedUrl.hostname || parsedUrl.host || '未知站点',
+    });
 }
 
 function createEmailAccountFromUrl(rawUrl, sequence) {
@@ -80,6 +132,8 @@ function createEmailAccountFromUrl(rawUrl, sequence) {
     const password = firstParamValue(parsedUrl, ['pass', 'p', 'password']);
     const apiUrl = parsedUrl.pathname.includes('mail_onek.php') ? sourceUrl : '';
     const uiUrl = parsedUrl.pathname.endsWith('/m.php') || parsedUrl.pathname.endsWith('m.php') ? sourceUrl : '';
+    const nextApiUrl = apiUrl || buildMailJsonApiUrl(sourceUrl, email, password);
+    const nextUiUrl = uiUrl || buildMailUiUrl(sourceUrl, email, password);
 
     return Object.freeze({
         sequence,
@@ -89,8 +143,8 @@ function createEmailAccountFromUrl(rawUrl, sequence) {
         sourceName: firstParamValue(parsedUrl, ['n', 'name', 'file']),
         uid: firstParamValue(parsedUrl, ['uid', 'id']),
         password,
-        uiUrl,
-        apiUrl,
+        uiUrl: nextUiUrl,
+        apiUrl: nextApiUrl,
         host: parsedUrl.hostname || parsedUrl.host || '未知站点',
         statusText: '待取件',
         inbox: buildInboxInfo(),
@@ -108,9 +162,23 @@ function parseEmailAccountBatch(content) {
             const account = createEmailAccountFromUrl(line, result.accounts.length + 1);
             return {
                 accounts: result.accounts.concat([account]),
+                sourceLinks: result.sourceLinks,
                 invalidLines: result.invalidLines,
             };
         } catch (error) {
+            if (error.message === 'missing-email') {
+                try {
+                    const sourceLink = createEmailSourceLinkFromUrl(line, index + 1);
+                    return {
+                        accounts: result.accounts,
+                        sourceLinks: result.sourceLinks.concat([sourceLink]),
+                        invalidLines: result.invalidLines,
+                    };
+                } catch (_sourceError) {
+                    // 继续按无效行处理。
+                }
+            }
+
             const reason = error.message === 'missing-email'
                 ? '未识别邮箱参数 email/u'
                 : '不是有效的 http/https 取件网址';
@@ -119,10 +187,11 @@ function parseEmailAccountBatch(content) {
                 invalidLines: result.invalidLines.concat([{ lineNumber: index + 1, reason }]),
             };
         }
-    }, { accounts: [], invalidLines: [] });
+    }, { accounts: [], sourceLinks: [], invalidLines: [] });
 
     return Object.freeze({
         accounts: createFrozenEmailAccounts(parsedResult.accounts),
+        sourceLinks: Object.freeze(parsedResult.sourceLinks.map((item) => Object.freeze(item))),
         invalidLines: Object.freeze(parsedResult.invalidLines.map((item) => Object.freeze(item))),
     });
 }
@@ -166,6 +235,91 @@ function parseUrlMetadata(url) {
     }
 }
 
+function createCredentialPairFromUrl(url) {
+    const metadata = parseUrlMetadata(url);
+    if (!metadata.email || !metadata.password) {
+        return null;
+    }
+
+    try {
+        const parsedUrl = new URL(url);
+        return Object.freeze({
+            email: metadata.email,
+            password: metadata.password,
+            uiUrl: parsedUrl.pathname.endsWith('/m.php') ? url : '',
+            apiUrl: parsedUrl.pathname.includes('mail_onek.php') ? url : '',
+            host: metadata.host,
+        });
+    } catch (_error) {
+        return null;
+    }
+}
+
+function collectTextCredentialPairs(rawText) {
+    const text = normalizeEmailText(stripHtmlTags(rawText));
+    const emails = Array.from(new Set(
+        Array.from(text.matchAll(new RegExp(EMAIL_REGEX, 'gi'))).map((match) => match[0])
+    ));
+    const passwords = Array.from(new Set(
+        Array.from(text.matchAll(/(?:邮箱密码|密码|password|pass)\s*[:=：]\s*([A-Za-z0-9._!@#$%^&*+-]{3,80})/gi))
+            .map((match) => match[1])
+    ));
+
+    if (emails.length !== 1 || passwords.length !== 1) {
+        return Object.freeze([]);
+    }
+
+    return Object.freeze([Object.freeze({
+        email: emails[0],
+        password: passwords[0],
+        uiUrl: '',
+        apiUrl: '',
+        host: '',
+    })]);
+}
+
+function dedupeCredentialPairs(pairs) {
+    return Object.freeze(pairs.reduce((result, pair) => {
+        if (!pair || !pair.email || !pair.password) {
+            return result;
+        }
+
+        const key = `${pair.email.toLowerCase()}|${pair.password}`;
+        if (result.keys.includes(key)) {
+            return result;
+        }
+
+        return {
+            keys: result.keys.concat([key]),
+            pairs: result.pairs.concat([Object.freeze(pair)]),
+        };
+    }, { keys: [], pairs: [] }).pairs);
+}
+
+function discoverEmailAccountsFromPage(rawText, contentType = '', baseUrl = '', fallbackAccount = {}) {
+    const candidates = collectCandidateUrls(rawText, baseUrl || fallbackAccount.sourceUrl || 'http://localhost/');
+    const credentialPairs = dedupeCredentialPairs(
+        candidates.map(createCredentialPairFromUrl)
+            .concat(collectTextCredentialPairs(rawText))
+    );
+    const sourceMetadata = parseUrlMetadata(baseUrl || fallbackAccount.sourceUrl || '');
+
+    return createFrozenEmailAccounts(credentialPairs.map((pair, index) => Object.freeze({
+        sequence: index + 1,
+        email: pair.email,
+        sourceUrl: fallbackAccount.sourceUrl || baseUrl,
+        displayUrl: buildEmailDisplayUrl(fallbackAccount.sourceUrl || baseUrl),
+        sourceName: sourceMetadata.sourceName || fallbackAccount.sourceName || '',
+        uid: sourceMetadata.uid || fallbackAccount.uid || '',
+        password: pair.password,
+        uiUrl: pair.uiUrl || buildMailUiUrl(pair.apiUrl || baseUrl, pair.email, pair.password),
+        apiUrl: pair.apiUrl || buildMailJsonApiUrl(pair.uiUrl || baseUrl, pair.email, pair.password),
+        host: pair.host || sourceMetadata.host || fallbackAccount.host || '',
+        statusText: '待取件',
+        inbox: buildInboxInfo(),
+    })));
+}
+
 function discoverEmailApiLinks(rawText, contentType = '', baseUrl = '', fallbackAccount = {}) {
     const candidates = collectCandidateUrls(rawText, baseUrl || fallbackAccount.sourceUrl || 'http://localhost/');
     const apiUrl = candidates.find((url) => {
@@ -193,15 +347,19 @@ function discoverEmailApiLinks(rawText, contentType = '', baseUrl = '', fallback
     const textEmail = firstEmailFromText(rawText);
     const text = normalizeEmailText(stripHtmlTags(rawText));
     const looksLikeJson = String(contentType || '').toLowerCase().includes('json');
+    const email = apiMetadata.email || uiMetadata.email || sourceMetadata.email || fallbackAccount.email || textEmail;
+    const password = apiMetadata.password || uiMetadata.password || sourceMetadata.password || fallbackAccount.password || '';
+    const generatedApiUrl = apiUrl || buildMailJsonApiUrl(uiUrl || baseUrl, email, password);
+    const generatedUiUrl = uiUrl || buildMailUiUrl(apiUrl || baseUrl, email, password);
 
     return Object.freeze({
-        email: apiMetadata.email || uiMetadata.email || sourceMetadata.email || fallbackAccount.email || textEmail,
-        password: apiMetadata.password || uiMetadata.password || sourceMetadata.password || fallbackAccount.password || '',
+        email,
+        password,
         uid: sourceMetadata.uid || fallbackAccount.uid || '',
         sourceName: sourceMetadata.sourceName || fallbackAccount.sourceName || '',
         host: apiMetadata.host || uiMetadata.host || sourceMetadata.host || fallbackAccount.host || '',
-        uiUrl: uiUrl || fallbackAccount.uiUrl || '',
-        apiUrl: apiUrl || (looksLikeJson ? baseUrl : '') || fallbackAccount.apiUrl || '',
+        uiUrl: generatedUiUrl || fallbackAccount.uiUrl || '',
+        apiUrl: generatedApiUrl || (looksLikeJson ? baseUrl : '') || fallbackAccount.apiUrl || '',
         pageText: text,
     });
 }

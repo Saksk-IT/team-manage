@@ -359,6 +359,66 @@ async function fetchEmailPageContent(openUrl) {
     }
 }
 
+function dedupeEmailAccounts(accounts) {
+    return createFrozenEmailAccounts(accounts.reduce((result, account) => {
+        const key = `${account.email.toLowerCase()}|${account.password}|${account.apiUrl || account.sourceUrl}`;
+        if (result.keys.includes(key)) {
+            return result;
+        }
+
+        return {
+            keys: result.keys.concat([key]),
+            accounts: result.accounts.concat([account]),
+        };
+    }, { keys: [], accounts: [] }).accounts);
+}
+
+async function discoverAccountsForSourceLink(sourceLink) {
+    const pageContent = await fetchEmailPageContent(sourceLink.sourceUrl);
+    if (!pageContent.ok) {
+        throw new Error(`HTTP ${pageContent.status}`);
+    }
+
+    const accounts = discoverEmailAccountsFromPage(
+        pageContent.rawText,
+        pageContent.contentType,
+        sourceLink.sourceUrl,
+        sourceLink
+    );
+
+    if (!accounts.length) {
+        throw new Error('missing-email-password');
+    }
+
+    return accounts;
+}
+
+async function expandEmailAccountImportResult(parsed) {
+    const sourceLinks = Array.isArray(parsed.sourceLinks) ? parsed.sourceLinks : [];
+    const discoveryResults = await Promise.all(sourceLinks.map(async (sourceLink) => {
+        try {
+            const accounts = await discoverAccountsForSourceLink(sourceLink);
+            return Object.freeze({ accounts, invalidLines: [] });
+        } catch (error) {
+            const reason = error.message === 'missing-email-password'
+                ? '入口链接未识别到邮箱和密码'
+                : `入口链接读取失败：${error.message}`;
+            return Object.freeze({
+                accounts: [],
+                invalidLines: [{ lineNumber: sourceLink.lineNumber || sourceLink.sequence, reason }],
+            });
+        }
+    }));
+
+    const discoveredAccounts = discoveryResults.flatMap((result) => result.accounts);
+    const discoveryInvalidLines = discoveryResults.flatMap((result) => result.invalidLines);
+
+    return Object.freeze({
+        accounts: dedupeEmailAccounts(parsed.accounts.concat(discoveredAccounts)),
+        invalidLines: Object.freeze(parsed.invalidLines.concat(discoveryInvalidLines)),
+    });
+}
+
 function mergeAccountDiscovery(account, discovery) {
     return Object.freeze({
         ...account,
@@ -506,23 +566,34 @@ async function importEmailAccountsFromTextarea() {
     }
 
     const parsed = parseEmailAccountBatch(content);
-    currentEmailInvalidLines = parsed.invalidLines;
+    const hasSourceLinks = Boolean(parsed.sourceLinks && parsed.sourceLinks.length);
+    importEmailAccountsBtn.disabled = true;
+    importEmailAccountsBtn.textContent = hasSourceLinks ? '读取入口中' : '解析中';
+    setEmailFeedback(hasSourceLinks ? '正在读取入口链接并识别邮箱密码…' : '正在解析邮箱账户…', 'warning');
 
-    if (!parsed.accounts.length) {
-        currentEmailAccounts = Object.freeze([]);
-        currentEmailSavedAt = '';
+    try {
+        const expanded = await expandEmailAccountImportResult(parsed);
+        currentEmailInvalidLines = expanded.invalidLines;
+
+        if (!expanded.accounts.length) {
+            currentEmailAccounts = Object.freeze([]);
+            currentEmailSavedAt = '';
+            renderEmailAccounts();
+            setEmailFeedback('没有解析出有效邮箱，请检查入口链接是否可读取且包含邮箱密码。', 'error');
+            return;
+        }
+
+        persistEmailAccountState(expanded.accounts);
         renderEmailAccounts();
-        setEmailFeedback('没有解析出有效邮箱，请检查网址是否包含 email/u 参数。', 'error');
-        return;
+
+        const message = expanded.invalidLines.length
+            ? `已保存 ${expanded.accounts.length} 个邮箱，另有 ${expanded.invalidLines.length} 行未导入。`
+            : `已保存 ${expanded.accounts.length} 个邮箱到浏览器本地。`;
+        setEmailFeedback(message, expanded.invalidLines.length ? 'warning' : 'success');
+    } finally {
+        importEmailAccountsBtn.disabled = false;
+        importEmailAccountsBtn.textContent = '解析并保存到本地';
     }
-
-    persistEmailAccountState(parsed.accounts);
-    renderEmailAccounts();
-
-    const message = parsed.invalidLines.length
-        ? `已保存 ${parsed.accounts.length} 个邮箱，另有 ${parsed.invalidLines.length} 行未导入。`
-        : `已保存 ${parsed.accounts.length} 个邮箱到浏览器本地。`;
-    setEmailFeedback(message, parsed.invalidLines.length ? 'warning' : 'success');
 }
 
 async function handleEmailFileImport(file) {

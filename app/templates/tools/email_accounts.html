@@ -15,10 +15,11 @@
         <header class="workbench-bar">
             <div class="workbench-bar__title">
                 <h1>邮箱账户工作台</h1>
-                <p>粘贴取件网址即可导入邮箱，复制邮箱并一键取件；数据仅保存在当前浏览器本地。</p>
+                <p>粘贴入口取件网址即可识别邮箱密码并导入邮箱，复制邮箱并一键取件；数据仅保存在当前浏览器本地。</p>
             </div>
             <div class="workbench-bar__meta">
-                <span>支持 <code>email</code>、<code>u</code> 参数识别</span>
+                <span>支持入口页自动识别邮箱密码</span>
+                <span>自动生成读信 JSON API</span>
                 <span>取件时临时读取接口，不做服务端持久化</span>
                 <a href="/local-tools">验证码工具</a>
                 <a href="/local-tools/records">记录工作台</a>
@@ -30,7 +31,7 @@
                 <div class="panel__header">
                     <div>
                         <h2>导入邮箱</h2>
-                        <p>一行一个取件网址，例如 <code>http://wsaic.com/eid/nb.php?...&amp;email=...</code>。</p>
+                        <p>一行一个入口网址，例如 <code>http://wsaic.com/eid/10p.php?n=example.txt</code>。</p>
                     </div>
                 </div>
 
@@ -46,7 +47,7 @@
                 <textarea
                     id="emailAccountBatchInput"
                     class="batch-textarea"
-                    placeholder="示例：&#10;http://wsaic.com/eid/nb.php?n=20260423vsc34.txt&amp;email=user%40wsaic.com&amp;uid=9#mailread"
+                    placeholder="示例：&#10;http://wsaic.com/eid/10p.php?n=20260423vsc34.txt"
                 ></textarea>
 
                 <div class="feedback-row">
@@ -64,7 +65,7 @@
                 <div class="panel__header panel__header--data">
                     <div>
                         <h2>邮箱账户</h2>
-                        <p>点击“复制邮箱”复制账号；点击“取件”会优先发现读信 JSON API 并展示最新邮件摘要。</p>
+                        <p>点击“复制邮箱”复制账号；点击“取件”会使用自动生成的读信 JSON API 并展示最新邮件摘要。</p>
                     </div>
 
                     <div class="panel-tools">

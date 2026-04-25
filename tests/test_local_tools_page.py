@@ -691,7 +691,8 @@ process.stdout.write(JSON.stringify({{
         html = response.body.decode("utf-8")
 
         self.assertIn("邮箱账户工作台", html)
-        self.assertIn("粘贴取件网址即可导入邮箱", html)
+        self.assertIn("粘贴入口取件网址即可识别邮箱密码并导入邮箱", html)
+        self.assertIn("自动生成读信 JSON API", html)
         self.assertIn('id="emailAccountBatchInput"', html)
         self.assertIn('id="importEmailAccountsBtn"', html)
         self.assertIn('id="emailAccountsGrid"', html)
@@ -707,7 +708,7 @@ process.stdout.write(JSON.stringify({{
     def test_email_account_parser_accepts_wsaic_read_url(self):
         payload = self._run_email_accounts_node("""
 const parsed = sandbox.parseEmailAccountBatch(
-  'http://wsaic.com/eid/nb.php?n=20260423vsc34.txt&email=cd2319797%40wsaic.com&uid=9#mailread\\n' +
+  'http://wsaic.com/eid/nb.php?n=20260423vsc34.txt&email=sample.user%40example.test&uid=9#mailread\\n' +
   'not a url'
 );
 const account = parsed.accounts[0];
@@ -724,21 +725,73 @@ process.stdout.write(JSON.stringify({
 
         self.assertEqual(1, payload["count"])
         self.assertEqual(1, payload["invalidCount"])
-        self.assertEqual("cd2319797@wsaic.com", payload["email"])
+        self.assertEqual("sample.user@example.test", payload["email"])
         self.assertEqual("9", payload["uid"])
         self.assertEqual("20260423vsc34.txt", payload["sourceName"])
         self.assertEqual("http://wsaic.com/eid/nb.php", payload["displayUrl"])
         self.assertIn("有效的 http/https", payload["invalidReason"])
 
+    def test_email_account_parser_accepts_entry_url_without_email_for_discovery(self):
+        payload = self._run_email_accounts_node("""
+const parsed = sandbox.parseEmailAccountBatch('http://wsaic.com/eid/10p.php?n=20260423vsc34.txt');
+const sourceLink = parsed.sourceLinks[0];
+process.stdout.write(JSON.stringify({
+  accountCount: parsed.accounts.length,
+  sourceLinkCount: parsed.sourceLinks.length,
+  invalidCount: parsed.invalidLines.length,
+  sourceName: sourceLink && sourceLink.sourceName,
+  displayUrl: sourceLink && sourceLink.displayUrl,
+}));
+""")
+
+        self.assertEqual(0, payload["accountCount"])
+        self.assertEqual(1, payload["sourceLinkCount"])
+        self.assertEqual(0, payload["invalidCount"])
+        self.assertEqual("20260423vsc34.txt", payload["sourceName"])
+        self.assertEqual("http://wsaic.com/eid/10p.php", payload["displayUrl"])
+
+    def test_email_account_discovery_generates_json_api_from_login_link(self):
+        payload = self._run_email_accounts_node("""
+const html = `
+  <section>
+    <a href="http://wsaic.com/m.php?u=sample.user%40example.test&p=demo-pass-123">免登录 UI</a>
+  </section>
+`;
+const accounts = sandbox.discoverEmailAccountsFromPage(
+  html,
+  'text/html',
+  'http://wsaic.com/eid/10p.php?n=20260423vsc34.txt'
+);
+const account = accounts[0];
+process.stdout.write(JSON.stringify({
+  count: accounts.length,
+  email: account && account.email,
+  pass: account && account.password,
+  uiUrl: account && account.uiUrl,
+  apiUrl: account && account.apiUrl,
+  sourceUrl: account && account.sourceUrl,
+}));
+""")
+
+        self.assertEqual(1, payload["count"])
+        self.assertEqual("sample.user@example.test", payload["email"])
+        self.assertEqual("demo-pass-123", payload["pass"])
+        self.assertIn("/m.php", payload["uiUrl"])
+        self.assertEqual(
+            "http://wsaic.com/api/mail_onek.php?email=sample.user%40example.test&pass=demo-pass-123&json=1",
+            payload["apiUrl"],
+        )
+        self.assertEqual("http://wsaic.com/eid/10p.php?n=20260423vsc34.txt", payload["sourceUrl"])
+
     def test_email_account_discovery_extracts_api_links_and_mail_summary(self):
         payload = self._run_email_accounts_node("""
 const html = `
   <section>
-    <a href="http://wsaic.com/m.php?u=cd2319797%40wsaic.com&p=988876">免登录 UI</a>
-    <a href="http://wsaic.com/api/mail_onek.php?email=cd2319797%40wsaic.com&pass=988876&json=1">读信 JSON</a>
+    <a href="http://wsaic.com/m.php?u=sample.user%40example.test&p=demo-pass-123">免登录 UI</a>
+    <a href="http://wsaic.com/api/mail_onek.php?email=sample.user%40example.test&pass=demo-pass-123&json=1">读信 JSON</a>
   </section>
 `;
-const discovery = sandbox.discoverEmailApiLinks(html, 'text/html', 'http://wsaic.com/eid/nb.php?email=cd2319797%40wsaic.com');
+const discovery = sandbox.discoverEmailApiLinks(html, 'text/html', 'http://wsaic.com/eid/nb.php?email=sample.user%40example.test');
 const inbox = sandbox.parseInboxContent(JSON.stringify({
   data: [{ from: 'noreply@example.com', subject: 'Verify email', content: '<b>Code 123456</b>' }]
 }), 'application/json');
@@ -753,8 +806,8 @@ process.stdout.write(JSON.stringify({
 }));
 """)
 
-        self.assertEqual("cd2319797@wsaic.com", payload["email"])
-        self.assertEqual("988876", payload["pass"])
+        self.assertEqual("sample.user@example.test", payload["email"])
+        self.assertEqual("demo-pass-123", payload["pass"])
         self.assertIn("/m.php", payload["uiUrl"])
         self.assertIn("/api/mail_onek.php", payload["apiUrl"])
         self.assertEqual(1, payload["count"])
