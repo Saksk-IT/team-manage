@@ -550,20 +550,19 @@ function getMessageCodeSource(message) {
 function extractVerificationCodeFromText(value) {
     const text = normalizeEmailText(stripHtmlTags(value));
     const directPatterns = [
-        /(?:验证码|校验码|动态码|安全码|验证代码|verification\s*code|security\s*code|code|otp)[^\d]{0,40}(\d{4,8})/i,
-        /(\d{4,8})[^\d]{0,30}(?:验证码|校验码|动态码|安全码|验证代码|verification\s*code|security\s*code|code|otp)/i,
+        /(?:验证码|校验码|动态码|安全码|验证代码|verification\s*code|security\s*code|code|otp)[^\d]{0,40}(\d{6})(?!\d)/i,
+        /(^|[^\d])(\d{6})(?!\d)[^\d]{0,30}(?:验证码|校验码|动态码|安全码|验证代码|verification\s*code|security\s*code|code|otp)/i,
     ];
     const directMatch = directPatterns
         .map((pattern) => text.match(pattern))
-        .find((match) => match && match[1]);
+        .find((match) => match && (match[2] || match[1]));
     if (directMatch) {
-        return directMatch[1];
+        return directMatch[2] || directMatch[1];
     }
 
-    const standaloneCodes = Array.from(text.matchAll(/(^|[^\d])(\d{4,8})(?!\d)/g))
+    const standaloneCodes = Array.from(text.matchAll(/(^|[^\d])(\d{6})(?!\d)/g))
         .map((match) => match[2]);
-    const sixDigitCode = standaloneCodes.find((code) => code.length === 6);
-    return sixDigitCode || standaloneCodes[0] || '';
+    return standaloneCodes[0] || '';
 }
 
 function findLatestVerificationCode(messages) {

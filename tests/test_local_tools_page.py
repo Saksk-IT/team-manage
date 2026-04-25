@@ -948,6 +948,30 @@ process.stdout.write(JSON.stringify({
         self.assertIn("最新验证码", payload["summary"])
         self.assertEqual("已取验证码", payload["statusText"])
 
+    def test_email_inbox_parser_only_accepts_six_digit_codes(self):
+        payload = self._run_email_accounts_node("""
+const fourDigit = sandbox.parseInboxContent(JSON.stringify({
+  mail: { subject: 'code', body_text: 'Your code is 1234.' }
+}), 'application/json');
+const eightDigit = sandbox.parseInboxContent(JSON.stringify({
+  mail: { subject: 'code', body_text: 'Your code is 12345678.' }
+}), 'application/json');
+const embeddedSix = sandbox.parseInboxContent(JSON.stringify({
+  mail: { subject: 'code', body_text: 'Your code is 012345.' }
+}), 'application/json');
+process.stdout.write(JSON.stringify({
+  fourDigit: fourDigit.copyText,
+  eightDigit: eightDigit.copyText,
+  embeddedSix: embeddedSix.copyText,
+  embeddedCode: embeddedSix.verificationCode,
+}));
+""")
+
+        self.assertEqual("暂无验证码", payload["fourDigit"])
+        self.assertEqual("暂无验证码", payload["eightDigit"])
+        self.assertEqual("012345", payload["embeddedSix"])
+        self.assertEqual("012345", payload["embeddedCode"])
+
 
 if __name__ == "__main__":
     unittest.main()
