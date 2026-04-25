@@ -124,6 +124,7 @@
     font-size: 0.82rem;
     line-height: 1.35;
     padding: 0.5rem 0.58rem;
+    transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .record-card__field--wide {
@@ -132,6 +133,18 @@
 
 .record-card__field--compact {
     background: rgba(255, 255, 255, 0.78);
+}
+
+.record-card__field--copyable {
+    cursor: copy;
+}
+
+.record-card__field--copyable:hover,
+.record-card__field--copyable:focus-visible {
+    background: rgba(238, 242, 255, 0.82);
+    border-color: rgba(99, 102, 241, 0.26);
+    box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.12);
+    outline: none;
 }
 
 .record-card__field strong {
@@ -158,6 +171,11 @@
     transition: background 0.16s ease, color 0.16s ease;
     white-space: normal;
     word-break: break-word;
+}
+
+.record-card__field--copyable:hover .record-card__copy-value,
+.record-card__field--copyable:focus-visible .record-card__copy-value {
+    color: var(--primary);
 }
 
 .record-card__copy-value:hover,

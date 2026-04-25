@@ -898,22 +898,42 @@ function createCopyField(label, displayValue, copyValue = displayValue, options 
     if (options.compact) {
         classNames.push('record-card__field--compact');
     }
-    line.className = classNames.join(' ');
 
     const strong = document.createElement('strong');
     strong.textContent = `${label}：`;
 
     const safeDisplayValue = normalizeText(displayValue);
     const safeCopyValue = typeof copyValue === 'string' ? copyValue.trim() : safeDisplayValue;
-    const valueElement = safeDisplayValue
-        ? createCopyValueButton(label, safeDisplayValue, safeCopyValue || safeDisplayValue)
-        : document.createElement('span');
+    const finalCopyValue = safeCopyValue || safeDisplayValue;
+    const valueElement = document.createElement('span');
 
-    if (!safeDisplayValue) {
+    if (safeDisplayValue) {
+        classNames.push('record-card__field--copyable');
+        line.tabIndex = 0;
+        line.setAttribute('role', 'button');
+        line.title = `点击复制${label}`;
+        line.setAttribute('aria-label', `点击复制${label}：${safeDisplayValue}`);
+        line.dataset.copyValue = finalCopyValue;
+        line.addEventListener('click', async () => {
+            const copied = await copyText(finalCopyValue);
+            setRecordFeedback(copied ? `已复制${label}。` : `复制${label}失败，请手动选择字段内容。`, copied ? 'success' : 'error');
+        });
+        line.addEventListener('keydown', (event) => {
+            if (!['Enter', ' '].includes(event.key)) {
+                return;
+            }
+
+            event.preventDefault();
+            line.click();
+        });
+        valueElement.className = 'record-card__copy-value';
+        valueElement.textContent = safeDisplayValue;
+    } else {
         valueElement.className = 'record-card__empty-value';
         valueElement.textContent = '未保存';
     }
 
+    line.className = classNames.join(' ');
     line.append(strong, valueElement);
     return line;
 }
