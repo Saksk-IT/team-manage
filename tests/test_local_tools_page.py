@@ -783,6 +783,38 @@ process.stdout.write(JSON.stringify({
         )
         self.assertEqual("http://wsaic.com/eid/10p.php?n=20260423vsc34.txt", payload["sourceUrl"])
 
+    def test_email_account_discovery_pairs_data_copy_email_and_password_rows(self):
+        payload = self._run_email_accounts_node("""
+const html = `
+  <article>
+    <a href="#" class="pill" data-copy="first.user%40example.test" title="点击复制邮箱">邮箱</a>
+    <a href="#" class="pill" data-copy="first-pass-123" title="点击复制密码">密码：first-pass-123</a>
+    <a href="#" class="pill" data-copy="second.user%40example.test" title="点击复制邮箱">邮箱</a>
+    <a href="#" class="pill" data-copy="second-pass-456" title="点击复制密码">密码：second-pass-456</a>
+  </article>
+`;
+const accounts = sandbox.discoverEmailAccountsFromPage(
+  html,
+  'text/html',
+  'http://wsaic.com/eid/10p.php?n=demo.txt'
+);
+process.stdout.write(JSON.stringify({
+  count: accounts.length,
+  firstEmail: accounts[0] && accounts[0].email,
+  firstApiUrl: accounts[0] && accounts[0].apiUrl,
+  secondEmail: accounts[1] && accounts[1].email,
+  secondApiUrl: accounts[1] && accounts[1].apiUrl,
+}));
+""")
+
+        self.assertEqual(2, payload["count"])
+        self.assertEqual("first.user@example.test", payload["firstEmail"])
+        self.assertIn("email=first.user%40example.test", payload["firstApiUrl"])
+        self.assertIn("pass=first-pass-123", payload["firstApiUrl"])
+        self.assertEqual("second.user@example.test", payload["secondEmail"])
+        self.assertIn("email=second.user%40example.test", payload["secondApiUrl"])
+        self.assertIn("pass=second-pass-456", payload["secondApiUrl"])
+
     def test_email_account_discovery_extracts_api_links_and_mail_summary(self):
         payload = self._run_email_accounts_node("""
 const html = `

@@ -17,8 +17,16 @@ function stripHtmlTags(value) {
     return decodeBasicHtmlEntities(String(value || '').replace(/<[^>]+>/g, ' '));
 }
 
+function safeDecodeURIComponent(value) {
+    try {
+        return decodeURIComponent(String(value || ''));
+    } catch (_error) {
+        return String(value || '');
+    }
+}
+
 function firstEmailFromText(value) {
-    const match = decodeURIComponent(String(value || '')).match(EMAIL_REGEX);
+    const match = safeDecodeURIComponent(value).match(EMAIL_REGEX);
     return match ? match[0] : '';
 }
 
@@ -256,6 +264,11 @@ function createCredentialPairFromUrl(url) {
 }
 
 function collectTextCredentialPairs(rawText) {
+    const dataCopyPairs = collectDataCopyCredentialPairs(rawText);
+    if (dataCopyPairs.length) {
+        return dataCopyPairs;
+    }
+
     const text = normalizeEmailText(stripHtmlTags(rawText));
     const emails = Array.from(new Set(
         Array.from(text.matchAll(new RegExp(EMAIL_REGEX, 'gi'))).map((match) => match[0])
@@ -276,6 +289,58 @@ function collectTextCredentialPairs(rawText) {
         apiUrl: '',
         host: '',
     })]);
+}
+
+function classifyDataCopyEntry(value, rawTag) {
+    const decodedValue = safeDecodeURIComponent(decodeBasicHtmlEntities(value)).trim();
+    const tagText = normalizeEmailText(stripHtmlTags(rawTag));
+    const tagHint = normalizeEmailText(rawTag);
+
+    if (EMAIL_REGEX.test(decodedValue)) {
+        return Object.freeze({ type: 'email', value: decodedValue });
+    }
+
+    if (
+        decodedValue &&
+        !/^https?:\/\//i.test(decodedValue) &&
+        /(密码|pass|password)/i.test(`${tagText} ${tagHint}`)
+    ) {
+        return Object.freeze({ type: 'password', value: decodedValue });
+    }
+
+    return Object.freeze({ type: '', value: decodedValue });
+}
+
+function collectDataCopyCredentialPairs(rawText) {
+    const entries = Array.from(String(rawText || '').matchAll(/<[^>]*data-copy\s*=\s*["']([^"']+)["'][^>]*>/gi))
+        .map((match) => classifyDataCopyEntry(match[1], match[0]))
+        .filter((entry) => entry.type);
+
+    const pairedResult = entries.reduce((result, entry) => {
+        if (entry.type === 'email') {
+            return {
+                pendingEmail: entry.value,
+                pairs: result.pairs,
+            };
+        }
+
+        if (entry.type === 'password' && result.pendingEmail) {
+            return {
+                pendingEmail: '',
+                pairs: result.pairs.concat([Object.freeze({
+                    email: result.pendingEmail,
+                    password: entry.value,
+                    uiUrl: '',
+                    apiUrl: '',
+                    host: '',
+                })]),
+            };
+        }
+
+        return result;
+    }, { pendingEmail: '', pairs: [] });
+
+    return Object.freeze(pairedResult.pairs);
 }
 
 function dedupeCredentialPairs(pairs) {
