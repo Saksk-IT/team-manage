@@ -165,17 +165,6 @@
     overflow-wrap: anywhere;
 }
 
-.record-card__warning {
-    margin: 0;
-    border: 1px solid rgba(245, 158, 11, 0.18);
-    border-radius: 11px;
-    background: var(--warning-soft);
-    color: #92400e;
-    padding: 0.56rem 0.72rem;
-    font-size: 0.78rem;
-    line-height: 1.4;
-}
-
 .record-card__linked-tool {
     min-width: 0;
     border: 1px solid rgba(226, 232, 240, 0.9);
@@ -183,15 +172,13 @@
     background: rgba(255, 255, 255, 0.86);
     display: grid;
     grid-template-columns: minmax(7.4rem, 1fr) max-content auto;
-    grid-template-rows: auto auto;
     gap: 0.42rem;
     padding: 0.5rem;
 }
 
 .record-card__linked-identifier,
 .record-card__linked-result,
-.record-card__linked-open,
-.record-card__linked-refresh {
+.record-card__linked-open {
     border: none;
     border-radius: 11px;
     cursor: pointer;
@@ -201,8 +188,7 @@
 
 .record-card__linked-identifier:hover,
 .record-card__linked-result:hover,
-.record-card__linked-open:hover,
-.record-card__linked-refresh:hover {
+.record-card__linked-open:hover {
     transform: translateY(-1px);
 }
 
@@ -265,46 +251,10 @@
     line-height: 1;
 }
 
-.record-card__linked-refresh {
-    min-width: 2.9rem;
-    grid-column: 3 / 4;
-    grid-row: 2 / 3;
-    align-self: end;
-    justify-self: end;
-    padding: 0.42rem 0.56rem;
-    background: #f8fafc;
-    color: var(--text-muted);
-    border: 1px solid var(--border-base);
-    font-size: 0.76rem;
-    font-weight: 800;
-    line-height: 1.2;
-}
-
-.record-card__linked-refresh:disabled {
+.record-card__linked-result:disabled {
     cursor: progress;
     opacity: 0.72;
     transform: none;
-}
-
-.record-card__linked-meta {
-    min-width: 0;
-    grid-column: 1 / 3;
-    grid-row: 2 / 3;
-    display: grid;
-    gap: 0.22rem;
-}
-
-.record-card__linked-meta-line {
-    min-width: 0;
-    color: var(--text-muted);
-    font-size: 0.76rem;
-    line-height: 1.35;
-    overflow-wrap: anywhere;
-}
-
-.record-card__linked-meta-line strong {
-    color: var(--text-main);
-    font-weight: 700;
 }
 
 @media (max-width: 1080px) {
@@ -343,16 +293,6 @@
     .record-card__linked-open {
         grid-column: 2 / 3;
         grid-row: 2 / 3;
-    }
-
-    .record-card__linked-meta {
-        grid-column: 1 / 2;
-        grid-row: 3 / 4;
-    }
-
-    .record-card__linked-refresh {
-        grid-column: 2 / 3;
-        grid-row: 3 / 4;
     }
 }
 

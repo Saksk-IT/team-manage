@@ -211,10 +211,15 @@ process.stdout.write(JSON.stringify({
         self.assertIn("toolItem", script)
         self.assertIn("parseLocalToolLine", script)
         self.assertIn("renderLinkedToolItem", script)
+        self.assertIn("refreshAndCopyToolItemResult", script)
         self.assertIn("mergeRecordImportResult", script)
         self.assertIn("combineRecordDataToggle", script)
         self.assertIn("record-card__linked-tool", stylesheet)
         self.assertIn("option-toggle", stylesheet)
+        self.assertNotIn("createLinkedMetaLine", script)
+        self.assertNotIn("record-card__linked-refresh", script)
+        self.assertNotIn("record-card__linked-refresh", stylesheet)
+        self.assertNotIn("record-card__linked-meta", stylesheet)
 
     def test_local_record_parser_normalizes_expiry_and_keeps_short_extra_code(self):
         if not shutil.which("node"):
@@ -320,6 +325,9 @@ process.stdout.write(JSON.stringify({{
         self.assertIn("987", payload["storedValues"])
         self.assertIn("CVV", payload["renderedText"])
         self.assertIn("987", payload["renderedText"])
+        self.assertNotIn("备注", payload["renderedText"])
+        self.assertNotIn("短信接口等敏感字段", payload["renderedText"])
+        self.assertNotIn("已忽略", payload["renderedText"])
         self.assertNotIn("CVV", " ".join(payload["warnings"]))
         self.assertNotIn("到期日", " ".join(payload["warnings"]))
         self.assertNotIn("https://example.com/api/get_sms", payload["storedValues"])
@@ -440,7 +448,11 @@ process.stdout.write(JSON.stringify({
         self.assertFalse(payload["extraRecordHasTool"])
         self.assertIn("JENNIFER WALL", payload["renderedText"])
         self.assertIn("+15725725788", payload["renderedText"])
-        self.assertIn("刷新", payload["renderedText"])
+        self.assertIn("待刷新", payload["renderedText"])
+        self.assertNotIn("来源", payload["renderedText"])
+        self.assertNotIn("到期", payload["renderedText"])
+        self.assertNotIn("未刷新", payload["renderedText"])
+        self.assertNotIn("刷新", payload["renderedText"].replace("待刷新", ""))
         self.assertIn("+15725725788", payload["searchableText"])
         self.assertIn("example.com/api/get_sms", payload["searchableText"])
 

@@ -71,19 +71,6 @@ function formatSavedAt(value) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
-function formatCheckedAt(value) {
-    if (!value) {
-        return '未刷新';
-    }
-
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-        return '未刷新';
-    }
-
-    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
-
 function normalizeText(value) {
     return String(value || '').replace(/\s+/g, ' ').trim();
 }
@@ -978,20 +965,6 @@ function buildLinkedResultButtonClass(resultText) {
     return 'record-card__linked-result';
 }
 
-function createLinkedMetaLine(label, value) {
-    const line = document.createElement('div');
-    line.className = 'record-card__linked-meta-line';
-
-    const strong = document.createElement('strong');
-    strong.textContent = `${label}：`;
-
-    const span = document.createElement('span');
-    span.textContent = value;
-
-    line.append(strong, span);
-    return line;
-}
-
 function renderLinkedToolItem(toolItem, recordId) {
     const panel = document.createElement('section');
     panel.className = 'record-card__linked-tool';
@@ -1012,13 +985,12 @@ function renderLinkedToolItem(toolItem, recordId) {
     const resultButton = createRecordActionButton(
         buildLinkedResultButtonClass(resultText),
         resultText,
-        `点击复制结果：${resultText}`,
+        `点击刷新并复制结果：${resultText}`,
         async () => {
-            const copied = await copyText(resultText);
-            setRecordFeedback(copied ? `已复制结果：${resultText}` : '复制结果失败，请手动选择字段内容。', copied ? 'success' : 'error');
+            await refreshAndCopyToolItemResult(recordId, resultButton);
         }
     );
-    resultButton.setAttribute('aria-label', `复制结果：${resultText}`);
+    resultButton.setAttribute('aria-label', `刷新并复制结果：${resultText}`);
 
     const openButton = createRecordActionButton(
         'record-card__linked-open',
@@ -1030,27 +1002,7 @@ function renderLinkedToolItem(toolItem, recordId) {
     );
     openButton.setAttribute('aria-label', `打开地址：${toolItem.displayUrl}`);
 
-    const refreshButton = createRecordActionButton(
-        'record-card__linked-refresh',
-        '刷新',
-        `刷新此数据：${toolItem.identifier}`,
-        async () => {
-            refreshButton.disabled = true;
-            refreshButton.textContent = '刷新中';
-            await refreshRecordToolItem(recordId);
-        }
-    );
-    refreshButton.setAttribute('aria-label', `刷新此数据：${toolItem.identifier}`);
-
-    const meta = document.createElement('div');
-    meta.className = 'record-card__linked-meta';
-    meta.append(
-        createLinkedMetaLine('来源', toolItem.siteInfo.sourceText || '未识别'),
-        createLinkedMetaLine('到期', toolItem.siteInfo.expiresAt || '未提供'),
-        createLinkedMetaLine('刷新', formatCheckedAt(toolItem.siteInfo.checkedAt))
-    );
-
-    panel.append(copyButton, resultButton, openButton, meta, refreshButton);
+    panel.append(copyButton, resultButton, openButton);
     return panel;
 }
 
@@ -1062,7 +1014,7 @@ function renderRecordCard(record) {
     head.className = 'record-card__head';
     const title = document.createElement('h3');
     title.className = 'record-card__title';
-    const hasRecordFields = Boolean(record.rawText || record.name || record.address || record.cardNumber || record.cardExpiry || record.extraCode || record.phone || record.note);
+    const hasRecordFields = Boolean(record.rawText || record.name || record.address || record.cardNumber || record.cardExpiry || record.extraCode || record.phone);
 
     if (record.rawText) {
         title.textContent = '纯文本';
@@ -1091,7 +1043,6 @@ function renderRecordCard(record) {
             { label: '有效期', displayValue: record.cardExpiry, options: { compact: true } },
             { label: 'CVV', displayValue: record.extraCode, options: { compact: true } },
             { label: '电话', displayValue: phoneDisplayValue, options: { compact: true } },
-            { label: '备注', displayValue: record.note, options: { wide: true } },
         ]);
     }
 
@@ -1102,13 +1053,6 @@ function renderRecordCard(record) {
     if (record.toolItem) {
         card.appendChild(renderLinkedToolItem(record.toolItem, record.id));
     }
-    if (record.warnings.length) {
-        const warning = document.createElement('p');
-        warning.className = 'record-card__warning';
-        warning.textContent = record.warnings.join('；');
-        card.appendChild(warning);
-    }
-
     return card;
 }
 
@@ -1274,7 +1218,7 @@ async function fetchSiteInfoForToolItem(toolItem) {
     }
 }
 
-async function refreshRecordToolItem(recordId) {
+async function refreshAndCopyToolItemResult(recordId, resultButton) {
     const targetIndex = currentRecords.findIndex((record) => record.id === recordId);
     const targetRecord = currentRecords[targetIndex];
     const targetToolItem = targetRecord?.toolItem;
@@ -1284,6 +1228,9 @@ async function refreshRecordToolItem(recordId) {
         renderRecords();
         return;
     }
+
+    resultButton.disabled = true;
+    resultButton.textContent = '刷新中';
 
     try {
         const nextSiteInfo = await fetchSiteInfoForToolItem(targetToolItem);
@@ -1300,7 +1247,15 @@ async function refreshRecordToolItem(recordId) {
         )));
         persistRecordState(nextRecords);
         renderRecords();
-        setRecordFeedback(`已刷新：${targetToolItem.identifier}`, 'success');
+
+        const nextResultText = buildSiteSummaryText(nextSiteInfo);
+        const copied = await copyText(nextResultText);
+        setRecordFeedback(
+            copied
+                ? `已刷新并复制结果：${nextResultText}`
+                : `已刷新：${targetToolItem.identifier}，复制结果失败，请手动选择字段内容。`,
+            copied ? 'success' : 'warning'
+        );
     } catch (_error) {
         renderRecords();
         setRecordFeedback(`刷新失败：${targetToolItem.identifier}`, 'error');
