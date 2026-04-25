@@ -1228,14 +1228,6 @@ function renderLinkedToolItem(toolItem, recordId) {
     return panel;
 }
 
-function buildEmailAccountMetaText(emailAccount) {
-    if (emailAccount.sourceName && emailAccount.host) {
-        return `${emailAccount.host} · ${emailAccount.sourceName}`;
-    }
-
-    return emailAccount.host || emailAccount.displayUrl || '邮箱';
-}
-
 function buildRecordEmailResultText(emailAccount) {
     if (emailAccount.inbox?.verificationCode) {
         return emailAccount.inbox.verificationCode;
@@ -1269,6 +1261,10 @@ function buildRecordEmailResultButtonClass(emailAccount) {
     return 'record-card__linked-email-result';
 }
 
+function buildEmailAccountOpenUrl(emailAccount) {
+    return emailAccount.uiUrl || emailAccount.sourceUrl || emailAccount.apiUrl;
+}
+
 function renderLinkedEmailAccount(emailAccount, recordId) {
     const panel = document.createElement('section');
     panel.className = 'record-card__linked-email';
@@ -1295,11 +1291,18 @@ function renderLinkedEmailAccount(emailAccount, recordId) {
     );
     resultButton.setAttribute('aria-label', `取件并复制验证码：${emailAccount.email}`);
 
-    const meta = document.createElement('span');
-    meta.className = 'record-card__linked-email-meta';
-    meta.textContent = buildEmailAccountMetaText(emailAccount);
+    const openUrl = buildEmailAccountOpenUrl(emailAccount);
+    const openButton = createRecordActionButton(
+        'record-card__linked-email-open',
+        '↗',
+        `打开邮箱链接：${emailAccount.displayUrl || openUrl}`,
+        () => {
+            window.open(openUrl, '_blank', 'noopener,noreferrer');
+        }
+    );
+    openButton.setAttribute('aria-label', `打开邮箱链接：${emailAccount.email}`);
 
-    panel.append(copyButton, resultButton, meta);
+    panel.append(copyButton, resultButton, openButton);
     return panel;
 }
 

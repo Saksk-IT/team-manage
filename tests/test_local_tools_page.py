@@ -297,6 +297,8 @@ process.stdout.write(JSON.stringify({
         self.assertIn("record-card__linked-email", stylesheet)
         self.assertIn("record-card__linked-email-address", stylesheet)
         self.assertIn("record-card__linked-email-result", stylesheet)
+        self.assertIn("record-card__linked-email-open", stylesheet)
+        self.assertNotIn("record-card__linked-email-meta", stylesheet)
         self.assertIn("option-toggle", stylesheet)
         self.assertNotIn("createLinkedMetaLine", script)
         self.assertNotIn("record-card__linked-refresh", script)

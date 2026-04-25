@@ -232,7 +232,8 @@
 .record-card__linked-result,
 .record-card__linked-open,
 .record-card__linked-email-address,
-.record-card__linked-email-result {
+.record-card__linked-email-result,
+.record-card__linked-email-open {
     border: none;
     border-radius: 11px;
     cursor: pointer;
@@ -244,7 +245,8 @@
 .record-card__linked-result:hover,
 .record-card__linked-open:hover,
 .record-card__linked-email-address:hover,
-.record-card__linked-email-result:hover {
+.record-card__linked-email-result:hover,
+.record-card__linked-email-open:hover {
     transform: translateY(-1px);
 }
 
@@ -267,24 +269,6 @@
 
 .record-card__linked-email-address {
     cursor: copy;
-}
-
-.record-card__linked-email-meta {
-    align-self: stretch;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    max-width: 8rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    border: 1px solid var(--border-base);
-    border-radius: 11px;
-    background: #fff;
-    color: var(--text-muted);
-    font-size: 0.78rem;
-    font-weight: 750;
-    padding: 0.56rem 0.66rem;
 }
 
 .record-card__linked-result {
@@ -352,7 +336,8 @@
     border-color: var(--border-base);
 }
 
-.record-card__linked-open {
+.record-card__linked-open,
+.record-card__linked-email-open {
     width: 2.1rem;
     min-width: 2.1rem;
     height: 2.1rem;
@@ -405,7 +390,7 @@
     }
 
     .record-card__linked-email {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr) max-content;
     }
 
     .record-card__linked-identifier {
@@ -413,9 +398,9 @@
     }
 
     .record-card__linked-email-address,
-    .record-card__linked-email-result,
-    .record-card__linked-email-meta {
-        grid-column: 1 / -1;
+    .record-card__linked-email-result {
+        grid-column: 1 / 2;
+        grid-row: 2 / 3;
         max-width: none;
     }
 
@@ -425,7 +410,8 @@
         max-width: none;
     }
 
-    .record-card__linked-open {
+    .record-card__linked-open,
+    .record-card__linked-email-open {
         grid-column: 2 / 3;
         grid-row: 2 / 3;
     }
