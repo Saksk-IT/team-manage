@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>本地记录工作台</title>
     <link rel="icon" type="image/png" href="/static/favicon.png">
-    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260425-combined-records">
-    <link rel="stylesheet" href="/static/css/local_records.css?v=20260425-combined-records">
+    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260425-combine-toggle">
+    <link rel="stylesheet" href="/static/css/local_records.css?v=20260425-combine-toggle">
 </head>
 
 <body>
@@ -15,7 +15,7 @@
         <header class="workbench-bar">
             <div class="workbench-bar__title">
                 <h1>本地记录工作台</h1>
-                <p>两种数据合一：批量导入后形成记录，点击姓名、地址、卡号、有效期、CVV 等内容即可复制，也可点击标识或验证码复制；数据仅保存在当前浏览器本地。</p>
+                <p>批量导入后形成记录，点击姓名、地址、卡号、有效期、CVV 等内容即可复制；开启“两种数据合一”后也可合并短信数据，数据仅保存在当前浏览器本地。</p>
             </div>
             <div class="workbench-bar__meta">
                 <a href="/local-tools">验证码工具</a>
@@ -27,9 +27,17 @@
                 <div class="panel__header">
                     <div>
                         <h2>导入内容</h2>
-                        <p>支持粘贴多行文本或导入 txt 文件；数据一与 <code>手机号|短信接口</code> 数据二可混合导入，并按导入顺序自动合并。</p>
+                        <p>默认导入数据一；开启下方选项后可混合导入数据一和 <code>手机号|短信接口</code> 数据二。</p>
                     </div>
                 </div>
+
+                <label class="option-toggle" for="combineRecordDataToggle">
+                    <input id="combineRecordDataToggle" type="checkbox">
+                    <span>
+                        <strong>两种数据合一</strong>
+                        <small>开启后可混合导入数据一和数据二；也支持先导入数据一、再导入数据二并按顺序合并。</small>
+                    </span>
+                </label>
 
                 <div class="import-actions">
                     <label class="file-trigger" for="recordFileInput">选择 txt 文件</label>
@@ -94,7 +102,7 @@
         </section>
     </main>
 
-    <script src="/static/js/local_records.js?v=20260425-combined-records"></script>
+    <script src="/static/js/local_records.js?v=20260425-combine-toggle"></script>
 </body>
 
 </html>

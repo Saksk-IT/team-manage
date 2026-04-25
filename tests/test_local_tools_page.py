@@ -34,7 +34,7 @@ const fs = require('fs');
 const vm = require('vm');
 const noop = () => {{}};
 function createElement(tag) {{
-  return {{ tag, style: {{}}, className: '', dataset: {{}}, children: [], hidden: false,
+  return {{ tag, style: {{}}, className: '', dataset: {{}}, children: [], hidden: false, checked: false,
     value: '', textContent: '', innerHTML: '', classList: {{ add: noop, remove: noop }},
     setAttribute: noop, addEventListener: noop, removeChild: noop, select: noop,
     append(...nodes) {{ this.children.push(...nodes); }},
@@ -168,6 +168,8 @@ process.stdout.write(JSON.stringify({
         self.assertIn("批量导入后形成记录", html)
         self.assertIn("点击姓名、地址、卡号、有效期、CVV 等内容即可复制", html)
         self.assertIn("两种数据合一", html)
+        self.assertIn('id="combineRecordDataToggle"', html)
+        self.assertIn("开启后可混合导入数据一和数据二", html)
         self.assertIn("手机号|短信接口", html)
         self.assertIn("数据仅保存在当前浏览器本地", html)
         self.assertIn("搜索姓名、地址、卡号、有效期、CVV、电话或标识", html)
@@ -209,7 +211,10 @@ process.stdout.write(JSON.stringify({
         self.assertIn("toolItem", script)
         self.assertIn("parseLocalToolLine", script)
         self.assertIn("renderLinkedToolItem", script)
+        self.assertIn("mergeRecordImportResult", script)
+        self.assertIn("combineRecordDataToggle", script)
         self.assertIn("record-card__linked-tool", stylesheet)
+        self.assertIn("option-toggle", stylesheet)
 
     def test_local_record_parser_normalizes_expiry_and_keeps_short_extra_code(self):
         if not shutil.which("node"):
@@ -255,6 +260,7 @@ const sandbox = {{
   Array,
   JSON,
   RegExp,
+  URL,
   navigator: {{}},
   window: {{
     localStorage: {{
@@ -361,17 +367,42 @@ process.stdout.write(JSON.stringify({
         self.assertNotIn("0001", payload["cardNumber"])
         self.assertNotIn("key=demo", payload["storedValues"])
 
+    def test_local_record_parser_requires_combine_option_for_tool_data(self):
+        payload = self._run_local_records_node("""
+const disabled = sandbox.parseRecordBatch('+15725725788|https://example.com/api/get_sms?key=demo');
+const enabled = sandbox.parseRecordBatch('+15725725788|https://example.com/api/get_sms?key=demo', { combineEnabled: true });
+process.stdout.write(JSON.stringify({
+  disabledCount: disabled.records.length,
+  disabledInvalidCount: disabled.invalidLines.length,
+  disabledReason: disabled.invalidLines[0] && disabled.invalidLines[0].reason,
+  enabledCount: enabled.records.length,
+  enabledRecordCount: enabled.recordCount,
+  enabledToolItemCount: enabled.toolItemCount,
+  enabledIdentifier: enabled.records[0] && enabled.records[0].toolItem && enabled.records[0].toolItem.identifier,
+}));
+""")
+
+        self.assertEqual(0, payload["disabledCount"])
+        self.assertEqual(1, payload["disabledInvalidCount"])
+        self.assertIn("开启两种数据合一", payload["disabledReason"])
+        self.assertEqual(1, payload["enabledCount"])
+        self.assertEqual(0, payload["enabledRecordCount"])
+        self.assertEqual(1, payload["enabledToolItemCount"])
+        self.assertEqual("+15725725788", payload["enabledIdentifier"])
+
     def test_local_record_parser_merges_record_and_local_tool_data_by_order(self):
         payload = self._run_local_records_node("""
 const parsed = sandbox.parseRecordBatch(
   'JENNIFER WALL----5318 S 105 ST, OMAHA NE 68127, US\\n' +
   '+15725725788|https://example.com/api/get_sms?key=demo\\n' +
-  '+15720000000|https://example.org/api/get_sms?key=demo2'
+  '+15720000000|https://example.org/api/get_sms?key=demo2',
+  { combineEnabled: true }
 );
 const extraRecordParsed = sandbox.parseRecordBatch(
   'JENNIFER WALL----5318 S 105 ST, OMAHA NE 68127, US\\n' +
   'ALEX DEMO----100 Main St, Austin TX 73301, US\\n' +
-  '+15725725788|https://example.com/api/get_sms?key=demo'
+  '+15725725788|https://example.com/api/get_sms?key=demo',
+  { combineEnabled: true }
 );
 const combined = parsed.records[0];
 const extraTool = parsed.records[1];
@@ -412,6 +443,42 @@ process.stdout.write(JSON.stringify({
         self.assertIn("刷新", payload["renderedText"])
         self.assertIn("+15725725788", payload["searchableText"])
         self.assertIn("example.com/api/get_sms", payload["searchableText"])
+
+    def test_local_record_incremental_import_merges_with_existing_records(self):
+        payload = self._run_local_records_node("""
+const firstImport = sandbox.parseRecordBatch(
+  'JENNIFER WALL----5318 S 105 ST, OMAHA NE 68127, US\\n' +
+  'ALEX DEMO----100 Main St, Austin TX 73301, US',
+  { combineEnabled: true }
+);
+const afterFirstImport = sandbox.mergeRecordImportResult([], firstImport);
+const secondImport = sandbox.parseRecordBatch(
+  '+15725725788|https://example.com/api/get_sms?key=demo\\n' +
+  '+15720000000|https://example.org/api/get_sms?key=demo2\\n' +
+  '+15721111111|https://example.net/api/get_sms?key=demo3',
+  { combineEnabled: true }
+);
+const afterSecondImport = sandbox.mergeRecordImportResult(afterFirstImport, secondImport);
+process.stdout.write(JSON.stringify({
+  firstCount: afterFirstImport.length,
+  secondCount: afterSecondImport.length,
+  firstName: afterSecondImport[0] && afterSecondImport[0].name,
+  firstIdentifier: afterSecondImport[0] && afterSecondImport[0].toolItem && afterSecondImport[0].toolItem.identifier,
+  secondName: afterSecondImport[1] && afterSecondImport[1].name,
+  secondIdentifier: afterSecondImport[1] && afterSecondImport[1].toolItem && afterSecondImport[1].toolItem.identifier,
+  extraName: afterSecondImport[2] && afterSecondImport[2].name,
+  extraIdentifier: afterSecondImport[2] && afterSecondImport[2].toolItem && afterSecondImport[2].toolItem.identifier,
+}));
+""")
+
+        self.assertEqual(2, payload["firstCount"])
+        self.assertEqual(3, payload["secondCount"])
+        self.assertEqual("JENNIFER WALL", payload["firstName"])
+        self.assertEqual("+15725725788", payload["firstIdentifier"])
+        self.assertEqual("ALEX DEMO", payload["secondName"])
+        self.assertEqual("+15720000000", payload["secondIdentifier"])
+        self.assertEqual("", payload["extraName"])
+        self.assertEqual("+15721111111", payload["extraIdentifier"])
 
     def test_local_record_parser_imports_delimiter_wrapped_plain_text(self):
         if not shutil.which("node"):
@@ -457,6 +524,7 @@ const sandbox = {{
   Array,
   JSON,
   RegExp,
+  URL,
   navigator: {{}},
   window: {{
     localStorage: {{

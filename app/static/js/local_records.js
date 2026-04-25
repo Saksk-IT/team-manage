@@ -1,4 +1,5 @@
 const RECORD_STORAGE_KEY = 'local_record_workbench_items_v1';
+const RECORD_COMBINE_STORAGE_KEY = 'local_record_workbench_combine_enabled_v1';
 const RECORD_REFRESH_TIMEOUT_MS = 6000;
 
 const recordBatchInput = document.getElementById('recordBatchInput');
@@ -6,6 +7,7 @@ const recordFeedback = document.getElementById('recordFeedback');
 const importRecordWorkbenchBtn = document.getElementById('importRecordWorkbenchBtn');
 const clearRecordTextareaBtn = document.getElementById('clearRecordTextareaBtn');
 const clearRecordLocalDataBtn = document.getElementById('clearRecordLocalDataBtn');
+const combineRecordDataToggle = document.getElementById('combineRecordDataToggle');
 const recordFileInput = document.getElementById('recordFileInput');
 const recordItemsGrid = document.getElementById('recordItemsGrid');
 const recordEmptyState = document.getElementById('recordEmptyState');
@@ -25,6 +27,34 @@ function setRecordFeedback(message, tone = '') {
     recordFeedback.className = 'feedback';
     if (tone) {
         recordFeedback.classList.add(`feedback--${tone}`);
+    }
+}
+
+function isRecordCombineEnabled() {
+    return Boolean(combineRecordDataToggle?.checked);
+}
+
+function loadRecordCombinePreference() {
+    if (!combineRecordDataToggle) {
+        return;
+    }
+
+    try {
+        combineRecordDataToggle.checked = window.localStorage.getItem(RECORD_COMBINE_STORAGE_KEY) === '1';
+    } catch (_error) {
+        combineRecordDataToggle.checked = false;
+    }
+}
+
+function persistRecordCombinePreference() {
+    if (!combineRecordDataToggle) {
+        return;
+    }
+
+    try {
+        window.localStorage.setItem(RECORD_COMBINE_STORAGE_KEY, isRecordCombineEnabled() ? '1' : '0');
+    } catch (_error) {
+        // 偏好保存失败不影响本地记录导入。
     }
 }
 
@@ -572,6 +602,66 @@ function combineRecordsAndToolItems(records, toolItems) {
     }));
 }
 
+function hasRecordData(record) {
+    return Boolean(
+        record?.rawText ||
+        record?.name ||
+        record?.address ||
+        record?.cardNumber ||
+        record?.cardMasked ||
+        record?.cardLast4 ||
+        record?.cardExpiry ||
+        record?.extraCode ||
+        record?.phone ||
+        record?.phoneMasked ||
+        record?.note ||
+        (Array.isArray(record?.warnings) && record.warnings.length)
+    );
+}
+
+function stripToolItemFromRecord(record, index) {
+    return Object.freeze({
+        ...record,
+        sequence: index + 1,
+        toolItem: null,
+    });
+}
+
+function extractRecordData(records) {
+    return createFrozenRecords((records || [])
+        .filter(hasRecordData)
+        .map(stripToolItemFromRecord));
+}
+
+function createFrozenToolItems(toolItems) {
+    return Object.freeze((toolItems || [])
+        .filter(Boolean)
+        .map((toolItem, index) => createFrozenToolItem({
+            ...toolItem,
+            sequence: index + 1,
+        }, index + 1))
+        .filter(Boolean));
+}
+
+function extractToolItems(records) {
+    return createFrozenToolItems((records || []).map((record) => record?.toolItem));
+}
+
+function mergeRecordImportResult(existingRecords, parseResult) {
+    const importedRecords = Array.isArray(parseResult?.sourceRecords)
+        ? parseResult.sourceRecords
+        : [];
+    const importedToolItems = Array.isArray(parseResult?.sourceToolItems)
+        ? parseResult.sourceToolItems
+        : [];
+    const existingRecordData = extractRecordData(existingRecords);
+    const existingToolItems = extractToolItems(existingRecords);
+    const nextRecordData = parseResult?.recordCount > 0 ? importedRecords : existingRecordData;
+    const nextToolItems = parseResult?.toolItemCount > 0 ? importedToolItems : existingToolItems;
+
+    return createFrozenRecords(combineRecordsAndToolItems(nextRecordData, nextToolItems));
+}
+
 function parseRecordLine(line, sequence) {
     const rawLine = String(line || '').trim();
     const parts = line.split(/\s*-{4,}\s*/).map(normalizeText).filter(Boolean);
@@ -591,14 +681,24 @@ function parseRecordLine(line, sequence) {
     return parseGenericRecord(parts, sequence);
 }
 
-function parseRecordBatch(content) {
+function parseRecordBatch(content, options = {}) {
+    const combineEnabled = Boolean(options.combineEnabled);
     const lines = String(content || '')
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter(Boolean);
 
     const parsed = lines.reduce((result, line, index) => {
-        const parsedLine = shouldParseAsLocalToolLine(line)
+        if (!combineEnabled && shouldParseAsLocalToolLine(line)) {
+            return Object.freeze({
+                records: result.records,
+                toolItems: result.toolItems,
+                invalidLines: result.invalidLines.concat([{ lineNumber: index + 1, reason: '请先开启两种数据合一后再导入数据二' }]),
+                skippedSensitive: result.skippedSensitive,
+            });
+        }
+
+        const parsedLine = combineEnabled && shouldParseAsLocalToolLine(line)
             ? parseLocalToolLine(line, result.toolItems.length + 1)
             : parseRecordLine(line, result.records.length + 1);
         if (parsedLine.error) {
@@ -627,14 +727,20 @@ function parseRecordBatch(content) {
         });
     }, Object.freeze({ records: [], toolItems: [], invalidLines: [], skippedSensitive: 0 }));
 
-    const combinedRecords = combineRecordsAndToolItems(parsed.records, parsed.toolItems);
+    const sourceRecords = createFrozenRecords(parsed.records);
+    const sourceToolItems = createFrozenToolItems(parsed.toolItems);
+    const combinedRecords = combineEnabled
+        ? combineRecordsAndToolItems(sourceRecords, sourceToolItems)
+        : sourceRecords;
 
     return Object.freeze({
         records: createFrozenRecords(combinedRecords),
         invalidLines: Object.freeze(parsed.invalidLines.map((item) => Object.freeze(item))),
         skippedSensitive: parsed.skippedSensitive,
         recordCount: parsed.records.length,
-        toolItemCount: parsed.toolItems.length,
+        toolItemCount: combineEnabled ? parsed.toolItems.length : 0,
+        sourceRecords,
+        sourceToolItems: combineEnabled ? sourceToolItems : Object.freeze([]),
     });
 }
 
@@ -1208,29 +1314,33 @@ async function importCurrentRecords() {
         return;
     }
 
-    const parseResult = parseRecordBatch(content);
+    const combineEnabled = isRecordCombineEnabled();
+    const parseResult = parseRecordBatch(content, { combineEnabled });
     currentInvalidLines = parseResult.invalidLines;
 
     if (!parseResult.records.length) {
-        currentRecords = Object.freeze([]);
-        currentSavedAt = '';
         renderRecords();
-        setRecordFeedback('没有解析出有效记录，请检查分隔符和字段顺序。', 'error');
+        setRecordFeedback(combineEnabled
+            ? '没有解析出有效记录，请检查分隔符、字段顺序或数据二地址格式。'
+            : '没有解析出有效记录；如需导入数据二，请先开启“两种数据合一”。', 'error');
         return;
     }
 
-    persistRecordState(parseResult.records);
+    const nextRecords = combineEnabled
+        ? mergeRecordImportResult(currentRecords, parseResult)
+        : parseResult.records;
+    persistRecordState(nextRecords);
     if (parseResult.skippedSensitive > 0) {
         recordBatchInput.value = '';
     }
     renderRecords();
 
-    const countText = parseResult.toolItemCount > 0
-        ? `（数据一 ${parseResult.recordCount} 条，数据二 ${parseResult.toolItemCount} 条）`
+    const countText = combineEnabled
+        ? `（本次导入：数据一 ${parseResult.recordCount} 条，数据二 ${parseResult.toolItemCount} 条）`
         : '';
     const skippedText = parseResult.skippedSensitive > 0 ? `，已丢弃 ${parseResult.skippedSensitive} 类敏感字段并清空输入框` : '';
     const invalidText = parseResult.invalidLines.length ? `，另有 ${parseResult.invalidLines.length} 行未导入` : '';
-    setRecordFeedback(`已保存 ${parseResult.records.length} 个记录框${countText}${skippedText}${invalidText}。`, parseResult.invalidLines.length ? 'warning' : 'success');
+    setRecordFeedback(`已保存 ${nextRecords.length} 个记录框${countText}${skippedText}${invalidText}。`, parseResult.invalidLines.length ? 'warning' : 'success');
 }
 
 async function handleRecordFileImport(file) {
@@ -1244,6 +1354,15 @@ async function handleRecordFileImport(file) {
 }
 
 importRecordWorkbenchBtn.addEventListener('click', importCurrentRecords);
+
+if (combineRecordDataToggle) {
+    combineRecordDataToggle.addEventListener('change', () => {
+        persistRecordCombinePreference();
+        setRecordFeedback(isRecordCombineEnabled()
+            ? '已开启两种数据合一：可导入数据二，并会与现有数据一按顺序合并。'
+            : '已关闭两种数据合一：导入内容将按数据一解析。', 'success');
+    });
+}
 
 clearRecordTextareaBtn.addEventListener('click', () => {
     recordBatchInput.value = '';
@@ -1263,5 +1382,6 @@ recordFileInput.addEventListener('change', async (event) => {
 
 recordSearchInput.addEventListener('input', renderRecords);
 
+loadRecordCombinePreference();
 loadRecordState();
 renderRecords();

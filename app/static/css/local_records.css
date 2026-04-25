@@ -2,6 +2,42 @@
     display: none;
 }
 
+.option-toggle {
+    border: 1px solid rgba(199, 210, 254, 0.72);
+    border-radius: 13px;
+    background: rgba(238, 242, 255, 0.56);
+    cursor: pointer;
+    display: flex;
+    gap: 0.68rem;
+    align-items: flex-start;
+    padding: 0.74rem 0.82rem;
+}
+
+.option-toggle input {
+    width: 1.08rem;
+    height: 1.08rem;
+    margin: 0.14rem 0 0;
+    accent-color: var(--primary);
+    flex: 0 0 auto;
+}
+
+.option-toggle span {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.option-toggle strong {
+    color: var(--text-main);
+    font-size: 0.9rem;
+}
+
+.option-toggle small {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
 .record-workbench-page .panel--data {
     grid-template-rows: auto auto minmax(0, 1fr);
 }
