@@ -7,7 +7,7 @@
     <title>本地记录工作台</title>
     <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="stylesheet" href="/static/css/local_tools.css?v=20260425-combine-toggle">
-    <link rel="stylesheet" href="/static/css/local_records.css?v=20260426-field-copy-name">
+    <link rel="stylesheet" href="/static/css/local_records.css?v=20260426-three-data">
 </head>
 
 <body>
@@ -15,7 +15,7 @@
         <header class="workbench-bar">
             <div class="workbench-bar__title">
                 <h1>本地记录工作台</h1>
-                <p>批量导入后形成记录，点击姓名、地址、卡号、有效期、CVV 等内容即可复制；开启“两种数据合一”后也可合并短信数据，数据仅保存在当前浏览器本地。</p>
+                <p>批量导入后形成记录，点击姓名、地址、卡号、有效期、CVV 等内容即可复制；开启“三种数据合一”后也可合并短信与邮箱数据，数据仅保存在当前浏览器本地。</p>
             </div>
             <div class="workbench-bar__meta">
                 <a href="/local-tools">验证码工具</a>
@@ -28,15 +28,15 @@
                 <div class="panel__header">
                     <div>
                         <h2>导入内容</h2>
-                        <p>默认导入数据一；开启下方选项后可混合导入数据一和 <code>手机号|短信接口</code> 数据二。</p>
+                        <p>默认导入数据一；开启下方选项后可混合导入数据一、<code>手机号|短信接口</code> 数据二和邮箱入口/读信 JSON。</p>
                     </div>
                 </div>
 
                 <label class="option-toggle" for="combineRecordDataToggle">
                     <input id="combineRecordDataToggle" type="checkbox">
                     <span>
-                        <strong>两种数据合一</strong>
-                        <small>开启后可混合导入数据一和数据二；也支持先导入数据一、再导入数据二并按顺序合并。</small>
+                        <strong>三种数据合一</strong>
+                        <small>开启后可混合导入数据一、数据二和邮箱；邮箱记录会显示在手机号记录下方，也支持分批按顺序合并。</small>
                     </span>
                 </label>
 
@@ -52,12 +52,12 @@
                 <textarea
                     id="recordBatchInput"
                     class="batch-textarea"
-                    placeholder="示例：&#10;JENNIFER WALL----5318 S 105 ST, OMAHA NE 68127, US&#10;+15725725788|https://example.com/api/get_sms?key=demo&#10;4111111111111111----2029/3----123----+1 555 123 4567----短信接口----Pat Example----456 Oak Ave, Seattle WA 98101, US&#10;KW-EXAMPLE-IGNORE-0001 4111111111111111 ---- 02/30 ---- 902 ---- +15550104567 ---- https://example.com/api/get_sms?key=demo ---- Pat Example ---- 456 Oak Ave, Seattle WA 98101, US&#10;----123----"
+                    placeholder="示例：&#10;JENNIFER WALL----5318 S 105 ST, OMAHA NE 68127, US&#10;+15725725788|https://example.com/api/get_sms?key=demo&#10;http://wsaic.com/api/mail_onek.php?email=demo@wsaic.com&pass=123456&json=1&#10;4111111111111111----2029/3----123----+1 555 123 4567----短信接口----Pat Example----456 Oak Ave, Seattle WA 98101, US&#10;KW-EXAMPLE-IGNORE-0001 4111111111111111 ---- 02/30 ---- 902 ---- +15550104567 ---- https://example.com/api/get_sms?key=demo ---- Pat Example ---- 456 Oak Ave, Seattle WA 98101, US&#10;----123----"
                 ></textarea>
 
                 <div class="feedback-row">
                     <p id="recordFeedback" class="feedback" aria-live="polite"></p>
-                    <p class="privacy-tip">提示：完整卡号、电话、有效期、CVV 与数据二接口仅保存在当前浏览器本地；数据一中的短信接口地址仍会在解析时丢弃。</p>
+                    <p class="privacy-tip">提示：完整卡号、电话、有效期、CVV、邮箱与接口仅保存在当前浏览器本地；数据一中的短信接口地址仍会在解析时丢弃。</p>
                 </div>
 
                 <div id="recordInvalidLinesBox" class="invalid-lines" hidden>
@@ -70,11 +70,11 @@
                 <div class="panel__header panel__header--data">
                     <div>
                         <h2>本地记录</h2>
-                        <p>可单独显示数据一或数据二；同时导入时数据二会放在数据一正下方，数量不一致的多余数据单独显示。</p>
+                        <p>可单独显示数据一、数据二或邮箱；同时导入时数据二会放在数据一正下方，邮箱会放在手机号记录下方，数量不一致的多余数据单独显示。</p>
                     </div>
 
                     <div class="panel-tools">
-                        <input id="recordSearchInput" type="search" class="search-input" placeholder="搜索姓名、地址、卡号、有效期、CVV、电话或标识">
+                        <input id="recordSearchInput" type="search" class="search-input" placeholder="搜索姓名、地址、卡号、有效期、CVV、电话、邮箱或标识">
                     </div>
                 </div>
 
@@ -103,7 +103,8 @@
         </section>
     </main>
 
-    <script src="/static/js/local_records.js?v=20260426-field-copy-name"></script>
+    <script src="/static/js/email_accounts_core.js?v=20260426-three-data"></script>
+    <script src="/static/js/local_records.js?v=20260426-three-data"></script>
 </body>
 
 </html>

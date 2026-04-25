@@ -83,6 +83,7 @@ vm.runInContext(fs.readFileSync({json.dumps(str(script_path))}, 'utf8'), sandbox
             self.skipTest("node is required for local_records.js behavior check")
 
         static_root = Path(__file__).resolve().parents[1] / "app" / "static"
+        core_script_path = static_root / "js" / "email_accounts_core.js"
         script_path = static_root / "js" / "local_records.js"
         node_script = f"""
 const fs = require('fs');
@@ -111,6 +112,7 @@ const sandbox = {{
   }},
 }};
 vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync({json.dumps(str(core_script_path))}, 'utf8'), sandbox);
 vm.runInContext(fs.readFileSync({json.dumps(str(script_path))}, 'utf8'), sandbox);
 {node_body}
 """
@@ -223,17 +225,19 @@ process.stdout.write(JSON.stringify({
         self.assertIn("本地记录工作台", html)
         self.assertIn("批量导入后形成记录", html)
         self.assertIn("点击姓名、地址、卡号、有效期、CVV 等内容即可复制", html)
-        self.assertIn("两种数据合一", html)
+        self.assertIn("三种数据合一", html)
         self.assertIn('id="combineRecordDataToggle"', html)
-        self.assertIn("开启后可混合导入数据一和数据二", html)
+        self.assertIn("开启后可混合导入数据一、数据二和邮箱", html)
         self.assertIn("手机号|短信接口", html)
+        self.assertIn("邮箱入口/读信 JSON", html)
         self.assertIn("数据仅保存在当前浏览器本地", html)
-        self.assertIn("搜索姓名、地址、卡号、有效期、CVV、电话或标识", html)
+        self.assertIn("搜索姓名、地址、卡号、有效期、CVV、电话、邮箱或标识", html)
         self.assertIn("验证码工具", html)
         self.assertIn("邮箱账户", html)
         self.assertIn('id="recordBatchInput"', html)
         self.assertIn('id="importRecordWorkbenchBtn"', html)
         self.assertIn('id="recordItemsGrid"', html)
+        self.assertIn("/static/js/email_accounts_core.js", html)
         self.assertIn("/static/js/local_records.js", html)
         self.assertIn("/static/css/local_records.css", html)
         self.assertNotIn("<code>姓名----地址</code>", html)
@@ -285,6 +289,11 @@ process.stdout.write(JSON.stringify({
         self.assertIn("mergeRecordImportResult", script)
         self.assertIn("combineRecordDataToggle", script)
         self.assertIn("record-card__linked-tool", stylesheet)
+        self.assertIn("emailAccount", script)
+        self.assertIn("parseEmailAccountLine", script)
+        self.assertIn("renderLinkedEmailAccount", script)
+        self.assertIn("record-card__linked-email", stylesheet)
+        self.assertIn("record-card__linked-email-address", stylesheet)
         self.assertIn("option-toggle", stylesheet)
         self.assertNotIn("createLinkedMetaLine", script)
         self.assertNotIn("record-card__linked-refresh", script)
@@ -462,7 +471,7 @@ process.stdout.write(JSON.stringify({
 
         self.assertEqual(0, payload["disabledCount"])
         self.assertEqual(1, payload["disabledInvalidCount"])
-        self.assertIn("开启两种数据合一", payload["disabledReason"])
+        self.assertIn("开启三种数据合一", payload["disabledReason"])
         self.assertEqual(1, payload["enabledCount"])
         self.assertEqual(0, payload["enabledRecordCount"])
         self.assertEqual(1, payload["enabledToolItemCount"])
@@ -525,6 +534,46 @@ process.stdout.write(JSON.stringify({
         self.assertNotIn("刷新", payload["renderedText"].replace("待刷新", ""))
         self.assertIn("+15725725788", payload["searchableText"])
         self.assertIn("example.com/api/get_sms", payload["searchableText"])
+
+    def test_local_record_parser_merges_email_under_tool_data_by_order(self):
+        payload = self._run_local_records_node("""
+const parsed = sandbox.parseRecordBatch(
+  'JENNIFER WALL----5318 S 105 ST, OMAHA NE 68127, US\\n' +
+  '+15725725788|https://example.com/api/get_sms?key=demo\\n' +
+  'http://wsaic.com/api/mail_onek.php?email=demo%40wsaic.com&pass=123456&json=1',
+  { combineEnabled: true }
+);
+const combined = parsed.records[0];
+function collectText(node) {
+  if (!node) return '';
+  return [node.textContent || '', ...(node.children || []).map(collectText)].join('|');
+}
+const renderedText = collectText(sandbox.renderRecordCard(combined));
+process.stdout.write(JSON.stringify({
+  count: parsed.records.length,
+  recordCount: parsed.recordCount,
+  toolItemCount: parsed.toolItemCount,
+  emailAccountCount: parsed.emailAccountCount,
+  combinedIdentifier: combined.toolItem && combined.toolItem.identifier,
+  combinedEmail: combined.emailAccount && combined.emailAccount.email,
+  combinedEmailApi: combined.emailAccount && combined.emailAccount.apiUrl,
+  renderedText,
+  phoneIndex: renderedText.indexOf('+15725725788'),
+  emailIndex: renderedText.indexOf('demo@wsaic.com'),
+  searchableText: sandbox.buildSearchableRecordText(combined),
+}));
+""")
+
+        self.assertEqual(1, payload["count"])
+        self.assertEqual(1, payload["recordCount"])
+        self.assertEqual(1, payload["toolItemCount"])
+        self.assertEqual(1, payload["emailAccountCount"])
+        self.assertEqual("+15725725788", payload["combinedIdentifier"])
+        self.assertEqual("demo@wsaic.com", payload["combinedEmail"])
+        self.assertIn("mail_onek.php", payload["combinedEmailApi"])
+        self.assertIn("demo@wsaic.com", payload["renderedText"])
+        self.assertGreater(payload["emailIndex"], payload["phoneIndex"])
+        self.assertIn("demo@wsaic.com", payload["searchableText"])
 
     def test_local_record_incremental_import_merges_with_existing_records(self):
         payload = self._run_local_records_node("""

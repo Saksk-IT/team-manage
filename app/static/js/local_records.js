@@ -285,6 +285,32 @@ function createFrozenToolItem(toolItem, sequence) {
     });
 }
 
+function createFrozenEmailAccount(emailAccount, sequence) {
+    if (!emailAccount || typeof emailAccount !== 'object') {
+        return null;
+    }
+
+    const email = normalizeText(emailAccount.email);
+    const sourceUrl = String(emailAccount.sourceUrl || emailAccount.apiUrl || emailAccount.uiUrl || '').trim();
+    if (!email || !sourceUrl) {
+        return null;
+    }
+
+    return Object.freeze({
+        sequence: Number.isInteger(emailAccount.sequence) ? emailAccount.sequence : sequence,
+        email,
+        sourceUrl,
+        displayUrl: normalizeText(emailAccount.displayUrl || buildDisplayUrl(sourceUrl)),
+        sourceName: normalizeText(emailAccount.sourceName),
+        uid: normalizeText(emailAccount.uid),
+        password: normalizeText(emailAccount.password),
+        uiUrl: String(emailAccount.uiUrl || '').trim(),
+        apiUrl: String(emailAccount.apiUrl || '').trim(),
+        host: normalizeText(emailAccount.host),
+        statusText: normalizeText(emailAccount.statusText || '待取件'),
+    });
+}
+
 function createFrozenRecords(records) {
     return Object.freeze(records.map((record, index) => {
         const cardNumber = digitsOnly(record.cardNumber || record.cardFull || '');
@@ -294,6 +320,7 @@ function createFrozenRecords(records) {
         const extraCode = normalizeText(record.extraCode || '');
         const sequence = Number.isInteger(record.sequence) ? record.sequence : index + 1;
         const toolItem = createFrozenToolItem(record.toolItem || record.localToolItem, sequence);
+        const emailAccount = createFrozenEmailAccount(record.emailAccount, sequence);
 
         return Object.freeze({
             id: String(record.id || `${Date.now()}-${index + 1}`),
@@ -312,6 +339,7 @@ function createFrozenRecords(records) {
             importedAt: String(record.importedAt || ''),
             warnings: Object.freeze(Array.isArray(record.warnings) ? record.warnings.map(normalizeText).filter(Boolean) : []),
             toolItem,
+            emailAccount,
         });
     }));
 }
@@ -335,6 +363,7 @@ function buildRecord(values) {
         importedAt: new Date().toISOString(),
         warnings: Object.freeze((values.warnings || []).map(normalizeText).filter(Boolean)),
         toolItem: createFrozenToolItem(values.toolItem, sequence),
+        emailAccount: createFrozenEmailAccount(values.emailAccount, sequence),
     });
 }
 
@@ -567,11 +596,95 @@ function parseLocalToolLine(line, sequence) {
     };
 }
 
-function combineRecordsAndToolItems(records, toolItems) {
-    const maxCount = Math.max(records.length, toolItems.length);
+function isLikelyEmailAccountLine(line) {
+    if (!isValidHttpUrl(line)) {
+        return false;
+    }
+
+    try {
+        const parsedUrl = new URL(String(line || '').trim());
+        const path = parsedUrl.pathname.toLowerCase();
+        const hasEmailParam = ['email', 'u', 'mail', 'account'].some((name) => parsedUrl.searchParams.has(name));
+        const hasEmailPath = (
+            path.includes('mail_onek.php') ||
+            path.endsWith('/m.php') ||
+            path.endsWith('m.php') ||
+            path.includes('/eid/')
+        );
+        return hasEmailParam || hasEmailPath;
+    } catch (_error) {
+        return false;
+    }
+}
+
+function parseEmailAccountLine(line, sequence) {
+    if (typeof parseEmailAccountBatch === 'function') {
+        const parsedEmail = parseEmailAccountBatch(line);
+        if (parsedEmail.accounts.length) {
+            return {
+                emailAccounts: parsedEmail.accounts,
+                emailSourceLinks: [],
+                skippedSensitive: 0,
+            };
+        }
+
+        if (parsedEmail.sourceLinks.length) {
+            return {
+                emailAccounts: [],
+                emailSourceLinks: parsedEmail.sourceLinks,
+                skippedSensitive: 0,
+            };
+        }
+
+        return { error: parsedEmail.invalidLines[0]?.reason || '邮箱链接格式未识别' };
+    }
+
+    try {
+        const parsedUrl = new URL(String(line || '').trim());
+        const email = normalizeText(parsedUrl.searchParams.get('email') || parsedUrl.searchParams.get('u') || parsedUrl.searchParams.get('mail') || parsedUrl.searchParams.get('account'));
+        if (!email) {
+            return { error: '邮箱链接缺少邮箱参数' };
+        }
+
+        const password = normalizeText(parsedUrl.searchParams.get('pass') || parsedUrl.searchParams.get('p') || parsedUrl.searchParams.get('password'));
+        return {
+            emailAccounts: [Object.freeze({
+                sequence,
+                email,
+                sourceUrl: parsedUrl.toString(),
+                displayUrl: buildDisplayUrl(parsedUrl.toString()),
+                sourceName: normalizeText(parsedUrl.searchParams.get('n') || parsedUrl.searchParams.get('name') || parsedUrl.searchParams.get('file')),
+                uid: normalizeText(parsedUrl.searchParams.get('uid') || parsedUrl.searchParams.get('id')),
+                password,
+                uiUrl: '',
+                apiUrl: parsedUrl.pathname.includes('mail_onek.php') ? parsedUrl.toString() : '',
+                host: parsedUrl.hostname || parsedUrl.host || '未知站点',
+                statusText: '待取件',
+            })],
+            emailSourceLinks: [],
+            skippedSensitive: 0,
+        };
+    } catch (_error) {
+        return { error: '邮箱链接格式未识别' };
+    }
+}
+
+function createFrozenRecordEmailAccounts(emailAccounts) {
+    return Object.freeze((emailAccounts || [])
+        .filter(Boolean)
+        .map((emailAccount, index) => createFrozenEmailAccount({
+            ...emailAccount,
+            sequence: index + 1,
+        }, index + 1))
+        .filter(Boolean));
+}
+
+function combineRecordsAndToolItems(records, toolItems, emailAccounts = []) {
+    const maxCount = Math.max(records.length, toolItems.length, emailAccounts.length);
     return Object.freeze(Array.from({ length: maxCount }, (_unused, index) => {
         const record = records[index];
         const toolItem = toolItems[index] || null;
+        const emailAccount = emailAccounts[index] || null;
         const sequence = index + 1;
 
         if (record) {
@@ -579,12 +692,14 @@ function combineRecordsAndToolItems(records, toolItems) {
                 ...record,
                 sequence,
                 toolItem,
+                emailAccount,
             });
         }
 
         return buildRecord({
             sequence,
             toolItem,
+            emailAccount,
         });
     }));
 }
@@ -611,6 +726,7 @@ function stripToolItemFromRecord(record, index) {
         ...record,
         sequence: index + 1,
         toolItem: null,
+        emailAccount: null,
     });
 }
 
@@ -634,6 +750,10 @@ function extractToolItems(records) {
     return createFrozenToolItems((records || []).map((record) => record?.toolItem));
 }
 
+function extractEmailAccounts(records) {
+    return createFrozenRecordEmailAccounts((records || []).map((record) => record?.emailAccount));
+}
+
 function mergeRecordImportResult(existingRecords, parseResult) {
     const importedRecords = Array.isArray(parseResult?.sourceRecords)
         ? parseResult.sourceRecords
@@ -641,12 +761,17 @@ function mergeRecordImportResult(existingRecords, parseResult) {
     const importedToolItems = Array.isArray(parseResult?.sourceToolItems)
         ? parseResult.sourceToolItems
         : [];
+    const importedEmailAccounts = Array.isArray(parseResult?.sourceEmailAccounts)
+        ? parseResult.sourceEmailAccounts
+        : [];
     const existingRecordData = extractRecordData(existingRecords);
     const existingToolItems = extractToolItems(existingRecords);
+    const existingEmailAccounts = extractEmailAccounts(existingRecords);
     const nextRecordData = parseResult?.recordCount > 0 ? importedRecords : existingRecordData;
     const nextToolItems = parseResult?.toolItemCount > 0 ? importedToolItems : existingToolItems;
+    const nextEmailAccounts = parseResult?.emailAccountCount > 0 ? importedEmailAccounts : existingEmailAccounts;
 
-    return createFrozenRecords(combineRecordsAndToolItems(nextRecordData, nextToolItems));
+    return createFrozenRecords(combineRecordsAndToolItems(nextRecordData, nextToolItems, nextEmailAccounts));
 }
 
 function parseRecordLine(line, sequence) {
@@ -676,22 +801,34 @@ function parseRecordBatch(content, options = {}) {
         .filter(Boolean);
 
     const parsed = lines.reduce((result, line, index) => {
-        if (!combineEnabled && shouldParseAsLocalToolLine(line)) {
+        if (!combineEnabled && (shouldParseAsLocalToolLine(line) || isLikelyEmailAccountLine(line))) {
             return Object.freeze({
                 records: result.records,
                 toolItems: result.toolItems,
-                invalidLines: result.invalidLines.concat([{ lineNumber: index + 1, reason: '请先开启两种数据合一后再导入数据二' }]),
+                emailAccounts: result.emailAccounts,
+                emailSourceLinks: result.emailSourceLinks,
+                invalidLines: result.invalidLines.concat([{ lineNumber: index + 1, reason: '请先开启三种数据合一后再导入数据二或邮箱数据' }]),
                 skippedSensitive: result.skippedSensitive,
             });
         }
 
-        const parsedLine = combineEnabled && shouldParseAsLocalToolLine(line)
-            ? parseLocalToolLine(line, result.toolItems.length + 1)
-            : parseRecordLine(line, result.records.length + 1);
+        const parsedLine = (() => {
+            if (combineEnabled && shouldParseAsLocalToolLine(line)) {
+                return parseLocalToolLine(line, result.toolItems.length + 1);
+            }
+
+            if (combineEnabled && isLikelyEmailAccountLine(line)) {
+                return parseEmailAccountLine(line, result.emailAccounts.length + result.emailSourceLinks.length + 1);
+            }
+
+            return parseRecordLine(line, result.records.length + 1);
+        })();
         if (parsedLine.error) {
             return Object.freeze({
                 records: result.records,
                 toolItems: result.toolItems,
+                emailAccounts: result.emailAccounts,
+                emailSourceLinks: result.emailSourceLinks,
                 invalidLines: result.invalidLines.concat([{ lineNumber: index + 1, reason: parsedLine.error }]),
                 skippedSensitive: result.skippedSensitive,
             });
@@ -701,6 +838,19 @@ function parseRecordBatch(content, options = {}) {
             return Object.freeze({
                 records: result.records,
                 toolItems: result.toolItems.concat([parsedLine.toolItem]),
+                emailAccounts: result.emailAccounts,
+                emailSourceLinks: result.emailSourceLinks,
+                invalidLines: result.invalidLines,
+                skippedSensitive: result.skippedSensitive,
+            });
+        }
+
+        if (parsedLine.emailAccounts) {
+            return Object.freeze({
+                records: result.records,
+                toolItems: result.toolItems,
+                emailAccounts: result.emailAccounts.concat(parsedLine.emailAccounts),
+                emailSourceLinks: result.emailSourceLinks.concat(parsedLine.emailSourceLinks || []),
                 invalidLines: result.invalidLines,
                 skippedSensitive: result.skippedSensitive,
             });
@@ -709,15 +859,18 @@ function parseRecordBatch(content, options = {}) {
         return Object.freeze({
             records: result.records.concat([parsedLine.record]),
             toolItems: result.toolItems,
+            emailAccounts: result.emailAccounts,
+            emailSourceLinks: result.emailSourceLinks,
             invalidLines: result.invalidLines,
             skippedSensitive: result.skippedSensitive + (parsedLine.skippedSensitive || 0),
         });
-    }, Object.freeze({ records: [], toolItems: [], invalidLines: [], skippedSensitive: 0 }));
+    }, Object.freeze({ records: [], toolItems: [], emailAccounts: [], emailSourceLinks: [], invalidLines: [], skippedSensitive: 0 }));
 
     const sourceRecords = createFrozenRecords(parsed.records);
     const sourceToolItems = createFrozenToolItems(parsed.toolItems);
+    const sourceEmailAccounts = createFrozenRecordEmailAccounts(parsed.emailAccounts);
     const combinedRecords = combineEnabled
-        ? combineRecordsAndToolItems(sourceRecords, sourceToolItems)
+        ? combineRecordsAndToolItems(sourceRecords, sourceToolItems, sourceEmailAccounts)
         : sourceRecords;
 
     return Object.freeze({
@@ -726,8 +879,12 @@ function parseRecordBatch(content, options = {}) {
         skippedSensitive: parsed.skippedSensitive,
         recordCount: parsed.records.length,
         toolItemCount: combineEnabled ? parsed.toolItems.length : 0,
+        emailAccountCount: combineEnabled ? sourceEmailAccounts.length : 0,
+        sourceEmailLinkCount: combineEnabled ? parsed.emailSourceLinks.length : 0,
         sourceRecords,
         sourceToolItems: combineEnabled ? sourceToolItems : Object.freeze([]),
+        sourceEmailAccounts: combineEnabled ? sourceEmailAccounts : Object.freeze([]),
+        sourceEmailLinks: combineEnabled ? Object.freeze(parsed.emailSourceLinks.map((item) => Object.freeze(item))) : Object.freeze([]),
     });
 }
 
@@ -744,7 +901,8 @@ function loadRecordState() {
             const hasStructuredFields = typeof record?.name === 'string' && typeof record?.address === 'string';
             const hasPlainTextField = typeof record?.rawText === 'string';
             const hasToolItem = typeof record?.toolItem?.identifier === 'string' && typeof record?.toolItem?.openUrl === 'string';
-            return hasStructuredFields || hasPlainTextField || hasToolItem;
+            const hasEmailAccount = typeof record?.emailAccount?.email === 'string' && typeof record?.emailAccount?.sourceUrl === 'string';
+            return hasStructuredFields || hasPlainTextField || hasToolItem || hasEmailAccount;
         }));
         currentSavedAt = typeof parsedValue?.savedAt === 'string' ? parsedValue.savedAt : '';
         currentInvalidLines = Object.freeze([]);
@@ -777,6 +935,7 @@ function persistRecordState(records) {
             importedAt: record.importedAt,
             warnings: record.warnings,
             toolItem: record.toolItem,
+            emailAccount: record.emailAccount,
         })),
     };
 
@@ -856,6 +1015,24 @@ function buildSearchableToolText(toolItem) {
     ].join(' ');
 }
 
+function buildSearchableEmailText(emailAccount) {
+    if (!emailAccount) {
+        return '';
+    }
+
+    return [
+        emailAccount.email,
+        emailAccount.sourceUrl,
+        emailAccount.displayUrl,
+        emailAccount.sourceName,
+        emailAccount.uid,
+        emailAccount.host,
+        emailAccount.apiUrl,
+        emailAccount.uiUrl,
+        emailAccount.statusText,
+    ].join(' ');
+}
+
 function buildSearchableRecordText(record) {
     return [
         record.name,
@@ -871,6 +1048,7 @@ function buildSearchableRecordText(record) {
         record.phoneMasked,
         record.warnings.join(' '),
         buildSearchableToolText(record.toolItem),
+        buildSearchableEmailText(record.emailAccount),
     ].join(' ').toLowerCase();
 }
 
@@ -1030,6 +1208,37 @@ function renderLinkedToolItem(toolItem, recordId) {
     return panel;
 }
 
+function buildEmailAccountMetaText(emailAccount) {
+    if (emailAccount.sourceName && emailAccount.host) {
+        return `${emailAccount.host} · ${emailAccount.sourceName}`;
+    }
+
+    return emailAccount.host || emailAccount.displayUrl || '邮箱';
+}
+
+function renderLinkedEmailAccount(emailAccount) {
+    const panel = document.createElement('section');
+    panel.className = 'record-card__linked-email';
+
+    const copyButton = createRecordActionButton(
+        'record-card__linked-email-address',
+        emailAccount.email,
+        `点击复制邮箱：${emailAccount.email}`,
+        async () => {
+            const copied = await copyText(emailAccount.email);
+            setRecordFeedback(copied ? `已复制邮箱：${emailAccount.email}` : '复制邮箱失败，请手动选择字段内容。', copied ? 'success' : 'error');
+        }
+    );
+    copyButton.setAttribute('aria-label', `复制邮箱：${emailAccount.email}`);
+
+    const meta = document.createElement('span');
+    meta.className = 'record-card__linked-email-meta';
+    meta.textContent = buildEmailAccountMetaText(emailAccount);
+
+    panel.append(copyButton, meta);
+    return panel;
+}
+
 function renderRecordCard(record) {
     const card = document.createElement('article');
     card.className = 'record-card';
@@ -1076,6 +1285,9 @@ function renderRecordCard(record) {
     }
     if (record.toolItem) {
         card.appendChild(renderLinkedToolItem(record.toolItem, record.id));
+    }
+    if (record.emailAccount) {
+        card.appendChild(renderLinkedEmailAccount(record.emailAccount));
     }
     return card;
 }
@@ -1171,6 +1383,72 @@ async function fetchPageContent(openUrl) {
     } catch (_directError) {
         return await fetchPageContentViaServer(openUrl);
     }
+}
+
+async function discoverEmailAccountsForRecordSource(sourceLink) {
+    if (typeof discoverEmailAccountsFromPage !== 'function') {
+        throw new Error('email-discovery-unavailable');
+    }
+
+    const pageContent = await fetchPageContent(sourceLink.sourceUrl);
+    if (!pageContent.ok) {
+        throw new Error(`HTTP ${pageContent.status}`);
+    }
+
+    const accounts = discoverEmailAccountsFromPage(
+        pageContent.rawText,
+        pageContent.contentType,
+        sourceLink.sourceUrl,
+        sourceLink
+    );
+
+    if (!accounts.length) {
+        throw new Error('missing-email-password');
+    }
+
+    return accounts;
+}
+
+async function expandRecordEmailSourceLinks(parseResult) {
+    const sourceLinks = Array.isArray(parseResult?.sourceEmailLinks) ? parseResult.sourceEmailLinks : [];
+    if (!sourceLinks.length) {
+        return parseResult;
+    }
+
+    const discoveryResults = await Promise.all(sourceLinks.map(async (sourceLink) => {
+        try {
+            return Object.freeze({
+                accounts: await discoverEmailAccountsForRecordSource(sourceLink),
+                invalidLines: [],
+            });
+        } catch (error) {
+            const reason = error.message === 'missing-email-password'
+                ? '邮箱入口链接未识别到邮箱和密码'
+                : `邮箱入口链接读取失败：${error.message}`;
+            return Object.freeze({
+                accounts: [],
+                invalidLines: [{ lineNumber: sourceLink.lineNumber || sourceLink.sequence, reason }],
+            });
+        }
+    }));
+
+    const discoveredAccounts = createFrozenRecordEmailAccounts(discoveryResults.flatMap((result) => result.accounts));
+    const sourceEmailAccounts = createFrozenRecordEmailAccounts((parseResult.sourceEmailAccounts || []).concat(discoveredAccounts));
+    const combinedRecords = combineRecordsAndToolItems(
+        parseResult.sourceRecords || [],
+        parseResult.sourceToolItems || [],
+        sourceEmailAccounts
+    );
+
+    return Object.freeze({
+        ...parseResult,
+        records: createFrozenRecords(combinedRecords),
+        invalidLines: Object.freeze(parseResult.invalidLines.concat(discoveryResults.flatMap((result) => result.invalidLines)).map((item) => Object.freeze(item))),
+        emailAccountCount: sourceEmailAccounts.length,
+        sourceEmailAccounts,
+        sourceEmailLinks: Object.freeze([]),
+        sourceEmailLinkCount: 0,
+    });
 }
 
 async function fetchSiteInfoForToolItem(toolItem) {
@@ -1294,14 +1572,25 @@ async function importCurrentRecords() {
     }
 
     const combineEnabled = isRecordCombineEnabled();
-    const parseResult = parseRecordBatch(content, { combineEnabled });
+    let parseResult = parseRecordBatch(content, { combineEnabled });
+    if (combineEnabled && parseResult.sourceEmailLinkCount > 0) {
+        importRecordWorkbenchBtn.disabled = true;
+        importRecordWorkbenchBtn.textContent = '读取邮箱入口中';
+        setRecordFeedback('正在读取邮箱入口链接并识别邮箱密码…', 'warning');
+        try {
+            parseResult = await expandRecordEmailSourceLinks(parseResult);
+        } finally {
+            importRecordWorkbenchBtn.disabled = false;
+            importRecordWorkbenchBtn.textContent = '解析并保存到本地';
+        }
+    }
     currentInvalidLines = parseResult.invalidLines;
 
     if (!parseResult.records.length) {
         renderRecords();
         setRecordFeedback(combineEnabled
-            ? '没有解析出有效记录，请检查分隔符、字段顺序或数据二地址格式。'
-            : '没有解析出有效记录；如需导入数据二，请先开启“两种数据合一”。', 'error');
+            ? '没有解析出有效记录，请检查分隔符、字段顺序、数据二地址或邮箱入口。'
+            : '没有解析出有效记录；如需导入数据二或邮箱数据，请先开启“三种数据合一”。', 'error');
         return;
     }
 
@@ -1315,7 +1604,7 @@ async function importCurrentRecords() {
     renderRecords();
 
     const countText = combineEnabled
-        ? `（本次导入：数据一 ${parseResult.recordCount} 条，数据二 ${parseResult.toolItemCount} 条）`
+        ? `（本次导入：数据一 ${parseResult.recordCount} 条，数据二 ${parseResult.toolItemCount} 条，邮箱 ${parseResult.emailAccountCount} 条）`
         : '';
     const skippedText = parseResult.skippedSensitive > 0 ? `，已丢弃 ${parseResult.skippedSensitive} 类敏感字段并清空输入框` : '';
     const invalidText = parseResult.invalidLines.length ? `，另有 ${parseResult.invalidLines.length} 行未导入` : '';
@@ -1338,8 +1627,8 @@ if (combineRecordDataToggle) {
     combineRecordDataToggle.addEventListener('change', () => {
         persistRecordCombinePreference();
         setRecordFeedback(isRecordCombineEnabled()
-            ? '已开启两种数据合一：可导入数据二，并会与现有数据一按顺序合并。'
-            : '已关闭两种数据合一：导入内容将按数据一解析。', 'success');
+            ? '已开启三种数据合一：可导入数据二和邮箱数据，并会与现有数据一按顺序合并。'
+            : '已关闭三种数据合一：导入内容将按数据一解析。', 'success');
     });
 }
 
