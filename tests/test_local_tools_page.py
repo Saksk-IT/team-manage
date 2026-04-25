@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from app.routes.local_tools import (
+    email_accounts_workbench_page,
     LocalToolFetchRequest,
     fetch_local_tool_page,
     local_record_workbench_page,
@@ -22,6 +23,60 @@ class LocalToolsPageTests(unittest.IsolatedAsyncioTestCase):
 
     def _build_record_request(self) -> Request:
         return Request({"type": "http", "method": "GET", "path": "/local-tools/records", "headers": []})
+
+    def _build_email_accounts_request(self) -> Request:
+        return Request({"type": "http", "method": "GET", "path": "/local-tools/email-accounts", "headers": []})
+
+    def _run_email_accounts_node(self, node_body: str) -> dict:
+        if not shutil.which("node"):
+            self.skipTest("node is required for email_accounts.js behavior check")
+
+        static_root = Path(__file__).resolve().parents[1] / "app" / "static"
+        core_script_path = static_root / "js" / "email_accounts_core.js"
+        script_path = static_root / "js" / "email_accounts.js"
+        node_script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const noop = () => {{}};
+function createElement(tag) {{
+  return {{ tag, style: {{}}, className: '', dataset: {{}}, children: [], hidden: false,
+    value: '', textContent: '', innerHTML: '', disabled: false,
+    classList: {{ add: noop, remove: noop }},
+    setAttribute: noop, addEventListener: noop, removeChild: noop, select: noop,
+    append(...nodes) {{ this.children.push(...nodes); }},
+    appendChild(node) {{ this.children.push(node); return node; }},
+  }};
+}}
+const elements = new Proxy({{}}, {{
+  get(target, key) {{ target[key] = target[key] || createElement(String(key)); return target[key]; }}
+}});
+const sandbox = {{
+  console, Date, Object, String, Number, Array, JSON, RegExp, URL,
+  navigator: {{}},
+  window: {{
+    localStorage: {{ getItem() {{ return null; }}, setItem: noop, removeItem: noop }},
+    setTimeout,
+    clearTimeout,
+    open: noop,
+  }},
+  document: {{
+    getElementById(id) {{ return elements[id]; }},
+    createElement, body: createElement('body'),
+    execCommand() {{ return true; }},
+  }},
+}};
+vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync({json.dumps(str(core_script_path))}, 'utf8'), sandbox);
+vm.runInContext(fs.readFileSync({json.dumps(str(script_path))}, 'utf8'), sandbox);
+{node_body}
+"""
+        completed = subprocess.run(
+            ["node", "-e", node_script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return json.loads(completed.stdout)
 
     def _run_local_records_node(self, node_body: str) -> dict:
         if not shutil.which("node"):
@@ -128,6 +183,7 @@ vm.runInContext(fs.readFileSync({json.dumps(str(script_path))}, 'utf8'), sandbox
         self.assertIn('id="refreshAllSiteInfoBtn"', html)
         self.assertIn("点击完整标识即可复制", html)
         self.assertIn("<code>标识|地址</code>", html)
+        self.assertIn("邮箱账户", html)
         self.assertIn('class="workbench-layout"', html)
         self.assertIn('class="items-grid items-grid--workbench"', html)
         self.assertIn("/static/js/local_tools.js", html)
@@ -174,6 +230,7 @@ process.stdout.write(JSON.stringify({
         self.assertIn("数据仅保存在当前浏览器本地", html)
         self.assertIn("搜索姓名、地址、卡号、有效期、CVV、电话或标识", html)
         self.assertIn("验证码工具", html)
+        self.assertIn("邮箱账户", html)
         self.assertIn('id="recordBatchInput"', html)
         self.assertIn('id="importRecordWorkbenchBtn"', html)
         self.assertIn('id="recordItemsGrid"', html)
@@ -628,6 +685,81 @@ process.stdout.write(JSON.stringify({{
         self.assertEqual(200, response["status_code"])
         self.assertIn("024741", response["text"])
         self.assertIn("text/plain", response["content_type"])
+
+    async def test_email_accounts_workbench_renders_url_import_page(self):
+        response = await email_accounts_workbench_page(request=self._build_email_accounts_request())
+        html = response.body.decode("utf-8")
+
+        self.assertIn("邮箱账户工作台", html)
+        self.assertIn("粘贴取件网址即可导入邮箱", html)
+        self.assertIn('id="emailAccountBatchInput"', html)
+        self.assertIn('id="importEmailAccountsBtn"', html)
+        self.assertIn('id="emailAccountsGrid"', html)
+        self.assertIn("复制邮箱", html)
+        self.assertIn("取件", html)
+        self.assertIn("/static/js/email_accounts_core.js", html)
+        self.assertIn("/static/js/email_accounts.js", html)
+        self.assertIn("/static/css/email_accounts.css", html)
+        self.assertIn("验证码工具", html)
+        self.assertIn("记录工作台", html)
+        self.assertNotIn("管理员", html)
+
+    def test_email_account_parser_accepts_wsaic_read_url(self):
+        payload = self._run_email_accounts_node("""
+const parsed = sandbox.parseEmailAccountBatch(
+  'http://wsaic.com/eid/nb.php?n=20260423vsc34.txt&email=cd2319797%40wsaic.com&uid=9#mailread\\n' +
+  'not a url'
+);
+const account = parsed.accounts[0];
+process.stdout.write(JSON.stringify({
+  count: parsed.accounts.length,
+  invalidCount: parsed.invalidLines.length,
+  email: account && account.email,
+  uid: account && account.uid,
+  sourceName: account && account.sourceName,
+  displayUrl: account && account.displayUrl,
+  invalidReason: parsed.invalidLines[0] && parsed.invalidLines[0].reason,
+}));
+""")
+
+        self.assertEqual(1, payload["count"])
+        self.assertEqual(1, payload["invalidCount"])
+        self.assertEqual("cd2319797@wsaic.com", payload["email"])
+        self.assertEqual("9", payload["uid"])
+        self.assertEqual("20260423vsc34.txt", payload["sourceName"])
+        self.assertEqual("http://wsaic.com/eid/nb.php", payload["displayUrl"])
+        self.assertIn("有效的 http/https", payload["invalidReason"])
+
+    def test_email_account_discovery_extracts_api_links_and_mail_summary(self):
+        payload = self._run_email_accounts_node("""
+const html = `
+  <section>
+    <a href="http://wsaic.com/m.php?u=cd2319797%40wsaic.com&p=988876">免登录 UI</a>
+    <a href="http://wsaic.com/api/mail_onek.php?email=cd2319797%40wsaic.com&pass=988876&json=1">读信 JSON</a>
+  </section>
+`;
+const discovery = sandbox.discoverEmailApiLinks(html, 'text/html', 'http://wsaic.com/eid/nb.php?email=cd2319797%40wsaic.com');
+const inbox = sandbox.parseInboxContent(JSON.stringify({
+  data: [{ from: 'noreply@example.com', subject: 'Verify email', content: '<b>Code 123456</b>' }]
+}), 'application/json');
+process.stdout.write(JSON.stringify({
+  email: discovery.email,
+  pass: discovery.password,
+  uiUrl: discovery.uiUrl,
+  apiUrl: discovery.apiUrl,
+  count: inbox.messageCount,
+  summary: inbox.summary,
+  copyText: inbox.copyText,
+}));
+""")
+
+        self.assertEqual("cd2319797@wsaic.com", payload["email"])
+        self.assertEqual("988876", payload["pass"])
+        self.assertIn("/m.php", payload["uiUrl"])
+        self.assertIn("/api/mail_onek.php", payload["apiUrl"])
+        self.assertEqual(1, payload["count"])
+        self.assertIn("Verify email", payload["summary"])
+        self.assertIn("123456", payload["copyText"])
 
 
 if __name__ == "__main__":

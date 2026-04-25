@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>邮箱账户工作台</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260426-email-accounts">
+    <link rel="stylesheet" href="/static/css/email_accounts.css?v=20260426-email-accounts">
+</head>
+
+<body>
+    <main class="local-tools-page email-accounts-page">
+        <header class="workbench-bar">
+            <div class="workbench-bar__title">
+                <h1>邮箱账户工作台</h1>
+                <p>粘贴取件网址即可导入邮箱，复制邮箱并一键取件；数据仅保存在当前浏览器本地。</p>
+            </div>
+            <div class="workbench-bar__meta">
+                <span>支持 <code>email</code>、<code>u</code> 参数识别</span>
+                <span>取件时临时读取接口，不做服务端持久化</span>
+                <a href="/local-tools">验证码工具</a>
+                <a href="/local-tools/records">记录工作台</a>
+            </div>
+        </header>
+
+        <section class="workbench-layout">
+            <section class="panel panel--import">
+                <div class="panel__header">
+                    <div>
+                        <h2>导入邮箱</h2>
+                        <p>一行一个取件网址，例如 <code>http://wsaic.com/eid/nb.php?...&amp;email=...</code>。</p>
+                    </div>
+                </div>
+
+                <div class="import-actions">
+                    <label class="file-trigger" for="emailAccountsFileInput">选择 txt 文件</label>
+                    <input id="emailAccountsFileInput" type="file" accept=".txt,text/plain">
+                    <button id="importEmailAccountsBtn" type="button" class="btn btn-primary">解析并保存到本地</button>
+                    <button id="clearEmailTextareaBtn" type="button" class="btn btn-secondary">清空输入框</button>
+                    <button id="clearEmailLocalDataBtn" type="button" class="btn btn-danger">清空本地数据</button>
+                </div>
+
+                <label class="input-label" for="emailAccountBatchInput">取件网址</label>
+                <textarea
+                    id="emailAccountBatchInput"
+                    class="batch-textarea"
+                    placeholder="示例：&#10;http://wsaic.com/eid/nb.php?n=20260423vsc34.txt&amp;email=user%40wsaic.com&amp;uid=9#mailread"
+                ></textarea>
+
+                <div class="feedback-row">
+                    <p id="emailAccountsFeedback" class="feedback" aria-live="polite"></p>
+                    <p class="privacy-tip">提示：邮箱、接口和取件结果仅保存在当前浏览器本地。</p>
+                </div>
+
+                <div id="emailInvalidLinesBox" class="invalid-lines" hidden>
+                    <h3>未导入的行</h3>
+                    <ul id="emailInvalidLinesList"></ul>
+                </div>
+            </section>
+
+            <section class="panel panel--data">
+                <div class="panel__header panel__header--data">
+                    <div>
+                        <h2>邮箱账户</h2>
+                        <p>点击“复制邮箱”复制账号；点击“取件”会优先发现读信 JSON API 并展示最新邮件摘要。</p>
+                    </div>
+
+                    <div class="panel-tools">
+                        <input id="emailAccountsSearchInput" type="search" class="search-input" placeholder="搜索邮箱、域名或取件结果">
+                        <button id="fetchAllEmailAccountsBtn" type="button" class="btn btn-secondary">取件全部</button>
+                    </div>
+                </div>
+
+                <div class="stats-grid" id="emailAccountsStats">
+                    <article class="stat-card">
+                        <span class="stat-card__label">总账号</span>
+                        <strong id="emailTotalValue">0</strong>
+                    </article>
+                    <article class="stat-card">
+                        <span class="stat-card__label">当前显示</span>
+                        <strong id="emailVisibleValue">0</strong>
+                    </article>
+                    <article class="stat-card">
+                        <span class="stat-card__label">最近导入</span>
+                        <strong id="emailSavedAtValue">暂无</strong>
+                    </article>
+                </div>
+
+                <div id="emailEmptyState" class="empty-state">
+                    <h3>还没有邮箱账户</h3>
+                    <p>请先在左侧粘贴取件网址或导入 txt 文件，再点击“解析并保存到本地”。</p>
+                </div>
+
+                <div id="emailAccountsGrid" class="email-accounts-grid" hidden></div>
+            </section>
+        </section>
+    </main>
+
+    <script src="/static/js/email_accounts_core.js?v=20260426-email-accounts"></script>
+    <script src="/static/js/email_accounts.js?v=20260426-email-accounts"></script>
+</body>
+
+</html>
