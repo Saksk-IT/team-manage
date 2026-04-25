@@ -183,7 +183,7 @@
     border-radius: 8px;
     background: transparent;
     color: var(--primary-hover);
-    cursor: pointer;
+    cursor: copy;
     font: inherit;
     font-weight: 760;
     line-height: 1.42;
@@ -198,13 +198,6 @@
 .record-card__field--copyable:hover .record-card__copy-value,
 .record-card__field--copyable:focus-visible .record-card__copy-value {
     color: var(--primary);
-}
-
-.record-card__copy-value:hover,
-.record-card__copy-value:focus-visible {
-    background: rgba(99, 102, 241, 0.08);
-    color: var(--primary);
-    outline: none;
 }
 
 .record-card__empty-value {
