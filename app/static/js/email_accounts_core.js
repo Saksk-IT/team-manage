@@ -455,8 +455,18 @@ function normalizeJsonMessage(value) {
 
     const from = extractMessageField(value, ['from', 'sender', 'fromname', 'from_email', 'mailfrom']);
     const subject = extractMessageField(value, ['subject', 'title', 'name']);
-    const time = extractMessageField(value, ['date', 'time', 'created_at', 'created', 'sendtime']);
-    const content = extractMessageField(value, ['content', 'body', 'html', 'text', 'message', 'mailcontent']);
+    const time = extractMessageField(value, ['date', 'time', 'date_beijing', 'date_original', 'created_at', 'created', 'sendtime']);
+    const content = extractMessageField(value, [
+        'content',
+        'body',
+        'body_text',
+        'body_html',
+        'body_html_raw',
+        'html',
+        'text',
+        'message',
+        'mailcontent',
+    ]);
 
     if (!from && !subject && !time && !content) {
         return null;
@@ -607,13 +617,11 @@ function parseInboxContent(rawText, contentType = '') {
                     });
                 }
 
-                const firstMessage = messages[0];
-                const firstSummary = firstMessage.subject || firstMessage.content || firstMessage.from || '最新邮件';
                 return buildInboxInfo({
-                    summary: `已取件 ${messages.length} 封：${firstSummary.slice(0, 80)}`,
-                    copyText: buildMessageCopyText(messages),
+                    summary: '暂无验证码',
+                    copyText: '暂无验证码',
                     messageCount: messages.length,
-                    statusText: '已取件',
+                    statusText: '暂无验证码',
                 });
             }
 

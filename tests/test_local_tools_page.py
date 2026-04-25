@@ -896,6 +896,58 @@ process.stdout.write(JSON.stringify({
         self.assertEqual("333333", payload["copyText"])
         self.assertEqual("333333", payload["verificationCode"])
 
+    def test_email_inbox_parser_does_not_show_non_code_mail_summary(self):
+        payload = self._run_email_accounts_node("""
+const inbox = sandbox.parseInboxContent(JSON.stringify({
+  success: true,
+  has_mail: true,
+  mail: {
+    subject: 'ChatGPT - 你的新套餐',
+    from: 'noreply@example.test',
+    date_beijing: '2026-04-26 02:21:39',
+    body_text: '你已成功创建 ChatGPT Business 工作空间。订单编号：sub_demo_123'
+  }
+}), 'application/json');
+process.stdout.write(JSON.stringify({
+  summary: inbox.summary,
+  copyText: inbox.copyText,
+  statusText: inbox.statusText,
+  messageCount: inbox.messageCount,
+  verificationCode: inbox.verificationCode || '',
+}));
+""")
+
+        self.assertEqual("暂无验证码", payload["summary"])
+        self.assertEqual("暂无验证码", payload["copyText"])
+        self.assertEqual("暂无验证码", payload["statusText"])
+        self.assertEqual(1, payload["messageCount"])
+        self.assertEqual("", payload["verificationCode"])
+
+    def test_email_inbox_parser_extracts_code_from_single_mail_body_text(self):
+        payload = self._run_email_accounts_node("""
+const inbox = sandbox.parseInboxContent(JSON.stringify({
+  success: true,
+  has_mail: true,
+  mail: {
+    subject: 'Your verification code',
+    from: 'noreply@example.test',
+    date_beijing: '2026-04-26 02:21:39',
+    body_text: 'Use verification code 555666 to continue.'
+  }
+}), 'application/json');
+process.stdout.write(JSON.stringify({
+  summary: inbox.summary,
+  copyText: inbox.copyText,
+  statusText: inbox.statusText,
+  verificationCode: inbox.verificationCode,
+}));
+""")
+
+        self.assertEqual("555666", payload["copyText"])
+        self.assertEqual("555666", payload["verificationCode"])
+        self.assertIn("最新验证码", payload["summary"])
+        self.assertEqual("已取验证码", payload["statusText"])
+
 
 if __name__ == "__main__":
     unittest.main()
