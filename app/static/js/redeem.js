@@ -1453,7 +1453,7 @@ function showSuccessResult(data) {
             <div style="margin-bottom: 2rem; border-top: 1px solid var(--border-base); padding-top: 1.5rem;">
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
                     <strong>质保说明</strong><br>
-                    质保期间如果您使用兑换码加入的 Team 被封号，可以在质保期内（一个月）联系客服，再次获取兑换码。
+                    如您购买了质保服务，兑换成功后邮箱会自动进入质保邮箱列表；若后续 Team 被封禁，请切换到“质保服务”提交该邮箱，系统会按剩余天数和次数处理质保。
                 </p>
             </div>
     ` : '';

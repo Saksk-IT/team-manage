@@ -78,6 +78,10 @@ class AdminCodesWarrantySyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("剩余次数", html)
         self.assertRegex(html, r">\s*12\s*<")
         self.assertRegex(html, r">\s*8\s*<")
+        self.assertNotIn("可重复使用", html)
+        self.assertNotIn("如果是质保兑换码，在质保期内，如果加入的 Team 被封号，可以重复使用", html)
+        self.assertIn("兑换成功后会把使用邮箱加入质保邮箱列表", html)
+        self.assertIn("默认 10 次质保次数", html)
 
     async def test_codes_page_accepts_empty_multi_filter_fields(self):
         async with self.Session() as session:
