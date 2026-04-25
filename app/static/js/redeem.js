@@ -1632,7 +1632,7 @@ function formatDate(dateString) {
 
 // 查询质保状态
 async function checkWarranty() {
-    showToast('前台质保查询暂时停用，请联系客服再次获取兑换码', 'info');
+    showToast('请切换到“质保服务”输入质保邮箱查看状态', 'info');
 }
 
 // 显示质保查询结果
@@ -1650,7 +1650,7 @@ function showWarrantyResult(data) {
                 </div>
                 
                 <div style="margin-top: 2rem; text-align: left; background: rgba(255,255,255,0.03); padding: 1.2rem; border-radius: 12px; border: 1px dashed var(--border-base);">
-                    <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.8rem;">请复制您的兑换码返回主页重试：</div>
+                    <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.8rem;">请返回首页切换到“质保服务”，输入质保邮箱查看状态：</div>
                     <div style="display: flex; gap: 0.5rem; align-items: center;">
                         <input type="text" value="${escapeHtml(data.original_code)}" readonly 
                             style="flex: 1; padding: 0.75rem; background: rgba(0,0,0,0.2); border: 1px solid var(--border-base); border-radius: 8px; color: var(--text-primary); font-family: monospace; font-size: 1.1rem;">
@@ -1662,7 +1662,7 @@ function showWarrantyResult(data) {
 
                 <div style="margin-top: 2rem;">
                     <button onclick="backToStep1()" class="btn btn-primary" style="width: 100%;">
-                        <i data-lucide="arrow-left"></i> 立即返回重兑
+                        <i data-lucide="arrow-left"></i> 返回质保服务
                     </button>
                 </div>
             </div>
@@ -1779,7 +1779,7 @@ function showWarrantyResult(data) {
             </div>
         `;
 
-        // 3. 可重兑区域
+        // 3. 质保处理提示区域
         const canReuseHtml = data.can_reuse ? `
             <div style="margin-top: 2rem; padding: 1.5rem; background: rgba(34, 197, 94, 0.1); border-radius: 12px; border: 1px solid rgba(34, 197, 94, 0.3);">
                 <div style="display: flex; align-items: center; gap: 0.5rem; color: var(--success); margin-bottom: 0.8rem;">
@@ -1787,7 +1787,7 @@ function showWarrantyResult(data) {
                     <span style="font-weight: 600;">发现失效 Team，质保可触发</span>
                 </div>
                 <p style="margin: 0 0 1.2rem 0; color: var(--text-secondary); font-size: 0.95rem;">
-                    监测到您所在的 Team 已失效。由于您的质保码仍在有效期内，您可以立即复制兑换码进行重兑。
+                    监测到您所在的 Team 已失效。请切换到“质保服务”提交邮箱，系统会按质保邮箱剩余天数和次数处理。
                 </p>
                 <div style="display: flex; gap: 0.5rem; align-items: center;">
                     <input type="text" value="${escapeHtml(data.original_code)}" readonly 
@@ -1929,7 +1929,7 @@ async function enableUserDeviceAuth(teamId, code, email) {
 
 // 从成功页面跳转到质保查询
 function goToWarrantyFromSuccess() {
-    showToast('前台质保查询暂时停用，请联系客服再次获取兑换码', 'info');
+    showToast('请切换到“质保服务”输入质保邮箱查看状态', 'info');
 }
 
 customerServiceFab?.addEventListener('click', (event) => {
