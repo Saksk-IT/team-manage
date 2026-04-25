@@ -80,6 +80,7 @@
 }
 
 .record-card__title {
+    flex: 1 1 auto;
     margin: 0;
     min-width: 0;
     font-size: 1.03rem;
@@ -87,11 +88,32 @@
     overflow-wrap: anywhere;
 }
 
+.record-card__title--copyable {
+    border-radius: 10px;
+    cursor: copy;
+    margin: -0.28rem -0.36rem;
+    padding: 0.28rem 0.36rem;
+    transition: background 0.16s ease, color 0.16s ease;
+}
+
+.record-card__title--copyable:hover,
+.record-card__title--copyable:focus-visible {
+    background: rgba(99, 102, 241, 0.08);
+    outline: none;
+}
+
 .record-card__title .record-card__copy-value {
     color: var(--text-main);
+    cursor: copy;
+    display: block;
     font-size: 1rem;
     font-weight: 800;
     padding: 0;
+}
+
+.record-card__title--copyable:hover .record-card__copy-value,
+.record-card__title--copyable:focus-visible .record-card__copy-value {
+    color: var(--primary);
 }
 
 .record-card__badge {

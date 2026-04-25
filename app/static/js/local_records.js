@@ -874,19 +874,28 @@ function buildSearchableRecordText(record) {
     ].join(' ').toLowerCase();
 }
 
-function createCopyValueButton(label, displayValue, copyValue = displayValue) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'record-card__copy-value';
-    button.textContent = displayValue;
-    button.title = `点击复制${label}`;
-    button.setAttribute('aria-label', `点击复制${label}：${displayValue}`);
-    button.dataset.copyValue = copyValue;
-    button.addEventListener('click', async () => {
-        const copied = await copyText(copyValue);
+function bindCopyableRecordElement(element, label, displayValue, copyValue = displayValue) {
+    const safeDisplayValue = normalizeText(displayValue);
+    const safeCopyValue = typeof copyValue === 'string' ? copyValue.trim() : safeDisplayValue;
+    const finalCopyValue = safeCopyValue || safeDisplayValue;
+
+    element.tabIndex = 0;
+    element.setAttribute('role', 'button');
+    element.title = `点击复制${label}`;
+    element.setAttribute('aria-label', `点击复制${label}：${safeDisplayValue}`);
+    element.dataset.copyValue = finalCopyValue;
+    element.addEventListener('click', async () => {
+        const copied = await copyText(finalCopyValue);
         setRecordFeedback(copied ? `已复制${label}。` : `复制${label}失败，请手动选择字段内容。`, copied ? 'success' : 'error');
     });
-    return button;
+    element.addEventListener('keydown', (event) => {
+        if (!['Enter', ' '].includes(event.key)) {
+            return;
+        }
+
+        event.preventDefault();
+        element.click();
+    });
 }
 
 function createCopyField(label, displayValue, copyValue = displayValue, options = {}) {
@@ -909,23 +918,7 @@ function createCopyField(label, displayValue, copyValue = displayValue, options 
 
     if (safeDisplayValue) {
         classNames.push('record-card__field--copyable');
-        line.tabIndex = 0;
-        line.setAttribute('role', 'button');
-        line.title = `点击复制${label}`;
-        line.setAttribute('aria-label', `点击复制${label}：${safeDisplayValue}`);
-        line.dataset.copyValue = finalCopyValue;
-        line.addEventListener('click', async () => {
-            const copied = await copyText(finalCopyValue);
-            setRecordFeedback(copied ? `已复制${label}。` : `复制${label}失败，请手动选择字段内容。`, copied ? 'success' : 'error');
-        });
-        line.addEventListener('keydown', (event) => {
-            if (!['Enter', ' '].includes(event.key)) {
-                return;
-            }
-
-            event.preventDefault();
-            line.click();
-        });
+        bindCopyableRecordElement(line, label, safeDisplayValue, finalCopyValue);
         valueElement.className = 'record-card__copy-value';
         valueElement.textContent = safeDisplayValue;
     } else {
@@ -936,6 +929,17 @@ function createCopyField(label, displayValue, copyValue = displayValue, options 
     line.className = classNames.join(' ');
     line.append(strong, valueElement);
     return line;
+}
+
+function appendCopyableTitleValue(title, label, displayValue, copyValue = displayValue) {
+    const safeDisplayValue = normalizeText(displayValue);
+    title.classList.add('record-card__title--copyable');
+    bindCopyableRecordElement(title, label, safeDisplayValue, copyValue);
+
+    const valueElement = document.createElement('span');
+    valueElement.className = 'record-card__copy-value';
+    valueElement.textContent = safeDisplayValue;
+    title.appendChild(valueElement);
 }
 
 function appendVisibleCopyFields(container, fields) {
@@ -1039,7 +1043,7 @@ function renderRecordCard(record) {
     if (record.rawText) {
         title.textContent = '纯文本';
     } else if (record.name) {
-        title.appendChild(createCopyValueButton('姓名', record.name));
+        appendCopyableTitleValue(title, '姓名', record.name);
     } else if (record.toolItem) {
         title.textContent = '短信数据';
     } else {
