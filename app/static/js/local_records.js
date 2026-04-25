@@ -1,4 +1,5 @@
 const RECORD_STORAGE_KEY = 'local_record_workbench_items_v1';
+const RECORD_REFRESH_TIMEOUT_MS = 6000;
 
 const recordBatchInput = document.getElementById('recordBatchInput');
 const recordFeedback = document.getElementById('recordFeedback');
@@ -40,6 +41,19 @@ function formatSavedAt(value) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+function formatCheckedAt(value) {
+    if (!value) {
+        return '未刷新';
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return '未刷新';
+    }
+
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
 function normalizeText(value) {
     return String(value || '').replace(/\s+/g, ' ').trim();
 }
@@ -55,6 +69,124 @@ function isLikelyCardNumber(value) {
 
 function hasSecretUrl(value) {
     return /https?:\/\/\S+/i.test(String(value || '')) && /(?:[?&](?:key|token|api_key)=|\/api\/)/i.test(String(value || ''));
+}
+
+function buildDisplayUrl(url) {
+    try {
+        const parsed = new URL(url);
+        return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+    } catch (_error) {
+        return '';
+    }
+}
+
+function normalizeCopyIdentifier(identifier) {
+    return String(identifier || '').replace(/^\+1(?:[\s-])?/, '').trim();
+}
+
+function buildSiteInfo(openUrl, overrides = {}) {
+    try {
+        const parsed = new URL(openUrl);
+        const path = `${parsed.pathname || '/'}${parsed.search ? `?参数 ${parsed.searchParams.size}` : ''}`;
+        return Object.freeze({
+            host: parsed.hostname || parsed.host || '未知站点',
+            path,
+            title: '',
+            codeText: '待刷新',
+            sourceText: '',
+            expiresAt: '',
+            statusText: '待刷新',
+            checkedAt: '',
+            ...overrides,
+        });
+    } catch (_error) {
+        return Object.freeze({
+            host: '未知站点',
+            path: '/',
+            title: '',
+            codeText: '地址解析失败',
+            sourceText: '',
+            expiresAt: '',
+            statusText: '地址解析失败',
+            checkedAt: '',
+            ...overrides,
+        });
+    }
+}
+
+function normalizeReadableText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function extractTitleFromHtml(html) {
+    const match = String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    return match ? match[1].replace(/\s+/g, ' ').trim() : '';
+}
+
+function extractReadablePageContent(rawText, contentType) {
+    const normalizedContentType = String(contentType || '').toLowerCase();
+
+    if (normalizedContentType.includes('text/html')) {
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(String(rawText || ''), 'text/html');
+            return Object.freeze({
+                title: normalizeReadableText(doc.title),
+                text: normalizeReadableText(doc.body?.textContent || ''),
+            });
+        } catch (_error) {
+            return Object.freeze({
+                title: extractTitleFromHtml(rawText),
+                text: normalizeReadableText(rawText),
+            });
+        }
+    }
+
+    return Object.freeze({
+        title: '',
+        text: normalizeReadableText(rawText),
+    });
+}
+
+function parseVerificationContent(text) {
+    const normalizedText = normalizeReadableText(text);
+    const expiresMatch = normalizedText.match(/到期时间[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2}\s+[0-9]{2}:[0-9]{2}:[0-9]{2})/);
+    const codeMatch = normalizedText.match(/(^|[^\d])(\d{6})(?!\d)/);
+    const hasNoCode = normalizedText.includes('暂无验证码');
+    const pipeSegments = normalizedText
+        .split('|')
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+    const bracketSegment = pipeSegments.find((segment) => /^\(.+\)$/.test(segment));
+    const fallbackSourceMatch = normalizedText.match(/\(([^()]{1,80})\)/);
+    const sourceText = bracketSegment
+        ? bracketSegment.replace(/^\(|\)$/g, '').trim()
+        : (fallbackSourceMatch ? fallbackSourceMatch[1].trim() : '');
+
+    if (hasNoCode) {
+        return Object.freeze({
+            codeText: '暂无验证码',
+            sourceText,
+            expiresAt: expiresMatch ? expiresMatch[1] : '',
+            statusText: '未获取到验证码',
+        });
+    }
+
+    if (codeMatch) {
+        return Object.freeze({
+            codeText: codeMatch[2],
+            sourceText,
+            expiresAt: expiresMatch ? expiresMatch[1] : '',
+            statusText: '已获取验证码',
+        });
+    }
+
+    return Object.freeze({
+        codeText: '',
+        sourceText,
+        expiresAt: expiresMatch ? expiresMatch[1] : '',
+        statusText: '',
+    });
 }
 
 function formatCardExpiry(value) {
@@ -116,6 +248,26 @@ function redactSensitiveText(value) {
         .replace(/\b(?:cvv|cvc|security\s*code)\b\s*[:：=]?\s*\d{3,4}\b/ig, '[已移除安全码]');
 }
 
+function createFrozenToolItem(toolItem, sequence) {
+    if (!toolItem || typeof toolItem !== 'object') {
+        return null;
+    }
+
+    const identifier = normalizeText(toolItem.identifier);
+    const openUrl = String(toolItem.openUrl || '').trim();
+    if (!identifier || !openUrl) {
+        return null;
+    }
+
+    return Object.freeze({
+        sequence: Number.isInteger(toolItem.sequence) ? toolItem.sequence : sequence,
+        identifier,
+        openUrl,
+        displayUrl: normalizeText(toolItem.displayUrl || buildDisplayUrl(openUrl)),
+        siteInfo: buildSiteInfo(openUrl, toolItem.siteInfo || {}),
+    });
+}
+
 function createFrozenRecords(records) {
     return Object.freeze(records.map((record, index) => {
         const cardNumber = digitsOnly(record.cardNumber || record.cardFull || '');
@@ -123,10 +275,12 @@ function createFrozenRecords(records) {
         const phone = normalizeText(record.phone || record.phoneFull || '');
         const rawText = normalizeText(record.rawText || '');
         const extraCode = normalizeText(record.extraCode || '');
+        const sequence = Number.isInteger(record.sequence) ? record.sequence : index + 1;
+        const toolItem = createFrozenToolItem(record.toolItem || record.localToolItem, sequence);
 
         return Object.freeze({
             id: String(record.id || `${Date.now()}-${index + 1}`),
-            sequence: Number.isInteger(record.sequence) ? record.sequence : index + 1,
+            sequence,
             name: normalizeText(record.name),
             address: normalizeText(record.address),
             rawText,
@@ -140,14 +294,16 @@ function createFrozenRecords(records) {
             phoneMasked: normalizeText(record.phoneMasked),
             importedAt: String(record.importedAt || ''),
             warnings: Object.freeze(Array.isArray(record.warnings) ? record.warnings.map(normalizeText).filter(Boolean) : []),
+            toolItem,
         });
     }));
 }
 
 function buildRecord(values) {
+    const sequence = Number.isInteger(values.sequence) ? values.sequence : 1;
     return Object.freeze({
-        id: `${Date.now()}-${values.sequence}`,
-        sequence: values.sequence,
+        id: `${Date.now()}-${sequence}`,
+        sequence,
         name: normalizeText(values.name),
         address: normalizeText(values.address),
         rawText: normalizeText(values.rawText),
@@ -161,6 +317,7 @@ function buildRecord(values) {
         phoneMasked: normalizeText(values.phoneMasked),
         importedAt: new Date().toISOString(),
         warnings: Object.freeze((values.warnings || []).map(normalizeText).filter(Boolean)),
+        toolItem: createFrozenToolItem(values.toolItem, sequence),
     });
 }
 
@@ -311,6 +468,110 @@ function parseGenericRecord(parts, sequence) {
     };
 }
 
+function splitLocalToolLine(line) {
+    const rawLine = String(line || '').trim();
+    const pipeIndex = rawLine.indexOf('|');
+    if (pipeIndex >= 0) {
+        return Object.freeze({
+            delimiter: 'pipe',
+            identifier: rawLine.slice(0, pipeIndex).trim(),
+            openUrl: rawLine.slice(pipeIndex + 1).trim(),
+        });
+    }
+
+    const dashParts = rawLine.split(/\s*-{4,}\s*/);
+    if (dashParts.length === 2) {
+        return Object.freeze({
+            delimiter: 'dash',
+            identifier: (dashParts[0] || '').trim(),
+            openUrl: (dashParts[1] || '').trim(),
+        });
+    }
+
+    return null;
+}
+
+function isValidHttpUrl(value) {
+    try {
+        const parsedUrl = new URL(value);
+        return ['http:', 'https:'].includes(parsedUrl.protocol);
+    } catch (_error) {
+        return false;
+    }
+}
+
+function shouldParseAsLocalToolLine(line) {
+    const localToolLine = splitLocalToolLine(line);
+    if (!localToolLine) {
+        return false;
+    }
+
+    if (localToolLine.delimiter === 'pipe') {
+        return true;
+    }
+
+    return isValidHttpUrl(localToolLine.openUrl);
+}
+
+function buildLocalToolItem(values) {
+    const sequence = Number.isInteger(values.sequence) ? values.sequence : 1;
+    const openUrl = String(values.openUrl || '').trim();
+    return Object.freeze({
+        sequence,
+        identifier: normalizeText(values.identifier),
+        openUrl,
+        displayUrl: buildDisplayUrl(openUrl),
+        siteInfo: buildSiteInfo(openUrl),
+    });
+}
+
+function parseLocalToolLine(line, sequence) {
+    const localToolLine = splitLocalToolLine(line);
+    if (!localToolLine) {
+        return { error: '缺少有效分隔符 ---- 或 |' };
+    }
+
+    const identifier = normalizeText(localToolLine.identifier);
+    if (!identifier) {
+        return { error: '标识为空' };
+    }
+
+    if (!isValidHttpUrl(localToolLine.openUrl)) {
+        return { error: '地址不是有效的 http/https URL' };
+    }
+
+    return {
+        toolItem: buildLocalToolItem({
+            sequence,
+            identifier,
+            openUrl: localToolLine.openUrl,
+        }),
+        skippedSensitive: 0,
+    };
+}
+
+function combineRecordsAndToolItems(records, toolItems) {
+    const maxCount = Math.max(records.length, toolItems.length);
+    return Object.freeze(Array.from({ length: maxCount }, (_unused, index) => {
+        const record = records[index];
+        const toolItem = toolItems[index] || null;
+        const sequence = index + 1;
+
+        if (record) {
+            return Object.freeze({
+                ...record,
+                sequence,
+                toolItem,
+            });
+        }
+
+        return buildRecord({
+            sequence,
+            toolItem,
+        });
+    }));
+}
+
 function parseRecordLine(line, sequence) {
     const rawLine = String(line || '').trim();
     const parts = line.split(/\s*-{4,}\s*/).map(normalizeText).filter(Boolean);
@@ -337,26 +598,43 @@ function parseRecordBatch(content) {
         .filter(Boolean);
 
     const parsed = lines.reduce((result, line, index) => {
-        const parsedLine = parseRecordLine(line, result.records.length + 1);
+        const parsedLine = shouldParseAsLocalToolLine(line)
+            ? parseLocalToolLine(line, result.toolItems.length + 1)
+            : parseRecordLine(line, result.records.length + 1);
         if (parsedLine.error) {
             return Object.freeze({
                 records: result.records,
+                toolItems: result.toolItems,
                 invalidLines: result.invalidLines.concat([{ lineNumber: index + 1, reason: parsedLine.error }]),
+                skippedSensitive: result.skippedSensitive,
+            });
+        }
+
+        if (parsedLine.toolItem) {
+            return Object.freeze({
+                records: result.records,
+                toolItems: result.toolItems.concat([parsedLine.toolItem]),
+                invalidLines: result.invalidLines,
                 skippedSensitive: result.skippedSensitive,
             });
         }
 
         return Object.freeze({
             records: result.records.concat([parsedLine.record]),
+            toolItems: result.toolItems,
             invalidLines: result.invalidLines,
             skippedSensitive: result.skippedSensitive + (parsedLine.skippedSensitive || 0),
         });
-    }, Object.freeze({ records: [], invalidLines: [], skippedSensitive: 0 }));
+    }, Object.freeze({ records: [], toolItems: [], invalidLines: [], skippedSensitive: 0 }));
+
+    const combinedRecords = combineRecordsAndToolItems(parsed.records, parsed.toolItems);
 
     return Object.freeze({
-        records: createFrozenRecords(parsed.records),
+        records: createFrozenRecords(combinedRecords),
         invalidLines: Object.freeze(parsed.invalidLines.map((item) => Object.freeze(item))),
         skippedSensitive: parsed.skippedSensitive,
+        recordCount: parsed.records.length,
+        toolItemCount: parsed.toolItems.length,
     });
 }
 
@@ -372,7 +650,8 @@ function loadRecordState() {
         currentRecords = createFrozenRecords(parsedRecords.filter((record) => {
             const hasStructuredFields = typeof record?.name === 'string' && typeof record?.address === 'string';
             const hasPlainTextField = typeof record?.rawText === 'string';
-            return hasStructuredFields || hasPlainTextField;
+            const hasToolItem = typeof record?.toolItem?.identifier === 'string' && typeof record?.toolItem?.openUrl === 'string';
+            return hasStructuredFields || hasPlainTextField || hasToolItem;
         }));
         currentSavedAt = typeof parsedValue?.savedAt === 'string' ? parsedValue.savedAt : '';
         currentInvalidLines = Object.freeze([]);
@@ -404,6 +683,7 @@ function persistRecordState(records) {
             phoneMasked: record.phoneMasked,
             importedAt: record.importedAt,
             warnings: record.warnings,
+            toolItem: record.toolItem,
         })),
     };
 
@@ -464,6 +744,25 @@ function renderRecordInvalidLines(invalidLines) {
     recordInvalidLinesBox.hidden = false;
 }
 
+function buildSearchableToolText(toolItem) {
+    if (!toolItem) {
+        return '';
+    }
+
+    return [
+        toolItem.identifier,
+        toolItem.displayUrl,
+        toolItem.openUrl,
+        toolItem.siteInfo?.host,
+        toolItem.siteInfo?.path,
+        toolItem.siteInfo?.title,
+        toolItem.siteInfo?.codeText,
+        toolItem.siteInfo?.sourceText,
+        toolItem.siteInfo?.expiresAt,
+        toolItem.siteInfo?.statusText,
+    ].join(' ');
+}
+
 function buildSearchableRecordText(record) {
     return [
         record.name,
@@ -478,6 +777,7 @@ function buildSearchableRecordText(record) {
         record.phone,
         record.phoneMasked,
         record.warnings.join(' '),
+        buildSearchableToolText(record.toolItem),
     ].join(' ').toLowerCase();
 }
 
@@ -538,6 +838,116 @@ function appendVisibleCopyFields(container, fields) {
         });
 }
 
+function createRecordActionButton(className, text, title, onClick) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = className;
+    button.textContent = text;
+    button.title = title;
+    button.addEventListener('click', onClick);
+    return button;
+}
+
+function buildSiteSummaryText(siteInfo) {
+    if (siteInfo?.codeText) {
+        return siteInfo.codeText;
+    }
+
+    if (siteInfo?.title) {
+        return siteInfo.title;
+    }
+
+    return siteInfo?.statusText || '待刷新';
+}
+
+function buildLinkedResultButtonClass(resultText) {
+    if (resultText === '暂无验证码') {
+        return 'record-card__linked-result record-card__linked-result--empty';
+    }
+
+    if (!resultText || resultText === '待刷新') {
+        return 'record-card__linked-result record-card__linked-result--pending';
+    }
+
+    return 'record-card__linked-result';
+}
+
+function createLinkedMetaLine(label, value) {
+    const line = document.createElement('div');
+    line.className = 'record-card__linked-meta-line';
+
+    const strong = document.createElement('strong');
+    strong.textContent = `${label}：`;
+
+    const span = document.createElement('span');
+    span.textContent = value;
+
+    line.append(strong, span);
+    return line;
+}
+
+function renderLinkedToolItem(toolItem, recordId) {
+    const panel = document.createElement('section');
+    panel.className = 'record-card__linked-tool';
+
+    const resultText = buildSiteSummaryText(toolItem.siteInfo);
+    const identifierCopyValue = normalizeCopyIdentifier(toolItem.identifier) || toolItem.identifier;
+    const copyButton = createRecordActionButton(
+        'record-card__linked-identifier',
+        toolItem.identifier,
+        `点击复制：${identifierCopyValue}`,
+        async () => {
+            const copied = await copyText(identifierCopyValue);
+            setRecordFeedback(copied ? `已复制标识：${identifierCopyValue}` : '复制标识失败，请手动选择字段内容。', copied ? 'success' : 'error');
+        }
+    );
+    copyButton.setAttribute('aria-label', `复制标识：${toolItem.identifier}`);
+
+    const resultButton = createRecordActionButton(
+        buildLinkedResultButtonClass(resultText),
+        resultText,
+        `点击复制结果：${resultText}`,
+        async () => {
+            const copied = await copyText(resultText);
+            setRecordFeedback(copied ? `已复制结果：${resultText}` : '复制结果失败，请手动选择字段内容。', copied ? 'success' : 'error');
+        }
+    );
+    resultButton.setAttribute('aria-label', `复制结果：${resultText}`);
+
+    const openButton = createRecordActionButton(
+        'record-card__linked-open',
+        '↗',
+        `打开地址：${toolItem.displayUrl}`,
+        () => {
+            window.open(toolItem.openUrl, '_blank', 'noopener,noreferrer');
+        }
+    );
+    openButton.setAttribute('aria-label', `打开地址：${toolItem.displayUrl}`);
+
+    const refreshButton = createRecordActionButton(
+        'record-card__linked-refresh',
+        '刷新',
+        `刷新此数据：${toolItem.identifier}`,
+        async () => {
+            refreshButton.disabled = true;
+            refreshButton.textContent = '刷新中';
+            await refreshRecordToolItem(recordId);
+        }
+    );
+    refreshButton.setAttribute('aria-label', `刷新此数据：${toolItem.identifier}`);
+
+    const meta = document.createElement('div');
+    meta.className = 'record-card__linked-meta';
+    meta.append(
+        createLinkedMetaLine('来源', toolItem.siteInfo.sourceText || '未识别'),
+        createLinkedMetaLine('到期', toolItem.siteInfo.expiresAt || '未提供'),
+        createLinkedMetaLine('刷新', formatCheckedAt(toolItem.siteInfo.checkedAt))
+    );
+
+    panel.append(copyButton, resultButton, openButton, meta, refreshButton);
+    return panel;
+}
+
 function renderRecordCard(record) {
     const card = document.createElement('article');
     card.className = 'record-card';
@@ -546,10 +956,16 @@ function renderRecordCard(record) {
     head.className = 'record-card__head';
     const title = document.createElement('h3');
     title.className = 'record-card__title';
+    const hasRecordFields = Boolean(record.rawText || record.name || record.address || record.cardNumber || record.cardExpiry || record.extraCode || record.phone || record.note);
+
     if (record.rawText) {
         title.textContent = '纯文本';
-    } else {
+    } else if (record.name) {
         title.appendChild(createCopyValueButton('姓名', record.name));
+    } else if (record.toolItem) {
+        title.textContent = '短信数据';
+    } else {
+        title.textContent = '本地记录';
     }
     const badge = document.createElement('span');
     badge.className = 'record-card__badge';
@@ -562,7 +978,7 @@ function renderRecordCard(record) {
     fields.className = 'record-card__fields';
     if (record.rawText) {
         fields.append(createCopyField('内容', record.rawText, record.rawText, { wide: true }));
-    } else {
+    } else if (hasRecordFields) {
         appendVisibleCopyFields(fields, [
             { label: '地址', displayValue: record.address, required: true, options: { wide: true } },
             { label: '卡号', displayValue: cardDisplayValue, copyValue: record.cardNumber || record.cardLast4 || cardDisplayValue, options: { compact: true } },
@@ -573,7 +989,13 @@ function renderRecordCard(record) {
         ]);
     }
 
-    card.append(head, fields);
+    card.append(head);
+    if (fields.children.length) {
+        card.appendChild(fields);
+    }
+    if (record.toolItem) {
+        card.appendChild(renderLinkedToolItem(record.toolItem, record.id));
+    }
     if (record.warnings.length) {
         const warning = document.createElement('p');
         warning.className = 'record-card__warning';
@@ -609,6 +1031,176 @@ function renderRecords() {
     });
 }
 
+function isReadableContentType(contentType) {
+    const normalizedContentType = String(contentType || '').toLowerCase();
+    return (
+        normalizedContentType.includes('text/') ||
+        normalizedContentType.includes('json') ||
+        normalizedContentType.includes('html') ||
+        !normalizedContentType
+    );
+}
+
+async function fetchPageContentDirect(openUrl) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), RECORD_REFRESH_TIMEOUT_MS);
+
+    try {
+        const response = await fetch(openUrl, {
+            method: 'GET',
+            mode: 'cors',
+            cache: 'no-store',
+            signal: controller.signal,
+            headers: {
+                Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+            },
+        });
+        const contentType = response.headers.get('content-type') || '';
+        const rawText = isReadableContentType(contentType) ? await response.text() : '';
+
+        return Object.freeze({
+            ok: response.ok,
+            status: response.status,
+            contentType,
+            rawText,
+        });
+    } finally {
+        window.clearTimeout(timeoutId);
+    }
+}
+
+async function fetchPageContentViaServer(openUrl) {
+    const response = await fetch('/local-tools/fetch-page', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: openUrl }),
+    });
+
+    if (!response.ok) {
+        throw new Error('proxy-fetch-failed');
+    }
+
+    const payload = await response.json();
+    return Object.freeze({
+        ok: Boolean(payload.success),
+        status: payload.status_code || 0,
+        contentType: payload.content_type || '',
+        rawText: payload.text || '',
+    });
+}
+
+async function fetchPageContent(openUrl) {
+    try {
+        return await fetchPageContentDirect(openUrl);
+    } catch (_directError) {
+        return await fetchPageContentViaServer(openUrl);
+    }
+}
+
+async function fetchSiteInfoForToolItem(toolItem) {
+    const checkedAt = new Date().toISOString();
+    const fallbackInfo = {
+        sourceText: toolItem.siteInfo?.sourceText || '',
+        expiresAt: toolItem.siteInfo?.expiresAt || '',
+    };
+
+    try {
+        const pageContent = await fetchPageContent(toolItem.openUrl);
+        if (!pageContent.ok) {
+            return buildSiteInfo(toolItem.openUrl, {
+                ...fallbackInfo,
+                statusText: `HTTP ${pageContent.status}`,
+                checkedAt,
+            });
+        }
+
+        const contentType = pageContent.contentType || '';
+        if (isReadableContentType(contentType)) {
+            const readableContent = extractReadablePageContent(pageContent.rawText, contentType);
+            const verificationInfo = parseVerificationContent(readableContent.text);
+
+            if (verificationInfo.codeText || verificationInfo.expiresAt || verificationInfo.sourceText) {
+                return buildSiteInfo(toolItem.openUrl, {
+                    ...fallbackInfo,
+                    title: readableContent.title,
+                    codeText: verificationInfo.codeText,
+                    sourceText: verificationInfo.sourceText,
+                    expiresAt: verificationInfo.expiresAt,
+                    statusText: verificationInfo.statusText || '已刷新，显示网址信息',
+                    checkedAt,
+                });
+            }
+
+            if (readableContent.title) {
+                return buildSiteInfo(toolItem.openUrl, {
+                    ...fallbackInfo,
+                    title: readableContent.title,
+                    codeText: '',
+                    sourceText: '',
+                    expiresAt: '',
+                    statusText: '已读取页面标题',
+                    checkedAt,
+                });
+            }
+        }
+
+        const shortType = contentType.split(';')[0] || '可访问';
+        return buildSiteInfo(toolItem.openUrl, {
+            ...fallbackInfo,
+            codeText: '',
+            sourceText: '',
+            expiresAt: '',
+            statusText: `已访问：${shortType}`,
+            checkedAt,
+        });
+    } catch (error) {
+        const isTimeout = error?.name === 'AbortError';
+        return buildSiteInfo(toolItem.openUrl, {
+            ...fallbackInfo,
+            codeText: '',
+            sourceText: '',
+            expiresAt: '',
+            statusText: isTimeout ? '刷新超时，显示网址信息' : '站点限制读取，显示网址信息',
+            checkedAt,
+        });
+    }
+}
+
+async function refreshRecordToolItem(recordId) {
+    const targetIndex = currentRecords.findIndex((record) => record.id === recordId);
+    const targetRecord = currentRecords[targetIndex];
+    const targetToolItem = targetRecord?.toolItem;
+
+    if (!targetToolItem) {
+        setRecordFeedback('没有找到要刷新的短信数据。', 'warning');
+        renderRecords();
+        return;
+    }
+
+    try {
+        const nextSiteInfo = await fetchSiteInfoForToolItem(targetToolItem);
+        const nextRecords = createFrozenRecords(currentRecords.map((record, index) => (
+            index === targetIndex
+                ? Object.freeze({
+                    ...record,
+                    toolItem: Object.freeze({
+                        ...targetToolItem,
+                        siteInfo: nextSiteInfo,
+                    }),
+                })
+                : record
+        )));
+        persistRecordState(nextRecords);
+        renderRecords();
+        setRecordFeedback(`已刷新：${targetToolItem.identifier}`, 'success');
+    } catch (_error) {
+        renderRecords();
+        setRecordFeedback(`刷新失败：${targetToolItem.identifier}`, 'error');
+    }
+}
+
 async function importCurrentRecords() {
     const content = recordBatchInput.value.trim();
     if (!content) {
@@ -633,9 +1225,12 @@ async function importCurrentRecords() {
     }
     renderRecords();
 
+    const countText = parseResult.toolItemCount > 0
+        ? `（数据一 ${parseResult.recordCount} 条，数据二 ${parseResult.toolItemCount} 条）`
+        : '';
     const skippedText = parseResult.skippedSensitive > 0 ? `，已丢弃 ${parseResult.skippedSensitive} 类敏感字段并清空输入框` : '';
     const invalidText = parseResult.invalidLines.length ? `，另有 ${parseResult.invalidLines.length} 行未导入` : '';
-    setRecordFeedback(`已保存 ${parseResult.records.length} 条本地记录${skippedText}${invalidText}。`, parseResult.invalidLines.length ? 'warning' : 'success');
+    setRecordFeedback(`已保存 ${parseResult.records.length} 个记录框${countText}${skippedText}${invalidText}。`, parseResult.invalidLines.length ? 'warning' : 'success');
 }
 
 async function handleRecordFileImport(file) {

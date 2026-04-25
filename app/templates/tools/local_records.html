@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>本地记录工作台</title>
     <link rel="icon" type="image/png" href="/static/favicon.png">
-    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260424-records-cvv-label">
-    <link rel="stylesheet" href="/static/css/local_records.css?v=20260424-records-cvv-label">
+    <link rel="stylesheet" href="/static/css/local_tools.css?v=20260425-combined-records">
+    <link rel="stylesheet" href="/static/css/local_records.css?v=20260425-combined-records">
 </head>
 
 <body>
@@ -15,7 +15,7 @@
         <header class="workbench-bar">
             <div class="workbench-bar__title">
                 <h1>本地记录工作台</h1>
-                <p>批量导入后形成记录，点击姓名、地址、卡号、有效期、CVV 等内容即可复制；数据仅保存在当前浏览器本地。</p>
+                <p>两种数据合一：批量导入后形成记录，点击姓名、地址、卡号、有效期、CVV 等内容即可复制，也可点击标识或验证码复制；数据仅保存在当前浏览器本地。</p>
             </div>
             <div class="workbench-bar__meta">
                 <a href="/local-tools">验证码工具</a>
@@ -27,7 +27,7 @@
                 <div class="panel__header">
                     <div>
                         <h2>导入内容</h2>
-                        <p>支持粘贴多行文本或导入 txt 文件；每行解析为一条本地记录。</p>
+                        <p>支持粘贴多行文本或导入 txt 文件；数据一与 <code>手机号|短信接口</code> 数据二可混合导入，并按导入顺序自动合并。</p>
                     </div>
                 </div>
 
@@ -43,12 +43,12 @@
                 <textarea
                     id="recordBatchInput"
                     class="batch-textarea"
-                    placeholder="示例：&#10;Alex Demo----123 Main St Apt 1, Springfield, IL 62701, US&#10;4111111111111111----2029/3----123----+1 555 123 4567----短信接口----Pat Example----456 Oak Ave, Seattle WA 98101, US&#10;KW-EXAMPLE-IGNORE-0001 4111111111111111 ---- 02/30 ---- 902 ---- +15550104567 ---- https://example.com/api/get_sms?key=demo ---- Pat Example ---- 456 Oak Ave, Seattle WA 98101, US&#10;----123----"
+                    placeholder="示例：&#10;JENNIFER WALL----5318 S 105 ST, OMAHA NE 68127, US&#10;+15725725788|https://example.com/api/get_sms?key=demo&#10;4111111111111111----2029/3----123----+1 555 123 4567----短信接口----Pat Example----456 Oak Ave, Seattle WA 98101, US&#10;KW-EXAMPLE-IGNORE-0001 4111111111111111 ---- 02/30 ---- 902 ---- +15550104567 ---- https://example.com/api/get_sms?key=demo ---- Pat Example ---- 456 Oak Ave, Seattle WA 98101, US&#10;----123----"
                 ></textarea>
 
                 <div class="feedback-row">
                     <p id="recordFeedback" class="feedback" aria-live="polite"></p>
-                    <p class="privacy-tip">提示：完整卡号、电话、有效期与 CVV 仅保存在当前浏览器本地；有效期会按 MM/YY 保存，短信接口地址会在解析时丢弃。</p>
+                    <p class="privacy-tip">提示：完整卡号、电话、有效期、CVV 与数据二接口仅保存在当前浏览器本地；数据一中的短信接口地址仍会在解析时丢弃。</p>
                 </div>
 
                 <div id="recordInvalidLinesBox" class="invalid-lines" hidden>
@@ -61,11 +61,11 @@
                 <div class="panel__header panel__header--data">
                     <div>
                         <h2>本地记录</h2>
-                        <p>点击字段内容即可复制；数字、有效期和 CVV 会完整显示，不再只显示尾号。</p>
+                        <p>可单独显示数据一或数据二；同时导入时数据二会放在数据一正下方，数量不一致的多余数据单独显示。</p>
                     </div>
 
                     <div class="panel-tools">
-                        <input id="recordSearchInput" type="search" class="search-input" placeholder="搜索姓名、地址、卡号、有效期、CVV 或电话">
+                        <input id="recordSearchInput" type="search" class="search-input" placeholder="搜索姓名、地址、卡号、有效期、CVV、电话或标识">
                     </div>
                 </div>
 
@@ -94,7 +94,7 @@
         </section>
     </main>
 
-    <script src="/static/js/local_records.js?v=20260425-inline-prefix"></script>
+    <script src="/static/js/local_records.js?v=20260425-combined-records"></script>
 </body>
 
 </html>

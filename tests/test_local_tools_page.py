@@ -45,7 +45,7 @@ const elements = new Proxy({{}}, {{
   get(target, key) {{ target[key] = target[key] || createElement(String(key)); return target[key]; }}
 }});
 const sandbox = {{
-  console, Date, Object, String, Number, Array, JSON, RegExp, navigator: {{}},
+  console, Date, Object, String, Number, Array, JSON, RegExp, URL, navigator: {{}},
   window: {{
     localStorage: {{ getItem() {{ return null; }}, setItem: noop, removeItem: noop }},
   }},
@@ -167,8 +167,10 @@ process.stdout.write(JSON.stringify({
         self.assertIn("本地记录工作台", html)
         self.assertIn("批量导入后形成记录", html)
         self.assertIn("点击姓名、地址、卡号、有效期、CVV 等内容即可复制", html)
+        self.assertIn("两种数据合一", html)
+        self.assertIn("手机号|短信接口", html)
         self.assertIn("数据仅保存在当前浏览器本地", html)
-        self.assertIn("搜索姓名、地址、卡号、有效期、CVV 或电话", html)
+        self.assertIn("搜索姓名、地址、卡号、有效期、CVV、电话或标识", html)
         self.assertIn("验证码工具", html)
         self.assertIn('id="recordBatchInput"', html)
         self.assertIn('id="importRecordWorkbenchBtn"', html)
@@ -204,6 +206,10 @@ process.stdout.write(JSON.stringify({
         self.assertNotIn("createRecordButton('复制姓名'", script)
         self.assertNotIn("复制卡尾号", script)
         self.assertNotIn("createCopyField('CVV'", script)
+        self.assertIn("toolItem", script)
+        self.assertIn("parseLocalToolLine", script)
+        self.assertIn("renderLinkedToolItem", script)
+        self.assertIn("record-card__linked-tool", stylesheet)
 
     def test_local_record_parser_normalizes_expiry_and_keeps_short_extra_code(self):
         if not shutil.which("node"):
@@ -354,6 +360,58 @@ process.stdout.write(JSON.stringify({
         self.assertNotIn("KW-EXAMPLE-IGNORE-0001", payload["storedValues"])
         self.assertNotIn("0001", payload["cardNumber"])
         self.assertNotIn("key=demo", payload["storedValues"])
+
+    def test_local_record_parser_merges_record_and_local_tool_data_by_order(self):
+        payload = self._run_local_records_node("""
+const parsed = sandbox.parseRecordBatch(
+  'JENNIFER WALL----5318 S 105 ST, OMAHA NE 68127, US\\n' +
+  '+15725725788|https://example.com/api/get_sms?key=demo\\n' +
+  '+15720000000|https://example.org/api/get_sms?key=demo2'
+);
+const extraRecordParsed = sandbox.parseRecordBatch(
+  'JENNIFER WALL----5318 S 105 ST, OMAHA NE 68127, US\\n' +
+  'ALEX DEMO----100 Main St, Austin TX 73301, US\\n' +
+  '+15725725788|https://example.com/api/get_sms?key=demo'
+);
+const combined = parsed.records[0];
+const extraTool = parsed.records[1];
+const extraRecord = extraRecordParsed.records[1];
+function collectText(node) {
+  if (!node) return '';
+  return [node.textContent || '', ...(node.children || []).map(collectText)].join('|');
+}
+const renderedText = collectText(sandbox.renderRecordCard(combined));
+process.stdout.write(JSON.stringify({
+  count: parsed.records.length,
+  recordCount: parsed.recordCount,
+  toolItemCount: parsed.toolItemCount,
+  combinedName: combined.name,
+  combinedIdentifier: combined.toolItem && combined.toolItem.identifier,
+  combinedDisplayUrl: combined.toolItem && combined.toolItem.displayUrl,
+  extraToolIdentifier: extraTool.toolItem && extraTool.toolItem.identifier,
+  extraToolName: extraTool.name,
+  extraRecordName: extraRecord.name,
+  extraRecordHasTool: Boolean(extraRecord.toolItem),
+  renderedText,
+  searchableText: sandbox.buildSearchableRecordText(combined),
+}));
+""")
+
+        self.assertEqual(2, payload["count"])
+        self.assertEqual(1, payload["recordCount"])
+        self.assertEqual(2, payload["toolItemCount"])
+        self.assertEqual("JENNIFER WALL", payload["combinedName"])
+        self.assertEqual("+15725725788", payload["combinedIdentifier"])
+        self.assertEqual("https://example.com/api/get_sms", payload["combinedDisplayUrl"])
+        self.assertEqual("+15720000000", payload["extraToolIdentifier"])
+        self.assertEqual("", payload["extraToolName"])
+        self.assertEqual("ALEX DEMO", payload["extraRecordName"])
+        self.assertFalse(payload["extraRecordHasTool"])
+        self.assertIn("JENNIFER WALL", payload["renderedText"])
+        self.assertIn("+15725725788", payload["renderedText"])
+        self.assertIn("刷新", payload["renderedText"])
+        self.assertIn("+15725725788", payload["searchableText"])
+        self.assertIn("example.com/api/get_sms", payload["searchableText"])
 
     def test_local_record_parser_imports_delimiter_wrapped_plain_text(self):
         if not shutil.which("node"):
