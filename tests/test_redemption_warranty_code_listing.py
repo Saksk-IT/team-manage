@@ -6,7 +6,7 @@ from datetime import timedelta
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import RedemptionCode, WarrantyEmailEntry
+from app.models import RedemptionCode, RedemptionRecord, WarrantyEmailEntry
 from app.services.redemption import RedemptionService
 from app.utils.time_utils import get_now
 
@@ -184,6 +184,65 @@ class RedemptionWarrantyCodeListingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([code["code"] for code in result["codes"]], ["UNUSED-WARRANTY-MATCH"])
         self.assertEqual(result["codes"][0]["warranty_remaining_days"], 12)
         self.assertEqual(result["codes"][0]["warranty_remaining_claims"], 6)
+
+    async def test_get_all_codes_treats_usage_record_as_authoritative_status(self):
+        now = get_now()
+        async with self.Session() as session:
+            session.add_all([
+                RedemptionCode(
+                    code="RECORDED-AS-UNUSED",
+                    status="unused",
+                    has_warranty=False,
+                    created_at=now,
+                ),
+                RedemptionCode(
+                    code="TRUE-UNUSED",
+                    status="unused",
+                    has_warranty=False,
+                    created_at=now,
+                ),
+            ])
+            session.add(
+                RedemptionRecord(
+                    email="buyer@example.com",
+                    code="RECORDED-AS-UNUSED",
+                    team_id=1,
+                    account_id="acc-usage-record",
+                    redeemed_at=now,
+                )
+            )
+            await session.commit()
+
+            all_result = await self.service.get_all_codes(
+                db_session=session,
+                page=1,
+                per_page=50,
+            )
+            used_result = await self.service.get_all_codes(
+                db_session=session,
+                page=1,
+                per_page=50,
+                status="used",
+            )
+            unused_result = await self.service.get_all_codes(
+                db_session=session,
+                page=1,
+                per_page=50,
+                status="unused",
+            )
+            stats = await self.service.get_stats(session)
+
+        self.assertTrue(all_result["success"])
+        code_map = {code["code"]: code for code in all_result["codes"]}
+        recorded_code = code_map["RECORDED-AS-UNUSED"]
+        self.assertEqual(recorded_code["status"], "used")
+        self.assertEqual(recorded_code["used_by_email"], "buyer@example.com")
+        self.assertEqual(recorded_code["used_team_id"], 1)
+        self.assertIsNotNone(recorded_code["used_at"])
+        self.assertEqual([code["code"] for code in used_result["codes"]], ["RECORDED-AS-UNUSED"])
+        self.assertEqual([code["code"] for code in unused_result["codes"]], ["TRUE-UNUSED"])
+        self.assertEqual(stats["used"], 1)
+        self.assertEqual(stats["unused"], 1)
 
 
 if __name__ == "__main__":

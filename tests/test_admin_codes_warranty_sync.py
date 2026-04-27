@@ -9,7 +9,7 @@ from starlette.requests import Request
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import RedemptionCode, Team, WarrantyEmailEntry
+from app.models import RedemptionCode, RedemptionRecord, Team, WarrantyEmailEntry
 from app.routes.admin import (
     BulkWarrantyCodeQuotaUpdateRequest,
     bulk_update_warranty_code_quota,
@@ -157,6 +157,43 @@ class AdminCodesWarrantySyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('7次', html)
         self.assertIn('10次', html)
         self.assertIn('15次', html)
+
+    async def test_codes_page_uses_usage_record_when_code_status_is_stale_unused(self):
+        async with self.Session() as session:
+            now = get_now()
+            session.add(
+                RedemptionCode(
+                    code="RECORDED-AS-UNUSED",
+                    status="unused",
+                    created_at=now,
+                )
+            )
+            session.add(
+                RedemptionRecord(
+                    email="buyer@example.com",
+                    code="RECORDED-AS-UNUSED",
+                    team_id=1,
+                    account_id="acc-usage-record",
+                    redeemed_at=now,
+                )
+            )
+            await session.commit()
+
+            response = await codes_list_page(
+                request=self._build_request(),
+                page=1,
+                per_page=50,
+                search=None,
+                status_filter=None,
+                team_id=None,
+                db=session,
+                current_user={"username": "admin"},
+            )
+
+        html = response.body.decode("utf-8")
+        self.assertIn("RECORDED-AS-UNUSED", html)
+        self.assertIn('<span class="status-badge status-full">已使用</span>', html)
+        self.assertIn("buyer@example.com", html)
 
     async def test_bulk_warranty_code_quota_update_can_use_current_filters(self):
         async with self.Session() as session:

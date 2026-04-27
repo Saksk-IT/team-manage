@@ -24,6 +24,68 @@ class RedemptionService:
         """初始化兑换码管理服务"""
         pass
 
+    def _usage_record_exists_clause(self):
+        """返回与 RedemptionCode 相关的使用记录存在性条件。"""
+        return select(RedemptionRecord.id).where(
+            RedemptionRecord.code == RedemptionCode.code
+        ).exists()
+
+    def _effective_code_status(self, stored_status: Optional[str], has_usage_record: bool) -> str:
+        """兑换码列表展示状态：使用记录存在时优先视为已使用。"""
+        status = (stored_status or "unused").strip() or "unused"
+        if has_usage_record and status != "warranty_active":
+            return "used"
+        return status
+
+    async def _get_usage_record_code_set(
+        self,
+        db_session: AsyncSession,
+        codes: List[str],
+    ) -> set:
+        """查询已有使用记录的兑换码集合。"""
+        normalized_codes = list(dict.fromkeys([
+            (code or "").strip()
+            for code in codes
+            if (code or "").strip()
+        ]))
+        if not normalized_codes:
+            return set()
+
+        stmt = select(RedemptionRecord.code).where(
+            RedemptionRecord.code.in_(normalized_codes)
+        ).distinct()
+        result = await db_session.execute(stmt)
+        return set(result.scalars().all())
+
+    async def _get_latest_usage_record_map(
+        self,
+        db_session: AsyncSession,
+        codes: List[str],
+    ) -> Dict[str, RedemptionRecord]:
+        """按兑换码取最新使用记录。"""
+        normalized_codes = list(dict.fromkeys([
+            (code or "").strip()
+            for code in codes
+            if (code or "").strip()
+        ]))
+        if not normalized_codes:
+            return {}
+
+        stmt = (
+            select(RedemptionRecord)
+            .where(RedemptionRecord.code.in_(normalized_codes))
+            .order_by(
+                RedemptionRecord.code.asc(),
+                RedemptionRecord.redeemed_at.desc(),
+                RedemptionRecord.id.desc(),
+            )
+        )
+        result = await db_session.execute(stmt)
+        latest_record_map = {}
+        for record in result.scalars().all():
+            latest_record_map.setdefault(record.code, record)
+        return latest_record_map
+
     def _generate_random_code(self, length: int = 16) -> str:
         """
         生成随机兑换码
@@ -480,9 +542,14 @@ class RedemptionService:
                 filters.append(RedemptionCode.has_warranty.is_(True))
 
             if search:
+                usage_record_email_exists = select(RedemptionRecord.id).where(and_(
+                    RedemptionRecord.code == RedemptionCode.code,
+                    RedemptionRecord.email.ilike(f"%{search}%"),
+                )).exists()
                 filters.append(or_(
                     RedemptionCode.code.ilike(f"%{search}%"),
-                    RedemptionCode.used_by_email.ilike(f"%{search}%")
+                    RedemptionCode.used_by_email.ilike(f"%{search}%"),
+                    usage_record_email_exists,
                 ))
 
             if selected_codes:
@@ -495,8 +562,20 @@ class RedemptionService:
 
             if status:
                 if status == 'used':
-                    # "已使用" 在查询中通常指窄义的 used, 但如果要包含质保中, 逻辑如下
-                    filters.append(RedemptionCode.status.in_(['used', 'warranty_active']))
+                    filters.append(or_(
+                        self._usage_record_exists_clause(),
+                        RedemptionCode.status.in_(['used', 'warranty_active']),
+                    ))
+                elif status == 'unused':
+                    filters.append(and_(
+                        RedemptionCode.status == "unused",
+                        ~self._usage_record_exists_clause(),
+                    ))
+                elif status == 'expired':
+                    filters.append(and_(
+                        RedemptionCode.status == "expired",
+                        ~self._usage_record_exists_clause(),
+                    ))
                 else:
                     filters.append(RedemptionCode.status == status)
 
@@ -536,6 +615,7 @@ class RedemptionService:
                 unused_warranty_remaining_filters.extend([
                     RedemptionCode.has_warranty.is_(True),
                     RedemptionCode.status == "unused",
+                    ~self._usage_record_exists_clause(),
                 ])
 
             if has_remaining_day_filter:
@@ -596,6 +676,10 @@ class RedemptionService:
             stmt = stmt.limit(per_page).offset(offset)
             result = await db_session.execute(stmt)
             codes = result.scalars().all()
+            latest_usage_record_map = await self._get_latest_usage_record_map(
+                db_session,
+                [code.code for code in codes],
+            )
 
             bound_team_ids = {code.bound_team_id for code in codes if code.bound_team_id}
             team_map = {}
@@ -605,11 +689,13 @@ class RedemptionService:
                 team_map = {team.id: team for team in team_result.scalars().all()}
 
             warranty_entry_map = {}
-            used_emails = {
-                (code.used_by_email or "").strip().lower()
-                for code in codes
-                if code.used_by_email
-            }
+            used_emails = set()
+            for code in codes:
+                latest_record = latest_usage_record_map.get(code.code)
+                used_email = latest_record.email if latest_record else code.used_by_email
+                normalized_email = (used_email or "").strip().lower()
+                if normalized_email:
+                    used_emails.add(normalized_email)
             if used_emails:
                 warranty_stmt = select(WarrantyEmailEntry).where(
                     WarrantyEmailEntry.email.in_(used_emails)
@@ -625,7 +711,15 @@ class RedemptionService:
             code_list = []
             for code in codes:
                 bound_team = team_map.get(code.bound_team_id)
-                normalized_used_email = (code.used_by_email or "").strip().lower()
+                latest_record = latest_usage_record_map.get(code.code)
+                display_status = self._effective_code_status(
+                    code.status,
+                    latest_record is not None,
+                )
+                display_used_email = latest_record.email if latest_record else code.used_by_email
+                display_used_team_id = latest_record.team_id if latest_record else code.used_team_id
+                display_used_at = latest_record.redeemed_at if latest_record else code.used_at
+                normalized_used_email = (display_used_email or "").strip().lower()
                 warranty_entry = warranty_entry_map.get(normalized_used_email)
                 serialized_warranty_entry = (
                     warranty_service.serialize_warranty_email_entry(warranty_entry)
@@ -640,16 +734,16 @@ class RedemptionService:
                 code_list.append({
                     "id": code.id,
                     "code": code.code,
-                    "status": code.status,
+                    "status": display_status,
                     "created_at": code.created_at.isoformat() if code.created_at else None,
                     "expires_at": code.expires_at.isoformat() if code.expires_at else None,
                     "bound_team_id": code.bound_team_id,
                     "bound_team_name": bound_team.team_name if bound_team else None,
                     "bound_team_email": bound_team.email if bound_team else None,
                     "bound_account_id": bound_team.account_id if bound_team else None,
-                    "used_by_email": code.used_by_email,
-                    "used_team_id": code.used_team_id,
-                    "used_at": code.used_at.isoformat() if code.used_at else None,
+                    "used_by_email": display_used_email,
+                    "used_team_id": display_used_team_id,
+                    "used_at": display_used_at.isoformat() if display_used_at else None,
                     "has_warranty": code.has_warranty,
                     "warranty_days": code.warranty_days,
                     "warranty_claims": code.warranty_claims,
@@ -686,7 +780,10 @@ class RedemptionService:
         获取未使用的兑换码数量
         """
         try:
-            stmt = select(func.count(RedemptionCode.id)).where(RedemptionCode.status == "unused")
+            stmt = select(func.count(RedemptionCode.id)).where(and_(
+                RedemptionCode.status == "unused",
+                ~self._usage_record_exists_clause(),
+            ))
             result = await db_session.execute(stmt)
             return result.scalar() or 0
         except Exception as e:
@@ -1027,6 +1124,21 @@ class RedemptionService:
                     "error": f"兑换码 {code} 不存在"
                 }
 
+            if redemption_code.status != "unused":
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": "仅允许删除未使用的兑换码"
+                }
+
+            used_code_set = await self._get_usage_record_code_set(db_session, [code])
+            if code in used_code_set:
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": "该兑换码已有使用记录，不能删除"
+                }
+
             # 删除兑换码
             await db_session.delete(redemption_code)
             await db_session.commit()
@@ -1181,7 +1293,12 @@ class RedemptionService:
                     "error": f"以下兑换码不存在: {', '.join(missing_codes[:5])}"
                 }
 
-            non_unused_codes = [code.code for code in existing_codes if code.status != "unused"]
+            used_code_set = await self._get_usage_record_code_set(db_session, codes)
+            non_unused_codes = [
+                code.code
+                for code in existing_codes
+                if code.status != "unused" or code.code in used_code_set
+            ]
             if non_unused_codes:
                 return {
                     "success": False,
@@ -1278,10 +1395,15 @@ class RedemptionService:
                     "skipped_count": len(existing_codes),
                 }
 
+            used_code_set = await self._get_usage_record_code_set(db_session, normalized_codes)
             eligible_codes = [
                 code.code
                 for code in existing_codes
-                if code.status == "unused" and code.has_warranty
+                if (
+                    code.status == "unused"
+                    and code.has_warranty
+                    and code.code not in used_code_set
+                )
             ]
             skipped_count = len(existing_codes) - len(eligible_codes)
             if not eligible_codes:
@@ -1341,30 +1463,43 @@ class RedemptionService:
             统计字典, 包含 total, unused, used, expired
         """
         try:
-            # 使用 SQL 聚合统计各状态数量
-            stmt = select(
-                RedemptionCode.status,
-                func.count(RedemptionCode.id)
-            ).group_by(RedemptionCode.status)
-            
-            result = await db_session.execute(stmt)
-            status_counts = dict(result.all())
-            
-            # 由于 "used" 和 "warranty_active" 都属于广义上的 "已使用"
-            # 这里的 used 统计需要合并这两个状态
-            used_count = status_counts.get("used", 0) + status_counts.get("warranty_active", 0)
-            
-            # 计算总数
             total_stmt = select(func.count(RedemptionCode.id))
             total_result = await db_session.execute(total_stmt)
             total = total_result.scalar() or 0
+
+            used_stmt = select(func.count(RedemptionCode.id)).where(or_(
+                self._usage_record_exists_clause(),
+                RedemptionCode.status.in_(["used", "warranty_active"]),
+            ))
+            used_result = await db_session.execute(used_stmt)
+            used_count = used_result.scalar() or 0
+
+            unused_stmt = select(func.count(RedemptionCode.id)).where(and_(
+                RedemptionCode.status == "unused",
+                ~self._usage_record_exists_clause(),
+            ))
+            unused_result = await db_session.execute(unused_stmt)
+            unused_count = unused_result.scalar() or 0
+
+            warranty_active_stmt = select(func.count(RedemptionCode.id)).where(
+                RedemptionCode.status == "warranty_active"
+            )
+            warranty_active_result = await db_session.execute(warranty_active_stmt)
+            warranty_active_count = warranty_active_result.scalar() or 0
+
+            expired_stmt = select(func.count(RedemptionCode.id)).where(and_(
+                RedemptionCode.status == "expired",
+                ~self._usage_record_exists_clause(),
+            ))
+            expired_result = await db_session.execute(expired_stmt)
+            expired_count = expired_result.scalar() or 0
             
             return {
                 "total": total,
-                "unused": status_counts.get("unused", 0),
+                "unused": unused_count,
                 "used": used_count,
-                "warranty_active": status_counts.get("warranty_active", 0),
-                "expired": status_counts.get("expired", 0)
+                "warranty_active": warranty_active_count,
+                "expired": expired_count
             }
         except Exception as e:
             logger.error(f"获取兑换码统计信息失败: {e}")
