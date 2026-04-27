@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}质保 Team 白名单 - GPT Team 管理系统{% endblock %}
+{% block title %}邮箱白名单 - GPT Team 管理系统{% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <h2>质保 Team 白名单</h2>
-    <p class="page-subtitle">白名单账号不会被质保 Team 自动刷新 / 清理机制移除；系统会自动同步质保邮箱列表中的有效账号。</p>
+    <h2>邮箱白名单</h2>
+    <p class="page-subtitle">白名单账号不会被系统自动清理机制移除；系统会自动同步控制台 Team 兑换绑定邮箱、质保邮箱列表有效账号，以及管理员手动拉入的邮箱。</p>
 </div>
 
 <div class="content-section" id="whitelistEditorCard">
@@ -26,11 +26,11 @@
                 <option value="true">启用</option>
                 <option value="false">停用</option>
             </select>
-            <p class="form-help">停用后不会保护该邮箱；如果该邮箱仍是质保邮箱列表中的有效账号，系统会自动重新启用。</p>
+            <p class="form-help">停用后不会保护该邮箱；如果该邮箱仍来自控制台 Team 兑换绑定或质保邮箱列表，系统会自动重新启用。</p>
         </div>
         <div class="form-group">
             <label for="whitelistNote">备注</label>
-            <input type="text" id="whitelistNote" class="form-control" maxlength="500" placeholder="可选，例如手动拉人、客服备注">
+            <input type="text" id="whitelistNote" class="form-control" maxlength="500" placeholder="可选，例如手动拉入、客服备注">
         </div>
         <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
             <button type="submit" class="btn btn-primary" id="whitelistSubmitBtn">保存白名单</button>
@@ -44,7 +44,7 @@
         <h3>白名单账号</h3>
     </div>
 
-    <form method="get" action="/admin/warranty-team-whitelist" class="whitelist-filter-form">
+    <form method="get" action="/admin/email-whitelist" class="whitelist-filter-form">
         <label class="whitelist-filter-field whitelist-filter-field-wide">
             关键词
             <input type="text" name="search" value="{{ search or '' }}" class="form-control" placeholder="搜索邮箱或备注">
@@ -61,9 +61,10 @@
             来源
             <select name="source_filter" class="form-control">
                 <option value="" {% if not whitelist_filters.source_filter %}selected{% endif %}>全部来源</option>
+                <option value="console_team" {% if whitelist_filters.source_filter == 'console_team' %}selected{% endif %}>控制台 Team 兑换绑定邮箱</option>
                 <option value="warranty_email" {% if whitelist_filters.source_filter == 'warranty_email' %}selected{% endif %}>质保邮箱列表有效账号</option>
                 <option value="manual" {% if whitelist_filters.source_filter == 'manual' %}selected{% endif %}>管理员手动维护</option>
-                <option value="manual_pull" {% if whitelist_filters.source_filter == 'manual_pull' %}selected{% endif %}>管理员手动拉人</option>
+                <option value="manual_pull" {% if whitelist_filters.source_filter == 'manual_pull' %}selected{% endif %}>管理员手动拉入</option>
             </select>
         </label>
         <div class="whitelist-filter-actions">
@@ -71,7 +72,7 @@
                 <i data-lucide="filter" style="width: 16px; height: 16px;"></i> 筛选
             </button>
             {% if has_whitelist_filters %}
-            <a href="/admin/warranty-team-whitelist" class="btn btn-secondary">
+            <a href="/admin/email-whitelist" class="btn btn-secondary">
                 <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i> 清空
             </a>
             {% endif %}
@@ -85,7 +86,7 @@
                     <th>邮箱</th>
                     <th>状态</th>
                     <th>来源</th>
-                    <th>最近质保 Team</th>
+                    <th>最近关联 Team</th>
                     <th>备注</th>
                     <th>更新时间</th>
                     <th style="text-align: right;">操作</th>
@@ -101,7 +102,7 @@
                         </span>
                     </td>
                     <td>{{ entry.source_label }}</td>
-                    <td>{{ entry.last_warranty_team_id or '-' }}</td>
+                    <td>{{ entry.last_team_id or '-' }}</td>
                     <td>{{ entry.note or '-' }}</td>
                     <td>{{ entry.updated_at|format_datetime }}</td>
                     <td style="text-align: right;">
@@ -113,7 +114,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="7" class="empty-state-cell">暂无质保 Team 白名单记录</td>
+                    <td colspan="7" class="empty-state-cell">暂无邮箱白名单记录</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -257,7 +258,7 @@
         }
 
         try {
-            const response = await fetch('/admin/warranty-team-whitelist/save', {
+            const response = await fetch('/admin/email-whitelist/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -269,7 +270,7 @@
             });
             const data = await response.json();
             if (response.ok && data.success) {
-                showToast(data.message || '质保 Team 白名单已保存', 'success');
+                showToast(data.message || '邮箱白名单已保存', 'success');
                 setTimeout(() => window.location.reload(), 300);
             } else {
                 showToast(data.error || '保存失败', 'error');
@@ -282,7 +283,7 @@
     async function deleteWhitelistEntry(entryId, email) {
         const confirmed = await showSystemConfirm({
             title: '确认移出白名单账号',
-            message: `确定要将 ${email} 移出白名单吗？移出后该邮箱不会再受质保 Team 自动清理保护。`,
+            message: `确定要将 ${email} 移出白名单吗？移出后该邮箱不会再受系统自动清理保护。`,
             confirmText: '移出',
             danger: true,
         });
@@ -291,13 +292,13 @@
         }
 
         try {
-            const response = await fetch(`/admin/warranty-team-whitelist/${entryId}/delete`, {
+            const response = await fetch(`/admin/email-whitelist/${entryId}/delete`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
             const data = await response.json();
             if (response.ok && data.success) {
-                showToast(data.message || '质保 Team 白名单已移出', 'success');
+                showToast(data.message || '邮箱白名单已移出', 'success');
                 setTimeout(() => window.location.reload(), 300);
             } else {
                 showToast(data.error || '移出失败', 'error');

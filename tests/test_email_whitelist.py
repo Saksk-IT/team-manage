@@ -9,18 +9,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import WarrantyEmailEntry, WarrantyTeamWhitelistEntry
+from app.models import EmailWhitelistEntry, RedemptionCode, RedemptionRecord, WarrantyEmailEntry
 from app.routes.admin import (
-    WarrantyTeamWhitelistSaveRequest,
-    delete_warranty_team_whitelist_entry,
-    save_warranty_team_whitelist_entry,
-    warranty_team_whitelist_page,
+    EmailWhitelistSaveRequest,
+    delete_email_whitelist_entry,
+    email_whitelist_page,
+    save_email_whitelist_entry,
 )
-from app.services.warranty_team_whitelist import warranty_team_whitelist_service
+from app.services.email_whitelist import email_whitelist_service
 from app.utils.time_utils import get_now
 
 
-class WarrantyTeamWhitelistTests(unittest.IsolatedAsyncioTestCase):
+class EmailWhitelistTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         fd, self.db_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
@@ -37,7 +37,7 @@ class WarrantyTeamWhitelistTests(unittest.IsolatedAsyncioTestCase):
             os.remove(self.db_path)
 
     def _build_request(self) -> Request:
-        return Request({"type": "http", "method": "GET", "path": "/admin/warranty-team-whitelist", "headers": []})
+        return Request({"type": "http", "method": "GET", "path": "/admin/email-whitelist", "headers": []})
 
     async def test_sync_includes_only_effective_warranty_email_entries(self):
         async with self.Session() as session:
@@ -63,10 +63,10 @@ class WarrantyTeamWhitelistTests(unittest.IsolatedAsyncioTestCase):
             ])
             await session.commit()
 
-            allowed_emails = await warranty_team_whitelist_service.get_allowed_emails(session)
+            allowed_emails = await email_whitelist_service.get_allowed_emails(session)
             await session.commit()
 
-            entries_result = await session.execute(select(WarrantyTeamWhitelistEntry))
+            entries_result = await session.execute(select(EmailWhitelistEntry))
             entries = {entry.email: entry for entry in entries_result.scalars().all()}
 
         self.assertEqual(allowed_emails, {"active@example.com"})
@@ -89,12 +89,12 @@ class WarrantyTeamWhitelistTests(unittest.IsolatedAsyncioTestCase):
             )
             await session.commit()
 
-            allowed_emails = await warranty_team_whitelist_service.get_allowed_emails(session)
+            allowed_emails = await email_whitelist_service.get_allowed_emails(session)
             await session.commit()
 
             entry = await session.scalar(
-                select(WarrantyTeamWhitelistEntry).where(
-                    WarrantyTeamWhitelistEntry.email == "legacy-manual@example.com"
+                select(EmailWhitelistEntry).where(
+                    EmailWhitelistEntry.email == "legacy-manual@example.com"
                 )
             )
 
@@ -104,10 +104,40 @@ class WarrantyTeamWhitelistTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(entry.is_active)
         self.assertEqual(entry.last_warranty_team_id, 9)
 
+    async def test_sync_includes_console_team_bound_emails(self):
+        async with self.Session() as session:
+            session.add_all([
+                RedemptionCode(
+                    code="BOUND-CODE-001",
+                    status="used",
+                    bound_team_id=1,
+                    used_team_id=1,
+                    used_by_email="Bound@Example.com",
+                ),
+                RedemptionRecord(
+                    email="record@example.com",
+                    code="RECORD-CODE-001",
+                    team_id=2,
+                    account_id="acc-record",
+                ),
+            ])
+            await session.commit()
+
+            allowed_emails = await email_whitelist_service.get_allowed_emails(session)
+            await session.commit()
+
+            entries_result = await session.execute(select(EmailWhitelistEntry))
+            entries = {entry.email: entry for entry in entries_result.scalars().all()}
+
+        self.assertIn("bound@example.com", allowed_emails)
+        self.assertIn("record@example.com", allowed_emails)
+        self.assertEqual(entries["bound@example.com"].source, "console_team")
+        self.assertEqual(entries["record@example.com"].source, "console_team")
+
     async def test_whitelist_page_renders_sidebar_and_filters(self):
         async with self.Session() as session:
             session.add(
-                WarrantyTeamWhitelistEntry(
+                EmailWhitelistEntry(
                     email="manual@example.com",
                     source="manual",
                     is_active=True,
@@ -116,7 +146,7 @@ class WarrantyTeamWhitelistTests(unittest.IsolatedAsyncioTestCase):
             )
             await session.commit()
 
-            response = await warranty_team_whitelist_page(
+            response = await email_whitelist_page(
                 request=self._build_request(),
                 search="manual",
                 status_filter="active",
@@ -126,17 +156,17 @@ class WarrantyTeamWhitelistTests(unittest.IsolatedAsyncioTestCase):
             )
 
         html = response.body.decode("utf-8")
-        self.assertIn("质保 Team 白名单", html)
+        self.assertIn("邮箱白名单", html)
         self.assertIn("manual@example.com", html)
         self.assertIn("客服添加", html)
         self.assertIn('name="status_filter"', html)
         self.assertIn('name="source_filter"', html)
-        self.assertIn('href="/admin/warranty-team-whitelist"', html)
+        self.assertIn('href="/admin/email-whitelist"', html)
 
     async def test_save_and_delete_whitelist_entry(self):
         async with self.Session() as session:
-            save_response = await save_warranty_team_whitelist_entry(
-                payload=WarrantyTeamWhitelistSaveRequest(
+            save_response = await save_email_whitelist_entry(
+                payload=EmailWhitelistSaveRequest(
                     email="manual@example.com",
                     is_active=True,
                     note="手动保留",
@@ -147,15 +177,15 @@ class WarrantyTeamWhitelistTests(unittest.IsolatedAsyncioTestCase):
             save_payload = json.loads(save_response.body.decode("utf-8"))
             entry_id = save_payload["entry"]["id"]
 
-            delete_response = await delete_warranty_team_whitelist_entry(
+            delete_response = await delete_email_whitelist_entry(
                 entry_id=entry_id,
                 db=session,
                 current_user={"username": "admin"},
             )
             entry = await session.scalar(
-                select(WarrantyTeamWhitelistEntry).where(WarrantyTeamWhitelistEntry.id == entry_id)
+                select(EmailWhitelistEntry).where(EmailWhitelistEntry.id == entry_id)
             )
-            allowed_emails = await warranty_team_whitelist_service.get_allowed_emails(session)
+            allowed_emails = await email_whitelist_service.get_allowed_emails(session)
 
         self.assertEqual(save_response.status_code, 200)
         self.assertTrue(save_payload["success"])

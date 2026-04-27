@@ -35,7 +35,7 @@ from app.services.team_cleanup_record import team_cleanup_record_service
 from app.services.redemption import RedemptionService
 from app.services.settings import settings_service
 from app.services.warranty import warranty_service
-from app.services.warranty_team_whitelist import warranty_team_whitelist_service
+from app.services.email_whitelist import email_whitelist_service
 from app.services.auth import auth_service
 from app.utils.time_utils import get_now
 from app.utils.storage import (
@@ -434,8 +434,8 @@ class BulkWarrantyEmailUpdateRequest(BaseModel):
     remaining_claims: Optional[int] = Field(None, ge=0, description="剩余次数")
 
 
-class WarrantyTeamWhitelistSaveRequest(BaseModel):
-    entry_id: Optional[int] = Field(None, description="质保 Team 白名单记录 ID")
+class EmailWhitelistSaveRequest(BaseModel):
+    entry_id: Optional[int] = Field(None, description="邮箱白名单记录 ID")
     email: EmailStr = Field(..., description="白名单邮箱")
     is_active: bool = Field(True, description="是否启用")
     note: Optional[str] = Field(None, max_length=500, description="备注")
@@ -3304,8 +3304,13 @@ async def warranty_emails_page(
         )
 
 
-@router.get("/warranty-team-whitelist", response_class=HTMLResponse)
-async def warranty_team_whitelist_page(
+@router.get("/warranty-team-whitelist", include_in_schema=False)
+async def legacy_warranty_team_whitelist_page():
+    return RedirectResponse(url="/admin/email-whitelist", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+@router.get("/email-whitelist", response_class=HTMLResponse)
+async def email_whitelist_page(
     request: Request,
     search: Optional[str] = None,
     status_filter: Optional[str] = None,
@@ -3319,26 +3324,26 @@ async def warranty_team_whitelist_page(
         normalized_status = _normalize_optional_filter_text(status_filter)
         if status_filter is None:
             normalized_status = "active"
-        if normalized_status and normalized_status not in warranty_team_whitelist_service.STATUS_LABELS:
+        if normalized_status and normalized_status not in email_whitelist_service.STATUS_LABELS:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="无效的白名单状态筛选"
             )
 
         normalized_source = _normalize_optional_filter_text(source_filter)
-        if normalized_source and normalized_source not in warranty_team_whitelist_service.SOURCE_LABELS:
+        if normalized_source and normalized_source not in email_whitelist_service.SOURCE_LABELS:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="无效的白名单来源筛选"
             )
 
         logger.info(
-            "管理员访问质保 Team 白名单页 search=%s status=%s source=%s",
+            "管理员访问邮箱白名单页 search=%s status=%s source=%s",
             search,
             normalized_status,
             normalized_source,
         )
-        entries = await warranty_team_whitelist_service.list_entries(
+        entries = await email_whitelist_service.list_entries(
             db_session=db,
             search=search,
             status_filter=normalized_status,
@@ -3346,11 +3351,11 @@ async def warranty_team_whitelist_page(
         )
         return templates.TemplateResponse(
             request,
-            "admin/warranty_team_whitelist/index.html",
+            "admin/email_whitelist/index.html",
             {
                 "request": request,
                 "user": current_user,
-                "active_page": "warranty_team_whitelist",
+                "active_page": "email_whitelist",
                 "entries": entries,
                 "search": search or "",
                 "whitelist_filters": {
@@ -3367,33 +3372,33 @@ async def warranty_team_whitelist_page(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"加载质保 Team 白名单页失败: {e}")
+        logger.error(f"加载邮箱白名单页失败: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"加载质保 Team 白名单页失败: {str(e)}"
+            detail=f"加载邮箱白名单页失败: {str(e)}"
         )
 
 
-@router.post("/warranty-team-whitelist/save")
-async def save_warranty_team_whitelist_entry(
-    payload: WarrantyTeamWhitelistSaveRequest,
+@router.post("/email-whitelist/save")
+async def save_email_whitelist_entry(
+    payload: EmailWhitelistSaveRequest,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
     try:
-        entry = await warranty_team_whitelist_service.save_entry(
+        entry = await email_whitelist_service.save_entry(
             db_session=db,
             entry_id=payload.entry_id,
             email=payload.email,
             is_active=payload.is_active,
             note=payload.note,
-            source=warranty_team_whitelist_service.SOURCE_MANUAL,
+            source=email_whitelist_service.SOURCE_MANUAL,
         )
         return JSONResponse(
             content={
                 "success": True,
-                "message": "质保 Team 白名单已保存",
-                "entry": warranty_team_whitelist_service.serialize_entry(entry),
+                "message": "邮箱白名单已保存",
+                "entry": email_whitelist_service.serialize_entry(entry),
             }
         )
     except ValueError as e:
@@ -3402,33 +3407,51 @@ async def save_warranty_team_whitelist_entry(
             content={"success": False, "error": str(e)}
         )
     except Exception as e:
-        logger.error(f"保存质保 Team 白名单失败: {e}")
+        logger.error(f"保存邮箱白名单失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"保存失败: {str(e)}"}
         )
 
 
-@router.post("/warranty-team-whitelist/{entry_id}/delete")
-async def delete_warranty_team_whitelist_entry(
+@router.post("/email-whitelist/{entry_id}/delete")
+async def delete_email_whitelist_entry(
     entry_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
     try:
-        deleted = await warranty_team_whitelist_service.delete_entry(db, entry_id)
+        deleted = await email_whitelist_service.delete_entry(db, entry_id)
         if not deleted:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
-                content={"success": False, "error": "质保 Team 白名单记录不存在"}
+                content={"success": False, "error": "邮箱白名单记录不存在"}
             )
-        return JSONResponse(content={"success": True, "message": "质保 Team 白名单已移出"})
+        return JSONResponse(content={"success": True, "message": "邮箱白名单已移出"})
     except Exception as e:
-        logger.error(f"移出质保 Team 白名单失败: {e}")
+        logger.error(f"移出邮箱白名单失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"移出失败: {str(e)}"}
         )
+
+
+@router.post("/warranty-team-whitelist/save", include_in_schema=False)
+async def legacy_save_warranty_team_whitelist_entry(
+    payload: EmailWhitelistSaveRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin),
+):
+    return await save_email_whitelist_entry(payload=payload, db=db, current_user=current_user)
+
+
+@router.post("/warranty-team-whitelist/{entry_id}/delete", include_in_schema=False)
+async def legacy_delete_warranty_team_whitelist_entry(
+    entry_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin),
+):
+    return await delete_email_whitelist_entry(entry_id=entry_id, db=db, current_user=current_user)
 
 
 @router.get("/warranty-claim-records", response_class=HTMLResponse)

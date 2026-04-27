@@ -368,7 +368,7 @@ def run_auto_migration():
             migrations_applied.append("team_member_snapshots")
 
         if not table_exists(cursor, "warranty_team_whitelist_entries"):
-            logger.info("创建 warranty_team_whitelist_entries 表")
+            logger.info("创建邮箱白名单表 warranty_team_whitelist_entries")
             cursor.execute("""
                 CREATE TABLE warranty_team_whitelist_entries (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -409,6 +409,45 @@ def run_auto_migration():
             ON warranty_team_whitelist_entries (is_active)
         """)
 
+        if table_exists(cursor, "redemption_codes"):
+            cursor.execute("""
+                INSERT OR IGNORE INTO warranty_team_whitelist_entries (
+                    email, source, is_active, note, last_warranty_team_id, created_at, updated_at
+                )
+                SELECT
+                    LOWER(TRIM(used_by_email)),
+                    'console_team',
+                    1,
+                    '自动同步自控制台 Team 兑换绑定邮箱',
+                    used_team_id,
+                    CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP
+                FROM redemption_codes
+                WHERE used_by_email IS NOT NULL
+                  AND TRIM(used_by_email) != ''
+                  AND bound_team_id IS NOT NULL
+                  AND used_team_id = bound_team_id
+            """)
+
+        if table_exists(cursor, "redemption_records"):
+            cursor.execute("""
+                INSERT OR IGNORE INTO warranty_team_whitelist_entries (
+                    email, source, is_active, note, last_warranty_team_id, created_at, updated_at
+                )
+                SELECT
+                    LOWER(TRIM(email)),
+                    'console_team',
+                    1,
+                    '自动同步自控制台 Team 兑换绑定邮箱',
+                    team_id,
+                    CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP
+                FROM redemption_records
+                WHERE email IS NOT NULL
+                  AND TRIM(email) != ''
+                  AND team_id IS NOT NULL
+            """)
+
         if table_exists(cursor, "warranty_email_entries"):
             cursor.execute("""
                 INSERT OR IGNORE INTO warranty_team_whitelist_entries (
@@ -437,7 +476,7 @@ def run_auto_migration():
                     LOWER(TRIM(email)),
                     'manual_pull',
                     1,
-                    '从历史手动拉人记录补写',
+                    '从历史手动拉入记录补写',
                     last_warranty_team_id,
                     CURRENT_TIMESTAMP,
                     CURRENT_TIMESTAMP

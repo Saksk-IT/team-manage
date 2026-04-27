@@ -7,9 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import RedemptionCode, RedemptionRecord, Team, TeamCleanupRecord, TeamMemberSnapshot, WarrantyEmailEntry, WarrantyTeamWhitelistEntry
+from app.models import EmailWhitelistEntry, RedemptionCode, RedemptionRecord, Team, TeamCleanupRecord, TeamMemberSnapshot, WarrantyEmailEntry
 from app.services.team import TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY, TeamService
-from app.services.warranty_team_whitelist import warranty_team_whitelist_service
+from app.services.email_whitelist import email_whitelist_service
 from app.utils.time_utils import get_now
 from datetime import timedelta
 
@@ -212,7 +212,7 @@ class TeamStandardRefreshCleanupTests(unittest.IsolatedAsyncioTestCase):
                     expires_at=get_now() + timedelta(days=5),
                     source="auto_redeem",
                 ),
-                WarrantyTeamWhitelistEntry(
+                EmailWhitelistEntry(
                     email="manual@example.com",
                     source="manual",
                     is_active=True,
@@ -492,7 +492,7 @@ class TeamStandardRefreshCleanupTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             entry = await session.scalar(
-                select(WarrantyTeamWhitelistEntry).where(WarrantyTeamWhitelistEntry.email == "legacy-manual@example.com")
+                select(EmailWhitelistEntry).where(EmailWhitelistEntry.email == "legacy-manual@example.com")
             )
 
         self.assertTrue(result["success"])
@@ -522,7 +522,7 @@ class TeamStandardRefreshCleanupTests(unittest.IsolatedAsyncioTestCase):
             )
             session.add(team)
             await session.flush()
-            manual_entry = WarrantyTeamWhitelistEntry(
+            manual_entry = EmailWhitelistEntry(
                 email="manual@example.com",
                 source="manual",
                 is_active=True,
@@ -538,7 +538,7 @@ class TeamStandardRefreshCleanupTests(unittest.IsolatedAsyncioTestCase):
             ])
             await session.commit()
 
-            await warranty_team_whitelist_service.delete_entry(session, manual_entry.id)
+            await email_whitelist_service.delete_entry(session, manual_entry.id)
 
             service = TeamService()
             service.ensure_access_token = AsyncMock(return_value="access-token")
@@ -586,7 +586,7 @@ class TeamStandardRefreshCleanupTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             whitelist_entry = await session.scalar(
-                select(WarrantyTeamWhitelistEntry).where(WarrantyTeamWhitelistEntry.email == "manual@example.com")
+                select(EmailWhitelistEntry).where(EmailWhitelistEntry.email == "manual@example.com")
             )
 
         self.assertTrue(result["success"])
@@ -635,7 +635,7 @@ class TeamStandardRefreshCleanupTests(unittest.IsolatedAsyncioTestCase):
                 )
 
             entry = await session.scalar(
-                select(WarrantyTeamWhitelistEntry).where(WarrantyTeamWhitelistEntry.email == "manual-added@example.com")
+                select(EmailWhitelistEntry).where(EmailWhitelistEntry.email == "manual-added@example.com")
             )
 
         self.assertTrue(result["success"])
@@ -650,6 +650,49 @@ class TeamStandardRefreshCleanupTests(unittest.IsolatedAsyncioTestCase):
                 for call in service.sync_team_info.await_args_list
             )
         )
+
+    async def test_admin_added_standard_member_enters_global_email_whitelist(self):
+        async with self.Session() as session:
+            team = Team(
+                email="owner@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-standard",
+                team_type=TEAM_TYPE_STANDARD,
+                team_name="Standard Team",
+                status="active",
+                current_members=0,
+                max_members=5,
+            )
+            session.add(team)
+            await session.commit()
+
+            service = TeamService()
+            service.ensure_access_token = AsyncMock(return_value="access-token")
+            service.chatgpt_service.send_invite = AsyncMock(return_value={
+                "success": True,
+                "data": {"account_invites": [{"id": "invite-1"}]},
+            })
+            service.sync_team_info = AsyncMock(return_value={
+                "success": True,
+                "member_emails": ["standard-manual@example.com"],
+            })
+
+            with patch("app.services.team.asyncio.sleep", new=AsyncMock(return_value=None)):
+                result = await service.add_team_member(
+                    team_id=team.id,
+                    email="Standard-Manual@Example.com",
+                    db_session=session,
+                )
+
+            entry = await session.scalar(
+                select(EmailWhitelistEntry).where(EmailWhitelistEntry.email == "standard-manual@example.com")
+            )
+
+        self.assertTrue(result["success"])
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.source, "manual_pull")
+        self.assertTrue(entry.is_active)
+        self.assertEqual(entry.last_warranty_team_id, team.id)
 
 
 if __name__ == "__main__":

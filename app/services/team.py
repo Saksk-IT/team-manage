@@ -333,28 +333,28 @@ class TeamService:
 
         return allowed_emails
 
-    async def _get_warranty_cleanup_allowed_emails(
+    async def _get_email_cleanup_allowed_emails(
         self,
         db_session: AsyncSession
     ) -> set[str]:
-        """获取质保 Team 自动清理白名单邮箱。"""
-        from app.services.warranty_team_whitelist import warranty_team_whitelist_service
+        """获取系统自动清理全局邮箱白名单。"""
+        from app.services.email_whitelist import email_whitelist_service
 
-        return await warranty_team_whitelist_service.get_allowed_emails(db_session)
+        return await email_whitelist_service.get_allowed_emails(db_session)
 
-    async def _ensure_manual_warranty_email_whitelist(
+    async def _ensure_manual_email_whitelist(
         self,
         email: str,
         db_session: AsyncSession,
         last_warranty_team_id: Optional[int] = None,
     ) -> None:
-        """管理员手动添加到质保 Team 的邮箱自动进入清理白名单。"""
-        from app.services.warranty_team_whitelist import warranty_team_whitelist_service
+        """管理员手动拉入 Team 的邮箱自动进入全局邮箱白名单。"""
+        from app.services.email_whitelist import email_whitelist_service
 
-        await warranty_team_whitelist_service.ensure_manual_entry(
+        await email_whitelist_service.ensure_manual_entry(
             db_session=db_session,
             email=email,
-            source=warranty_team_whitelist_service.SOURCE_MANUAL_PULL,
+            source=email_whitelist_service.SOURCE_MANUAL_PULL,
             last_warranty_team_id=last_warranty_team_id,
             commit=False,
         )
@@ -368,7 +368,7 @@ class TeamService:
         if not team or team.team_type != TEAM_TYPE_WARRANTY:
             return 0
 
-        from app.services.warranty_team_whitelist import warranty_team_whitelist_service
+        from app.services.email_whitelist import email_whitelist_service
 
         result = await db_session.execute(
             select(TeamMemberSnapshot.email).where(TeamMemberSnapshot.team_id == team.id)
@@ -385,10 +385,10 @@ class TeamService:
 
         processed_count = 0
         for email in sorted(snapshot_emails):
-            await warranty_team_whitelist_service.ensure_manual_entry(
+            await email_whitelist_service.ensure_manual_entry(
                 db_session=db_session,
                 email=email,
-                source=warranty_team_whitelist_service.SOURCE_MANUAL_PULL,
+                source=email_whitelist_service.SOURCE_MANUAL_PULL,
                 last_warranty_team_id=team.id,
                 commit=False,
                 reactivate_existing=False,
@@ -398,7 +398,7 @@ class TeamService:
         if processed_count:
             await db_session.flush()
             logger.info(
-                "已从历史成员快照补写质保 Team 白名单: team_id=%s count=%s",
+                "已从历史成员快照补写邮箱白名单: team_id=%s count=%s",
                 team.id,
                 processed_count,
             )
@@ -464,7 +464,7 @@ class TeamService:
         effective_allowed_emails = (
             set(allowed_emails)
             if allowed_emails is not None
-            else await self._get_bound_code_allowed_emails(team.id, db_session)
+            else await self._get_email_cleanup_allowed_emails(db_session)
         )
         owner_email = self._normalize_member_email(team.email)
         if owner_email:
@@ -2081,11 +2081,11 @@ class TeamService:
             should_cleanup_warranty_team = team.team_type == TEAM_TYPE_WARRANTY
 
             if should_cleanup_standard_team:
-                cleanup_allowed_emails = await self._get_bound_code_allowed_emails(team.id, db_session)
+                cleanup_allowed_emails = await self._get_email_cleanup_allowed_emails(db_session)
                 cleanup_scope_label = "标准 Team"
             elif should_cleanup_warranty_team:
                 await self._backfill_manual_warranty_whitelist_from_snapshots(team, db_session)
-                cleanup_allowed_emails = await self._get_warranty_cleanup_allowed_emails(db_session)
+                cleanup_allowed_emails = await self._get_email_cleanup_allowed_emails(db_session)
                 cleanup_scope_label = "质保 Team"
 
             if should_cleanup_standard_team or should_cleanup_warranty_team:
@@ -2684,12 +2684,11 @@ class TeamService:
                     "allow_try_next_team": True
                 }
 
-            if team.team_type == TEAM_TYPE_WARRANTY:
-                await self._ensure_manual_warranty_email_whitelist(
-                    email,
-                    db_session,
-                    last_warranty_team_id=team.id,
-                )
+            await self._ensure_manual_email_whitelist(
+                email,
+                db_session,
+                last_warranty_team_id=team.id,
+            )
 
             # 5. 更新成员数并二次校验邀请是否真的生效 (循环检测 3 次，防止接口返回 200 但实际延迟入库)
             is_verified = False

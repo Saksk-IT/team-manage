@@ -201,16 +201,16 @@ class WarrantyEmailEntry(Base):
     )
 
 
-class WarrantyTeamWhitelistEntry(Base):
-    """质保 Team 白名单表"""
+class EmailWhitelistEntry(Base):
+    """邮箱白名单表"""
     __tablename__ = "warranty_team_whitelist_entries"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     email = Column(String(255), unique=True, nullable=False, comment="白名单邮箱（统一小写）")
-    source = Column(String(30), nullable=False, default="manual", comment="来源: warranty_email/manual/manual_pull")
-    is_active = Column(Boolean, default=True, nullable=False, comment="是否启用白名单保护")
+    source = Column(String(30), nullable=False, default="manual", comment="来源: console_team/warranty_email/manual/manual_pull")
+    is_active = Column(Boolean, default=True, nullable=False, comment="是否启用自动清理保护")
     note = Column(Text, comment="备注")
-    last_warranty_team_id = Column(Integer, ForeignKey("teams.id"), comment="最近关联质保 Team ID")
+    last_warranty_team_id = Column(Integer, ForeignKey("teams.id"), comment="最近关联 Team ID")
     created_at = Column(DateTime, default=get_now, nullable=False, comment="创建时间")
     updated_at = Column(DateTime, default=get_now, onupdate=get_now, nullable=False, comment="更新时间")
 
@@ -219,6 +219,10 @@ class WarrantyTeamWhitelistEntry(Base):
         Index("idx_warranty_team_whitelist_source", "source"),
         Index("idx_warranty_team_whitelist_active", "is_active"),
     )
+
+
+# 兼容旧代码路径：物理表仍沿用既有表名，业务语义升级为全局邮箱白名单。
+WarrantyTeamWhitelistEntry = EmailWhitelistEntry
 
 
 class WarrantyClaimRecord(Base):
