@@ -138,6 +138,16 @@
                             {% endif %}
                         </section>
 
+                        {% if show_front_announcement %}
+                        <section class="card side-card side-card--announcement front-announcement-card" id="frontAnnouncement">
+                            <div class="side-card-title">
+                                <i data-lucide="megaphone"></i>
+                                <span>公告通知</span>
+                            </div>
+                            <div class="side-card-text">{{ front_announcement.content }}</div>
+                        </section>
+                        {% endif %}
+
                         <section class="card lookup-card" aria-labelledby="lookupCardTitle">
                             <div class="section-heading section-heading--compact">
                                 <div class="section-kicker">Self service</div>
@@ -209,16 +219,6 @@
                             </div>
                         </div>
                     </section>
-
-                    {% if show_front_announcement %}
-                    <section class="card side-card side-card--announcement" id="frontAnnouncement">
-                        <div class="side-card-title">
-                            <i data-lucide="megaphone"></i>
-                            <span>公告通知</span>
-                        </div>
-                        <div class="side-card-text">{{ front_announcement.content }}</div>
-                    </section>
-                    {% endif %}
 
                     {% if show_purchase_link %}
                     <section class="card side-card side-card--purchase">
