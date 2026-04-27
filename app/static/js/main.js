@@ -859,6 +859,7 @@ async function generateSingle(event) {
         document.getElementById('generatedCode').textContent = result.data.code;
         document.getElementById('singleResult').style.display = 'block';
         form.reset();
+        resetCodeGenerationForm(form, 'single-warranty-days-group');
         updateCodeGenerationCapacity(1);
         showToast('兑换码生成成功', 'success');
         // 如果在列表中，延迟刷新
@@ -907,6 +908,7 @@ async function generateBatch(event) {
         document.getElementById('batchCodes').value = result.data.codes.join('\n');
         document.getElementById('batchResult').style.display = 'block';
         form.reset();
+        resetCodeGenerationForm(form, 'batch-warranty-days-group');
         updateCodeGenerationCapacity(result.data.total);
         showToast(`成功生成 ${result.data.total} 个兑换码`, 'success');
         if (window.location.pathname === '/admin/codes') {

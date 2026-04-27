@@ -289,6 +289,21 @@
         </div>
     </div>
 
+    {% macro code_generation_preset_panel(scope) %}
+    <div class="form-group code-preset-panel" data-code-preset-scope="{{ scope }}">
+        <label>生成预设</label>
+        <small class="form-text">可一键填入有效期、质保天数和质保次数；应用后会自动勾选质保兑换码。</small>
+        <div class="code-preset-list" data-code-preset-list="{{ scope }}" aria-label="生成兑换码预设"></div>
+        <div class="code-preset-custom-row">
+            <input type="text" name="presetName" class="form-control" placeholder="自定义预设名称" maxlength="20"
+                autocomplete="off">
+            <button type="button" class="btn btn-sm btn-secondary" onclick="saveCodeGenerationPreset(this)">
+                保存当前为预设
+            </button>
+        </div>
+    </div>
+    {% endmacro %}
+
     <!-- 生成兑换码 模态框 -->
     {% set code_generation_stats = stats if active_page == 'codes' and stats is defined else {} %}
     {% set code_available_seats = code_generation_stats.available_seats if code_generation_stats.available_seats is defined else 0 %}
@@ -320,6 +335,7 @@
                             <input type="text" name="customCode" class="form-control" placeholder="留空则自动生成"
                                 maxlength="32">
                         </div>
+                        {{ code_generation_preset_panel('single') }}
                         <div class="form-group">
                             <label>有效期 (天数, 可选)</label>
                             <input type="number" name="expiresDays" class="form-control" placeholder="留空则永久有效" min="1"
@@ -331,7 +347,7 @@
                                     onchange="toggleWarrantyDays(this, 'single-warranty-days-group')">
                                 <span>质保兑换码（使用后加入质保邮箱列表）</span>
                             </label>
-                            <small class="form-text">兑换成功后会把使用邮箱加入质保邮箱列表，并赋予下方设置的剩余天数和默认 10 次质保次数。</small>
+                            <small class="form-text">兑换成功后会把使用邮箱加入质保邮箱列表，并赋予预设或下方设置的剩余天数和次数（默认 10 次质保次数）。</small>
                         </div>
                         <div class="form-group" id="single-warranty-days-group" style="display: none;">
                             <label>质保邮箱初始剩余天数 (天) *</label>
@@ -375,6 +391,7 @@
                                 <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'count', 20)">20</button>
                             </div>
                         </div>
+                        {{ code_generation_preset_panel('batch') }}
                         <div class="form-group">
                             <label>有效期 (天数, 可选)</label>
                             <input type="number" name="expiresDays" class="form-control" placeholder="留空则永久有效" min="1"
@@ -386,7 +403,7 @@
                                     onchange="toggleWarrantyDays(this, 'batch-warranty-days-group')">
                                 <span>质保兑换码（使用后加入质保邮箱列表）</span>
                             </label>
-                            <small class="form-text">兑换成功后会把使用邮箱加入质保邮箱列表，并赋予下方设置的剩余天数和默认 10 次质保次数。</small>
+                            <small class="form-text">兑换成功后会把使用邮箱加入质保邮箱列表，并赋予预设或下方设置的剩余天数和次数（默认 10 次质保次数）。</small>
                         </div>
                         <div class="form-group" id="batch-warranty-days-group" style="display: none;">
                             <label>质保邮箱初始剩余天数 (天) *</label>
@@ -494,6 +511,7 @@
 
     <script src="/static/js/system-dialog.js"></script>
     <script src="/static/js/main.js"></script>
+    <script src="/static/js/code_generation_presets.js"></script>
     <script>
         lucide.createIcons();
     </script>
