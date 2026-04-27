@@ -126,41 +126,69 @@
                 {% endif %}
             </form>
             {% else %}
-            <div class="dropdown-wrapper">
-                <button class="btn btn-secondary dropdown-toggle" onclick="toggleDropdown('statusFilterDropdown')">
-                    <i data-lucide="filter" style="width: 16px; height: 16px;"></i>
-                    <span>
-                        {% if status_filter == 'active' %}可用
-                        {% elif status_filter == 'full' %}已满
-                        {% elif status_filter == 'expired' %}已过期
-                        {% elif status_filter == 'error' %}异常
-                        {% elif status_filter == 'banned' %}已封禁
-                        {% else %}状态筛选
-                        {% endif %}
-                    </span>
-                </button>
-                <div id="statusFilterDropdown" class="dropdown-menu">
-                    <div class="dropdown-header">选择状态</div>
-                    <div class="dropdown-item" onclick="filterByStatus('')">
-                        <span class="text-muted">所有状态</span>
+            <form action="{{ request.url.path }}" method="get" class="team-filter-form" aria-label="Team 多重筛选">
+                {% if search %}
+                <input type="hidden" name="search" value="{{ search }}">
+                {% endif %}
+                {% if pagination and pagination.per_page != 20 %}
+                <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+                {% endif %}
+                <label class="team-filter-field">
+                    <span>导入时间</span>
+                    <div class="filter-range-inputs">
+                        <input type="date" name="imported_from" value="{{ imported_from_filter or '' }}" class="form-control"
+                            aria-label="导入开始日期">
+                        <span>至</span>
+                        <input type="date" name="imported_to" value="{{ imported_to_filter or '' }}" class="form-control"
+                            aria-label="导入结束日期">
                     </div>
-                    <div class="dropdown-item" onclick="filterByStatus('active')">
-                        <span class="status-badge status-active">可用 (Active)</span>
+                </label>
+                <label class="team-filter-field">
+                    <span>到期时间</span>
+                    <div class="filter-range-inputs">
+                        <input type="date" name="expires_from" value="{{ expires_from_filter or '' }}" class="form-control"
+                            aria-label="到期开始日期">
+                        <span>至</span>
+                        <input type="date" name="expires_to" value="{{ expires_to_filter or '' }}" class="form-control"
+                            aria-label="到期结束日期">
                     </div>
-                    <div class="dropdown-item" onclick="filterByStatus('full')">
-                        <span class="status-badge status-full">已满 (Full)</span>
+                </label>
+                <label class="team-filter-field">
+                    <span>设备验证</span>
+                    <select name="device_auth" class="form-control" aria-label="设备验证筛选">
+                        <option value="" {% if not device_auth_filter %}selected{% endif %}>全部</option>
+                        <option value="enabled" {% if device_auth_filter == 'enabled' %}selected{% endif %}>已开启</option>
+                        <option value="disabled" {% if device_auth_filter == 'disabled' %}selected{% endif %}>未开启</option>
+                    </select>
+                </label>
+                <label class="team-filter-field">
+                    <span>状态</span>
+                    <select name="status" class="form-control" aria-label="Team 状态筛选">
+                        <option value="" {% if not status_filter %}selected{% endif %}>全部</option>
+                        <option value="active" {% if status_filter == 'active' %}selected{% endif %}>可用</option>
+                        <option value="full" {% if status_filter == 'full' %}selected{% endif %}>已满</option>
+                        <option value="expired" {% if status_filter == 'expired' %}selected{% endif %}>已过期</option>
+                        <option value="error" {% if status_filter == 'error' %}selected{% endif %}>异常</option>
+                        <option value="banned" {% if status_filter == 'banned' %}selected{% endif %}>已封禁</option>
+                    </select>
+                </label>
+                <label class="team-filter-field">
+                    <span>成员数</span>
+                    <div class="filter-range-inputs">
+                        <input type="number" name="members_min" value="{{ members_min_filter }}" min="0" class="form-control"
+                            placeholder="最小" aria-label="成员数最小值">
+                        <span>至</span>
+                        <input type="number" name="members_max" value="{{ members_max_filter }}" min="0" class="form-control"
+                            placeholder="最大" aria-label="成员数最大值">
                     </div>
-                    <div class="dropdown-item" onclick="filterByStatus('expired')">
-                        <span class="status-badge status-expired">已过期 (Expired)</span>
-                    </div>
-                    <div class="dropdown-item" onclick="filterByStatus('error')">
-                        <span class="status-badge status-error">异常 (Error)</span>
-                    </div>
-                    <div class="dropdown-item" onclick="filterByStatus('banned')">
-                        <span class="status-badge status-banned">已封禁 (Banned)</span>
-                    </div>
+                </label>
+                <div class="team-filter-actions">
+                    <button type="submit" class="btn btn-secondary btn-sm">筛选</button>
+                    {% if status_filter or imported_from_filter or imported_to_filter or expires_from_filter or expires_to_filter or device_auth_filter or members_min_filter != '' or members_max_filter != '' %}
+                    <a href="{{ request.url.path }}" class="btn btn-minimal btn-sm">清空</a>
+                    {% endif %}
                 </div>
-            </div>
+            </form>
             {% endif %}
 
             <!-- 搜索框 -->
@@ -191,6 +219,21 @@
                     {% endif %}
                     {% if imported_to_filter %}
                     <input type="hidden" name="imported_to" value="{{ imported_to_filter }}">
+                    {% endif %}
+                    {% if expires_from_filter %}
+                    <input type="hidden" name="expires_from" value="{{ expires_from_filter }}">
+                    {% endif %}
+                    {% if expires_to_filter %}
+                    <input type="hidden" name="expires_to" value="{{ expires_to_filter }}">
+                    {% endif %}
+                    {% if device_auth_filter %}
+                    <input type="hidden" name="device_auth" value="{{ device_auth_filter }}">
+                    {% endif %}
+                    {% if members_min_filter != '' %}
+                    <input type="hidden" name="members_min" value="{{ members_min_filter }}">
+                    {% endif %}
+                    {% if members_max_filter != '' %}
+                    <input type="hidden" name="members_max" value="{{ members_max_filter }}">
                     {% endif %}
                     {% if pagination and pagination.per_page != 20 %}
                     <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
@@ -407,10 +450,16 @@
     {% set status_param = '&status=' + status_filter|urlencode if status_filter else '' %}
     {% set review_status_param = '&review_status=' + review_status_filter|urlencode if review_status_filter else '' %}
     {% set import_tag_param = '&import_tag=' + import_tag_filter|urlencode if import_tag_filter else '' %}
+    {% set imported_by_user_id_param = '&imported_by_user_id=' + imported_by_user_id_filter|string if imported_by_user_id_filter else '' %}
     {% set imported_from_param = '&imported_from=' + imported_from_filter|urlencode if imported_from_filter else '' %}
     {% set imported_to_param = '&imported_to=' + imported_to_filter|urlencode if imported_to_filter else '' %}
+    {% set expires_from_param = '&expires_from=' + expires_from_filter|urlencode if expires_from_filter else '' %}
+    {% set expires_to_param = '&expires_to=' + expires_to_filter|urlencode if expires_to_filter else '' %}
+    {% set device_auth_param = '&device_auth=' + device_auth_filter|urlencode if device_auth_filter else '' %}
+    {% set members_min_param = '&members_min=' + members_min_filter|string if members_min_filter != '' else '' %}
+    {% set members_max_param = '&members_max=' + members_max_filter|string if members_max_filter != '' else '' %}
     {% set per_page_param = '&per_page=' + pagination.per_page|string if pagination.per_page != 20 else '' %}
-    {% set base_query = search_param + status_param + review_status_param + import_tag_param + imported_from_param + imported_to_param + per_page_param %}
+    {% set base_query = search_param + status_param + review_status_param + import_tag_param + imported_by_user_id_param + imported_from_param + imported_to_param + expires_from_param + expires_to_param + device_auth_param + members_min_param + members_max_param + per_page_param %}
 
     <div class="pagination-controls">
         <!-- 首页 -->

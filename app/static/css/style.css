@@ -499,6 +499,52 @@ body.admin-shell {
     font-size: 0.8125rem;
 }
 
+.team-filter-form {
+    flex: 1 1 760px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    align-items: end;
+}
+
+.team-filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin: 0;
+    min-width: 0;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.team-filter-field .form-control {
+    width: 100%;
+    min-height: 38px;
+    font-size: 0.8125rem;
+    color: var(--text-main);
+}
+
+.filter-range-inputs {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.filter-range-inputs span {
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.team-filter-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
 /* Filter Tabs */
 .filter-tabs {
     display: flex;
@@ -1609,6 +1655,19 @@ body.admin-shell {
     .review-filter-form,
     .review-filter-form .form-control {
         width: 100%;
+    }
+
+    .team-filter-form {
+        width: 100%;
+        grid-template-columns: 1fr;
+    }
+
+    .filter-range-inputs {
+        grid-template-columns: 1fr;
+    }
+
+    .filter-range-inputs span {
+        display: none;
     }
 
     .header-actions {

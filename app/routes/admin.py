@@ -304,6 +304,29 @@ def _parse_import_date_filter_range(
     return parsed_imported_from, parsed_imported_to
 
 
+def _parse_expiry_date_filter_range(
+    expires_from: Optional[str],
+    expires_to: Optional[str],
+) -> tuple[Optional[datetime], Optional[datetime]]:
+    parsed_expires_from = _parse_code_filter_datetime(
+        expires_from,
+        is_end=False,
+        label="到期开始时间"
+    )
+    parsed_expires_to = _parse_code_filter_datetime(
+        expires_to,
+        is_end=True,
+        label="到期结束时间"
+    )
+    if parsed_expires_from and parsed_expires_to and parsed_expires_from > parsed_expires_to:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="到期开始时间不能晚于结束时间"
+        )
+
+    return parsed_expires_from, parsed_expires_to
+
+
 def _validate_code_filter_range(
     min_value: Optional[int],
     max_value: Optional[int],
@@ -355,6 +378,53 @@ def _parse_optional_int_filter(
         )
 
     return parsed_value
+
+
+def _parse_member_count_filter_range(
+    members_min: Optional[Any],
+    members_max: Optional[Any],
+) -> tuple[Optional[int], Optional[int]]:
+    parsed_members_min = _parse_optional_int_filter(
+        members_min,
+        label="成员数最小值",
+        min_value=0
+    )
+    parsed_members_max = _parse_optional_int_filter(
+        members_max,
+        label="成员数最大值",
+        min_value=0
+    )
+    _validate_code_filter_range(parsed_members_min, parsed_members_max, "成员数")
+
+    return parsed_members_min, parsed_members_max
+
+
+def _normalize_team_status_filter(value: Optional[str]) -> Optional[str]:
+    normalized_value = _normalize_optional_filter_text(value)
+    if normalized_value is None:
+        return None
+
+    if normalized_value not in {"active", "full", "expired", "error", "banned"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="无效的 Team 状态筛选"
+        )
+
+    return normalized_value
+
+
+def _normalize_device_auth_filter(value: Optional[str]) -> Optional[str]:
+    normalized_value = _normalize_optional_filter_text(value)
+    if normalized_value is None:
+        return None
+
+    if normalized_value not in {"enabled", "disabled"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="无效的设备验证筛选"
+        )
+
+    return normalized_value
 
 
 def _build_code_filter_kwargs(
@@ -842,17 +912,29 @@ async def _render_team_dashboard_page(
     imported_by_user_id_filter: Optional[int] = None,
     imported_from: Optional[str] = None,
     imported_to: Optional[str] = None,
+    expires_from: Optional[str] = None,
+    expires_to: Optional[str] = None,
+    device_auth: Optional[str] = None,
+    members_min: Optional[Any] = None,
+    members_max: Optional[Any] = None,
 ):
     from app.main import templates
 
     is_review_mode = active_page in {"pending_teams", "import_only"}
+    normalized_status = _normalize_team_status_filter(status)
     normalized_review_status = _normalize_review_status_filter(review_status) if is_review_mode else None
     normalized_import_tag = _normalize_import_tag_filter(import_tag) if is_review_mode else None
-    parsed_imported_from, parsed_imported_to = (
-        _parse_import_date_filter_range(imported_from, imported_to)
-        if is_review_mode
-        else (None, None)
+    parsed_imported_from, parsed_imported_to = _parse_import_date_filter_range(imported_from, imported_to)
+    parsed_expires_from, parsed_expires_to = _parse_expiry_date_filter_range(expires_from, expires_to)
+    normalized_device_auth = _normalize_device_auth_filter(device_auth)
+    device_auth_enabled = (
+        True
+        if normalized_device_auth == "enabled"
+        else False
+        if normalized_device_auth == "disabled"
+        else None
     )
+    parsed_members_min, parsed_members_max = _parse_member_count_filter_range(members_min, members_max)
     effective_import_status = normalized_review_status if is_review_mode else import_status
     importer_options = await auth_service.list_sub_admins(db) if active_page == "pending_teams" else []
 
@@ -862,7 +944,7 @@ async def _render_team_dashboard_page(
         page=page,
         per_page=per_page,
         search=search,
-        status=status,
+        status=normalized_status,
         team_type=team_type,
         import_status=effective_import_status,
         imported_by_user_id=imported_by_user_id if imported_by_user_id is not None else imported_by_user_id_filter,
@@ -870,6 +952,11 @@ async def _render_team_dashboard_page(
         import_tag=normalized_import_tag,
         imported_from=parsed_imported_from,
         imported_to=parsed_imported_to,
+        expires_from=parsed_expires_from,
+        expires_to=parsed_expires_to,
+        device_auth_enabled=device_auth_enabled,
+        members_min=parsed_members_min,
+        members_max=parsed_members_max,
     )
     team_stats = await team_service.get_stats(db, team_type=team_type) if import_status == IMPORT_STATUS_CLASSIFIED and team_type else {"total": teams_result.get("total", 0), "available": 0, "total_seats": 0, "remaining_seats": 0}
 
@@ -912,12 +999,17 @@ async def _render_team_dashboard_page(
             teams=teams_result.get("teams", []),
             stats=stats,
             search=search,
-            status_filter=status,
+            status_filter=normalized_status,
             review_status_filter=normalized_review_status,
             import_tag_filter=normalized_import_tag,
             imported_by_user_id_filter=imported_by_user_id_filter,
             imported_from_filter=imported_from or "",
             imported_to_filter=imported_to or "",
+            expires_from_filter=expires_from or "",
+            expires_to_filter=expires_to or "",
+            device_auth_filter=normalized_device_auth or "",
+            members_min_filter=parsed_members_min if parsed_members_min is not None else "",
+            members_max_filter=parsed_members_max if parsed_members_max is not None else "",
             import_tag_options=[
                 {"value": value, "label": label}
                 for value, label in IMPORT_TAG_LABELS.items()
@@ -942,6 +1034,13 @@ async def admin_dashboard(
     per_page: int = 20,
     search: Optional[str] = None,
     status: Optional[str] = None,
+    imported_from: Optional[str] = None,
+    imported_to: Optional[str] = None,
+    expires_from: Optional[str] = None,
+    expires_to: Optional[str] = None,
+    device_auth: Optional[str] = None,
+    members_min: Optional[str] = None,
+    members_max: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
@@ -960,8 +1059,17 @@ async def admin_dashboard(
             status=status,
             team_type=TEAM_TYPE_STANDARD,
             active_page="dashboard",
-            page_title="控制台"
+            page_title="控制台",
+            imported_from=imported_from,
+            imported_to=imported_to,
+            expires_from=expires_from,
+            expires_to=expires_to,
+            device_auth=device_auth,
+            members_min=members_min,
+            members_max=members_max,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"加载管理员面板失败: {e}")
         import traceback

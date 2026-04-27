@@ -3006,6 +3006,11 @@ class TeamService:
         import_tag: Optional[str] = None,
         imported_from: Optional[datetime] = None,
         imported_to: Optional[datetime] = None,
+        expires_from: Optional[datetime] = None,
+        expires_to: Optional[datetime] = None,
+        device_auth_enabled: Optional[bool] = None,
+        members_min: Optional[int] = None,
+        members_max: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         获取所有 Team 列表 (用于管理员页面)
@@ -3028,7 +3033,7 @@ class TeamService:
             
             # 2. 如果有搜索词,添加过滤条件
             if search:
-                from sqlalchemy import or_, cast, String
+                from sqlalchemy import cast, String
                 search_filter = f"%{search}%"
                 stmt = stmt.where(
                     or_(
@@ -3067,6 +3072,28 @@ class TeamService:
 
             if imported_to:
                 stmt = stmt.where(Team.created_at <= imported_to)
+
+            if expires_from:
+                stmt = stmt.where(Team.expires_at >= expires_from)
+
+            if expires_to:
+                stmt = stmt.where(Team.expires_at <= expires_to)
+
+            if device_auth_enabled is True:
+                stmt = stmt.where(Team.device_code_auth_enabled.is_(True))
+            elif device_auth_enabled is False:
+                stmt = stmt.where(
+                    or_(
+                        Team.device_code_auth_enabled.is_(False),
+                        Team.device_code_auth_enabled.is_(None),
+                    )
+                )
+
+            if members_min is not None:
+                stmt = stmt.where(Team.current_members >= members_min)
+
+            if members_max is not None:
+                stmt = stmt.where(Team.current_members <= members_max)
 
             # 4. 获取总数
             count_stmt = select(func.count()).select_from(stmt.subquery())
