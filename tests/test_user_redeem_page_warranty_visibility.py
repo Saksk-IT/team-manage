@@ -27,6 +27,13 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
                 "text_content": ""
             })
         ), patch(
+            "app.services.settings.settings_service.get_purchase_link_config",
+            new=AsyncMock(return_value={
+                "enabled": False,
+                "url": "",
+                "button_text": ""
+            })
+        ), patch(
             "app.services.settings.settings_service.get_warranty_service_config",
             new=AsyncMock(return_value={"enabled": False})
         ), patch(
@@ -51,6 +58,7 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("公告通知", html)
         self.assertNotIn("客服支持", html)
         self.assertNotIn('id="customerServiceFab"', html)
+        self.assertNotIn('id="purchaseLinkButton"', html)
         self.assertIn("warrantyServiceEnabled: false", html)
         self.assertIn("warrantyFakeSuccessEnabled: false", html)
 
@@ -72,6 +80,13 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
                 "link_url": "https://example.com/contact",
                 "link_text": "联系客服",
                 "text_content": "微信：support001"
+            })
+        ), patch(
+            "app.services.settings.settings_service.get_purchase_link_config",
+            new=AsyncMock(return_value={
+                "enabled": True,
+                "url": "https://example.com/buy",
+                "button_text": "购买套餐"
             })
         ), patch(
             "app.services.settings.settings_service.get_warranty_service_config",
@@ -97,6 +112,9 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("查看状态", html)
         self.assertIn("公告通知", html)
         self.assertIn("系统公告：今晚 10 点维护", html)
+        self.assertIn('id="purchaseLinkButton"', html)
+        self.assertIn('href="https://example.com/buy"', html)
+        self.assertIn("购买套餐", html)
         self.assertIn("客服支持", html)
         self.assertIn('id="customerServiceFab"', html)
         self.assertIn('id="customerServicePanel"', html)

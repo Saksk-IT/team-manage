@@ -25,6 +25,9 @@ class SettingsService:
     CUSTOMER_SERVICE_LINK_URL_KEY = "customer_service_link_url"
     CUSTOMER_SERVICE_LINK_TEXT_KEY = "customer_service_link_text"
     CUSTOMER_SERVICE_TEXT_KEY = "customer_service_text"
+    PURCHASE_LINK_ENABLED_KEY = "purchase_link_enabled"
+    PURCHASE_LINK_URL_KEY = "purchase_link_url"
+    PURCHASE_LINK_BUTTON_TEXT_KEY = "purchase_link_button_text"
     WARRANTY_SERVICE_ENABLED_KEY = "warranty_service_enabled"
     WARRANTY_USAGE_LIMIT_SUPER_CODE_KEY = "warranty_usage_limit_super_code"
     WARRANTY_USAGE_LIMIT_MAX_USES_KEY = "warranty_usage_limit_max_uses"
@@ -39,6 +42,7 @@ class SettingsService:
     DEFAULT_TEAM_MAX_MEMBERS = 5
     DEFAULT_FRONT_ANNOUNCEMENT_ENABLED = False
     DEFAULT_CUSTOMER_SERVICE_ENABLED = False
+    DEFAULT_PURCHASE_LINK_ENABLED = False
     WARRANTY_FAKE_SUCCESS_MIN_SPOTS = 60
     WARRANTY_FAKE_SUCCESS_MAX_SPOTS = 100
     TEAM_AUTO_REFRESH_ENABLED_KEY = "team_auto_refresh_enabled"
@@ -297,6 +301,52 @@ class SettingsService:
                 self.CUSTOMER_SERVICE_LINK_URL_KEY: normalized_link_url,
                 self.CUSTOMER_SERVICE_LINK_TEXT_KEY: normalized_link_text or ("立即联系" if normalized_link_url else ""),
                 self.CUSTOMER_SERVICE_TEXT_KEY: (text_content or "").strip()
+            }
+        )
+
+    async def get_purchase_link_config(self, session: AsyncSession) -> Dict[str, str | bool]:
+        """
+        获取前台商品购买链接配置。
+        """
+        enabled_raw = await self.get_setting(
+            session,
+            self.PURCHASE_LINK_ENABLED_KEY,
+            str(self.DEFAULT_PURCHASE_LINK_ENABLED).lower()
+        )
+        url = await self.get_setting(session, self.PURCHASE_LINK_URL_KEY, "")
+        button_text = await self.get_setting(session, self.PURCHASE_LINK_BUTTON_TEXT_KEY, "")
+
+        normalized_url = (url or "").strip()
+        normalized_button_text = (button_text or "").strip()
+
+        return {
+            "enabled": self._parse_bool(
+                enabled_raw,
+                self.DEFAULT_PURCHASE_LINK_ENABLED
+            ),
+            "url": normalized_url,
+            "button_text": normalized_button_text or ("立即购买" if normalized_url else "")
+        }
+
+    async def update_purchase_link_config(
+        self,
+        session: AsyncSession,
+        enabled: bool,
+        url: str = "",
+        button_text: str = ""
+    ) -> bool:
+        """
+        更新前台商品购买链接配置。
+        """
+        normalized_url = (url or "").strip()
+        normalized_button_text = (button_text or "").strip()
+
+        return await self.update_settings(
+            session,
+            {
+                self.PURCHASE_LINK_ENABLED_KEY: str(bool(enabled)).lower(),
+                self.PURCHASE_LINK_URL_KEY: normalized_url,
+                self.PURCHASE_LINK_BUTTON_TEXT_KEY: normalized_button_text or ("立即购买" if normalized_url else "")
             }
         )
 

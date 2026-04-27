@@ -398,6 +398,13 @@ class CustomerServiceSettingsRequest(BaseModel):
     text_content: str = Field("", description="客服文字内容", max_length=5000)
 
 
+class PurchaseLinkSettingsRequest(BaseModel):
+    """前台商品购买链接设置请求"""
+    enabled: bool = Field(..., description="是否启用前台商品购买链接")
+    url: str = Field("", description="商品购买链接", max_length=2000)
+    button_text: str = Field("", description="按钮名称", max_length=200)
+
+
 @dataclass
 class BatchActionJobState:
     job_id: str
@@ -2717,8 +2724,6 @@ async def settings_page(
         log_level = await settings_service.get_log_level(db)
         team_auto_refresh_config = await settings_service.get_team_auto_refresh_config(db)
         default_team_max_members = await settings_service.get_default_team_max_members(db)
-        front_announcement_config = await settings_service.get_front_announcement_config(db)
-        customer_service_config = await settings_service.get_customer_service_config(db)
         warranty_service_config = await settings_service.get_warranty_service_config(db)
         warranty_fake_success_config = await settings_service.get_warranty_fake_success_config(db)
 
@@ -2735,13 +2740,6 @@ async def settings_page(
                 "team_auto_refresh_enabled": team_auto_refresh_config["enabled"],
                 "team_auto_refresh_interval_minutes": team_auto_refresh_config["interval_minutes"],
                 "default_team_max_members": default_team_max_members,
-                "front_announcement_enabled": front_announcement_config["enabled"],
-                "front_announcement_content": front_announcement_config["content"],
-                "customer_service_enabled": customer_service_config["enabled"],
-                "customer_service_qr_code_url": customer_service_config["qr_code_url"],
-                "customer_service_link_url": customer_service_config["link_url"],
-                "customer_service_link_text": customer_service_config["link_text"],
-                "customer_service_text_content": customer_service_config["text_content"],
                 "warranty_service_enabled": warranty_service_config["enabled"],
                 "warranty_fake_success_enabled": warranty_fake_success_config["enabled"],
                 "webhook_url": await settings_service.get_setting(db, "webhook_url", ""),
@@ -2755,6 +2753,52 @@ async def settings_page(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取系统设置失败: {str(e)}"
+        )
+
+
+@router.get("/front-page", response_class=HTMLResponse)
+async def front_page_settings_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """
+    前台页面设置页面。
+    """
+    try:
+        from app.main import templates
+
+        logger.info("管理员访问前台页面设置")
+
+        front_announcement_config = await settings_service.get_front_announcement_config(db)
+        customer_service_config = await settings_service.get_customer_service_config(db)
+        purchase_link_config = await settings_service.get_purchase_link_config(db)
+
+        return templates.TemplateResponse(
+            request,
+            "admin/front_page/index.html",
+            {
+                "request": request,
+                "user": current_user,
+                "active_page": "front_page",
+                "front_announcement_enabled": front_announcement_config["enabled"],
+                "front_announcement_content": front_announcement_config["content"],
+                "customer_service_enabled": customer_service_config["enabled"],
+                "customer_service_qr_code_url": customer_service_config["qr_code_url"],
+                "customer_service_link_url": customer_service_config["link_url"],
+                "customer_service_link_text": customer_service_config["link_text"],
+                "customer_service_text_content": customer_service_config["text_content"],
+                "purchase_link_enabled": purchase_link_config["enabled"],
+                "purchase_link_url": purchase_link_config["url"],
+                "purchase_link_button_text": purchase_link_config["button_text"],
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"获取前台页面设置失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取前台页面设置失败: {str(e)}"
         )
 
 
@@ -2800,6 +2844,7 @@ class WarrantyFakeSuccessSettingsRequest(BaseModel):
     enabled: bool = Field(..., description="是否启用前台质保模拟成功")
 
 
+@router.post("/front-page/announcement")
 @router.post("/settings/front-announcement")
 async def update_front_announcement_settings(
     announcement_data: FrontAnnouncementSettingsRequest,
@@ -2837,6 +2882,7 @@ async def update_front_announcement_settings(
         )
 
 
+@router.post("/front-page/customer-service")
 @router.post("/settings/customer-service")
 async def update_customer_service_settings(
     customer_service_data: CustomerServiceSettingsRequest,
@@ -2895,6 +2941,59 @@ async def update_customer_service_settings(
         )
 
 
+@router.post("/front-page/purchase-link")
+async def update_purchase_link_settings(
+    purchase_link_data: PurchaseLinkSettingsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """
+    更新前台商品购买链接配置。
+    """
+    try:
+        url = (purchase_link_data.url or "").strip()
+        if purchase_link_data.enabled and not url:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "开启商品购买按钮时必须填写商品购买链接"}
+            )
+
+        if not _is_valid_http_url(url):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "商品购买链接必须是有效的 http/https 链接"}
+            )
+
+        logger.info(
+            "管理员更新前台商品购买链接: enabled=%s has_url=%s button_text_length=%s",
+            purchase_link_data.enabled,
+            bool(url),
+            len((purchase_link_data.button_text or "").strip())
+        )
+
+        success = await settings_service.update_purchase_link_config(
+            db,
+            purchase_link_data.enabled,
+            purchase_link_data.url,
+            purchase_link_data.button_text
+        )
+
+        if success:
+            return JSONResponse(content={"success": True, "message": "商品购买链接已保存"})
+
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": "保存失败"}
+        )
+    except Exception as e:
+        logger.error(f"更新前台商品购买链接失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"更新失败: {str(e)}"}
+        )
+
+
+@router.post("/front-page/customer-service/upload-image")
 @router.post("/settings/customer-service/upload-image")
 async def upload_customer_service_image(
     image: UploadFile = File(...),

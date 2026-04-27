@@ -14,6 +14,7 @@
 <body>
     {% set show_front_announcement = front_announcement.enabled and front_announcement.content %}
     {% set show_customer_service = customer_service.enabled and (customer_service.qr_code_url or customer_service.link_url or customer_service.text_content) %}
+    {% set show_purchase_link = purchase_link.enabled and purchase_link.url %}
     {% if show_front_announcement %}
         {% set page_shell_class = 'page-shell page-shell--with-left' %}
     {% else %}
@@ -30,6 +31,20 @@
             </div>
             {% endif %}
         </div>
+
+        {% if show_purchase_link %}
+        <div class="purchase-link-panel">
+            <a
+                id="purchaseLinkButton"
+                href="{{ purchase_link.url }}"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-primary purchase-link-button"
+            >
+                <i data-lucide="shopping-cart"></i> {{ purchase_link.button_text or '立即购买' }}
+            </a>
+        </div>
+        {% endif %}
 
         <div class="{{ page_shell_class }}">
             {% if show_front_announcement %}

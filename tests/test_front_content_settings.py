@@ -113,6 +113,45 @@ class FrontContentSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(success)
         self.assertEqual(config["qr_code_url"], "/uploads/customer-service/qrcode.png")
 
+    async def test_get_purchase_link_config_defaults_to_disabled(self):
+        async with self.Session() as session:
+            config = await settings_service.get_purchase_link_config(session)
+
+        self.assertEqual(config, {"enabled": False, "url": "", "button_text": ""})
+
+    async def test_update_purchase_link_config_persists_value(self):
+        async with self.Session() as session:
+            success = await settings_service.update_purchase_link_config(
+                session,
+                True,
+                "https://example.com/buy",
+                "购买套餐"
+            )
+            config = await settings_service.get_purchase_link_config(session)
+
+        self.assertTrue(success)
+        self.assertEqual(
+            config,
+            {
+                "enabled": True,
+                "url": "https://example.com/buy",
+                "button_text": "购买套餐"
+            }
+        )
+
+    async def test_update_purchase_link_config_uses_default_button_text(self):
+        async with self.Session() as session:
+            success = await settings_service.update_purchase_link_config(
+                session,
+                True,
+                "https://example.com/buy",
+                ""
+            )
+            config = await settings_service.get_purchase_link_config(session)
+
+        self.assertTrue(success)
+        self.assertEqual(config["button_text"], "立即购买")
+
 
 if __name__ == "__main__":
     unittest.main()

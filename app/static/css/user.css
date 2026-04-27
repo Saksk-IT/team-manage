@@ -68,6 +68,18 @@ body.transition-open {
     margin-right: auto;
 }
 
+.purchase-link-panel {
+    display: flex;
+    justify-content: center;
+    margin: -1rem auto 1.5rem;
+    width: 100%;
+}
+
+.purchase-link-button {
+    width: min(100%, 480px);
+    min-height: 48px;
+}
+
 .page-shell {
     display: flex;
     flex-direction: column;
@@ -977,6 +989,10 @@ body.transition-open {
 
     .header {
         margin-bottom: 1.5rem;
+    }
+
+    .purchase-link-panel {
+        margin: -0.25rem auto 1rem;
     }
 
     .header h1 {

@@ -28,6 +28,13 @@ class UserRedeemTransitionOverlayTests(unittest.IsolatedAsyncioTestCase):
                 "text_content": ""
             })
         ), patch(
+            "app.services.settings.settings_service.get_purchase_link_config",
+            new=AsyncMock(return_value={
+                "enabled": False,
+                "url": "",
+                "button_text": ""
+            })
+        ), patch(
             "app.services.settings.settings_service.get_warranty_service_config",
             new=AsyncMock(return_value={"enabled": True})
         ), patch(
