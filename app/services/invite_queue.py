@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.models import InviteJob, RedemptionCode, RedemptionRecord, Team, WarrantyEmailEntry
+from app.models import InviteJob, RedemptionCode, RedemptionRecord, Team, TeamMemberSnapshot, WarrantyEmailEntry
 from app.services.email_whitelist import email_whitelist_service
 from app.services.redemption import RedemptionService
 from app.services.team import IMPORT_STATUS_CLASSIFIED, TeamService
@@ -135,9 +135,12 @@ class InviteQueueService:
                         await db_session.rollback()
                     return {"success": False, "error": validate_result.get("reason") or "兑换码不可用"}
 
-                team = await self._reserve_next_available_team(db_session)
+                excluded_team_ids = await self._get_redeem_email_team_ids(db_session, normalized_email)
+                team = await self._reserve_next_available_team(db_session, excluded_team_ids)
                 if not team:
                     await db_session.rollback()
+                    if excluded_team_ids:
+                        return {"success": False, "error": "该邮箱已加入所有可用 Team，请使用其他邮箱或稍后再试"}
                     return {"success": False, "error": "当前没有可用 Team，请稍后再试"}
 
                 redemption_code = await self._get_redemption_code(db_session, normalized_code)
@@ -324,7 +327,17 @@ class InviteQueueService:
                     return
 
                 if not job.team_id or job.reservation_released:
-                    team = await self._reserve_next_available_team(db_session, excluded_team_ids)
+                    if job.job_type == JOB_TYPE_REDEEM:
+                        email_team_ids = await self._get_redeem_email_team_ids(
+                            db_session,
+                            job.email,
+                            exclude_job_id=job.id,
+                        )
+                        reservation_exclusions = [*excluded_team_ids, *email_team_ids]
+                    else:
+                        reservation_exclusions = excluded_team_ids
+
+                    team = await self._reserve_next_available_team(db_session, reservation_exclusions)
                     if not team:
                         await self._mark_job_failed(db_session, job, "当前没有可用 Team，请稍后再试")
                         return
@@ -391,6 +404,18 @@ class InviteQueueService:
             await db_session.commit()
             return {"success": False, "try_next_team": True, "error": "该 Team 已满，请稍后再试"}
 
+        if job.job_type == JOB_TYPE_REDEEM and await self._is_redeem_email_linked_to_team(
+            db_session,
+            job.email,
+            team_id,
+            exclude_job_id=job.id,
+        ):
+            return {
+                "success": False,
+                "try_next_team": True,
+                "error": "该邮箱已在当前 Team 中，正在尝试其他 Team",
+            }
+
         if job.job_type == JOB_TYPE_WARRANTY:
             existing_payload = await self._build_existing_warranty_payload(db_session, job)
             if existing_payload:
@@ -410,7 +435,11 @@ class InviteQueueService:
         if not invite_result.get("success"):
             error_msg = str(invite_result.get("error") or "发送邀请失败")
             if self._is_already_member_error(error_msg):
-                return {"success": True, "payload": await self._build_success_payload(db_session, job, team)}
+                return {
+                    "success": False,
+                    "try_next_team": True,
+                    "error": "该邮箱已在当前 Team 中，正在尝试其他 Team",
+                }
 
             handled = await self.team_service._handle_api_error(invite_result, team, db_session)
             await db_session.commit()
@@ -438,6 +467,71 @@ class InviteQueueService:
             }
 
         return {"success": True, "payload": await self._build_success_payload(db_session, job, team)}
+
+    async def _get_redeem_email_team_ids(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        exclude_job_id: Optional[int] = None,
+    ) -> List[int]:
+        """获取普通兑换中该邮箱已加入、已邀请或正在预占的 Team。"""
+        normalized_email = self._normalize_email(email)
+        if not normalized_email:
+            return []
+
+        team_ids: List[int] = []
+
+        record_result = await db_session.execute(
+            select(RedemptionRecord.team_id).where(
+                func.lower(func.trim(RedemptionRecord.email)) == normalized_email,
+                RedemptionRecord.team_id.is_not(None),
+            )
+        )
+        team_ids.extend(int(team_id) for team_id in record_result.scalars().all() if team_id)
+
+        code_result = await db_session.execute(
+            select(RedemptionCode.used_team_id).where(
+                func.lower(func.trim(RedemptionCode.used_by_email)) == normalized_email,
+                RedemptionCode.used_team_id.is_not(None),
+            )
+        )
+        team_ids.extend(int(team_id) for team_id in code_result.scalars().all() if team_id)
+
+        snapshot_result = await db_session.execute(
+            select(TeamMemberSnapshot.team_id).where(
+                TeamMemberSnapshot.email == normalized_email,
+            )
+        )
+        team_ids.extend(int(team_id) for team_id in snapshot_result.scalars().all() if team_id)
+
+        job_stmt = select(InviteJob.team_id).where(
+            InviteJob.job_type == JOB_TYPE_REDEEM,
+            InviteJob.email == normalized_email,
+            InviteJob.status.in_(ACTIVE_JOB_STATUSES),
+            InviteJob.team_id.is_not(None),
+            InviteJob.reservation_released.is_(False),
+        )
+        if exclude_job_id:
+            job_stmt = job_stmt.where(InviteJob.id != int(exclude_job_id))
+
+        job_result = await db_session.execute(job_stmt)
+        team_ids.extend(int(team_id) for team_id in job_result.scalars().all() if team_id)
+
+        return list(dict.fromkeys(team_ids))
+
+    async def _is_redeem_email_linked_to_team(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        team_id: int,
+        exclude_job_id: Optional[int] = None,
+    ) -> bool:
+        team_ids = await self._get_redeem_email_team_ids(
+            db_session,
+            email,
+            exclude_job_id=exclude_job_id,
+        )
+        return int(team_id) in team_ids
 
     async def _build_existing_warranty_payload(
         self,

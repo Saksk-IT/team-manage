@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import InviteJob, RedemptionCode, RedemptionRecord, Team, WarrantyEmailEntry
+from app.models import InviteJob, RedemptionCode, RedemptionRecord, Team, TeamMemberSnapshot, WarrantyEmailEntry
 from app.services.invite_queue import (
     JOB_STATUS_PROCESSING,
     JOB_STATUS_QUEUED,
@@ -99,6 +99,99 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(first["success"])
         self.assertEqual(first["job_id"], second["job_id"])
         self.assertEqual(job_count, 1)
+
+    async def test_same_email_multiple_codes_reserve_different_teams(self):
+        await self._seed_redeem_teams_and_codes(team_count=4, code_count=4)
+        service = InviteQueueService()
+
+        async with self.Session() as session:
+            results = []
+            for index in range(1, 5):
+                results.append(
+                    await service.submit_redeem_job(
+                        session,
+                        "buyer@example.com",
+                        f"CODE-{index:03d}",
+                    )
+                )
+            jobs = (
+                await session.execute(
+                    select(InviteJob).where(InviteJob.email == "buyer@example.com").order_by(InviteJob.id.asc())
+                )
+            ).scalars().all()
+
+        self.assertTrue(all(result["success"] for result in results))
+        self.assertEqual([job.team_id for job in jobs], [1, 2, 3, 4])
+
+    async def test_redeem_submission_skips_team_already_used_by_email(self):
+        await self._seed_redeem_teams_and_codes(team_count=2, code_count=2)
+        service = InviteQueueService()
+
+        async with self.Session() as session:
+            session.add(
+                RedemptionRecord(
+                    email="buyer@example.com",
+                    code="OLD-CODE",
+                    team_id=1,
+                    account_id="acc-1",
+                )
+            )
+            await session.commit()
+
+            result = await service.submit_redeem_job(session, "buyer@example.com", "CODE-001")
+            job = await session.get(InviteJob, result["job_id"])
+
+        self.assertTrue(result["success"])
+        self.assertEqual(job.team_id, 2)
+
+    async def test_redeem_processing_tries_next_team_when_email_already_member(self):
+        await self._seed_redeem_teams_and_codes(team_count=2, code_count=1)
+        service = InviteQueueService()
+
+        async with self.Session() as session:
+            submit_result = await service.submit_redeem_job(session, "buyer@example.com", "CODE-001")
+
+        service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
+        service.team_service.ensure_access_token = AsyncMock(return_value="token")
+        service.team_service.chatgpt_service.send_invite = AsyncMock(side_effect=[
+            {"success": False, "error": "User already in workspace"},
+            {"success": True, "data": {"account_invites": [{"id": "invite-2"}]}},
+        ])
+
+        with patch("app.services.invite_queue.AsyncSessionLocal", self.Session):
+            await service.process_job_now(submit_result["job_id"])
+
+        async with self.Session() as session:
+            job = await session.get(InviteJob, submit_result["job_id"])
+            code = await session.scalar(select(RedemptionCode).where(RedemptionCode.code == "CODE-001"))
+            records = (
+                await session.execute(select(RedemptionRecord).where(RedemptionRecord.code == "CODE-001"))
+            ).scalars().all()
+
+        self.assertEqual(job.status, JOB_STATUS_SUCCESS)
+        self.assertEqual(job.team_id, 2)
+        self.assertEqual(code.used_team_id, 2)
+        self.assertEqual([record.team_id for record in records], [2])
+        self.assertEqual(service.team_service.chatgpt_service.send_invite.await_count, 2)
+
+    async def test_redeem_processing_skips_local_member_snapshot_without_using_code(self):
+        await self._seed_redeem_teams_and_codes(team_count=2, code_count=1)
+        service = InviteQueueService()
+
+        async with self.Session() as session:
+            session.add(
+                TeamMemberSnapshot(
+                    team_id=1,
+                    email="buyer@example.com",
+                    member_state="joined",
+                )
+            )
+            await session.commit()
+
+            submit_result = await service.submit_redeem_job(session, "buyer@example.com", "CODE-001")
+            job = await session.get(InviteJob, submit_result["job_id"])
+
+        self.assertEqual(job.team_id, 2)
 
     async def test_process_redeem_job_success_releases_reservation_and_marks_code_used(self):
         await self._seed_redeem_teams_and_codes(team_count=1, code_count=1)
