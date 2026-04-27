@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from starlette.requests import Request
 
 from app.database import Base
-from app.models import Team
+from app.models import RedemptionCode, Team
 from app.routes.admin import admin_dashboard
 from app.services.team import TeamService
 
@@ -167,6 +167,54 @@ class TeamMultiFilterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('name="expires_from" value="2026-06-01"', html)
         self.assertIn('name="device_auth"', html)
         self.assertIn('name="members_min" value="2"', html)
+
+    async def test_admin_dashboard_stats_show_seats_instead_of_codes(self):
+        async with self.Session() as session:
+            session.add_all([
+                Team(
+                    email="owner-one@example.com",
+                    access_token_encrypted="dummy",
+                    account_id="acc-one",
+                    team_name="Seat Team One",
+                    status="active",
+                    current_members=1,
+                    max_members=9,
+                ),
+                Team(
+                    email="owner-two@example.com",
+                    access_token_encrypted="dummy",
+                    account_id="acc-two",
+                    team_name="Seat Team Two",
+                    status="active",
+                    current_members=4,
+                    max_members=9,
+                ),
+                RedemptionCode(code="UNUSED-CODE-001", status="unused"),
+                RedemptionCode(code="USED-CODE-001", status="used"),
+            ])
+            await session.commit()
+
+            response = await admin_dashboard(
+                request=self._build_request(),
+                page=1,
+                per_page=20,
+                search=None,
+                status=None,
+                db=session,
+                current_user={"username": "admin"},
+            )
+
+        html = response.body.decode("utf-8")
+        self.assertNotIn("兑换码总数", html)
+        self.assertNotIn("已使用兑换码", html)
+        self.assertRegex(
+            html,
+            r'<div class="stat-value">\s*16\s*</div>\s*<div class="stat-label">所有席位</div>',
+        )
+        self.assertRegex(
+            html,
+            r'<div class="stat-value">\s*13\s*</div>\s*<div class="stat-label">可用席位</div>',
+        )
 
 
 if __name__ == "__main__":

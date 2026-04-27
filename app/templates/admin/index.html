@@ -24,37 +24,20 @@
             <div class="stat-label">{{ '待审核' if is_review_mode else '可用 Team' }}</div>
         </div>
     </div>
-    {% if is_review_mode %}
     <div class="stat-card stat-info">
         <div class="stat-icon"><i data-lucide="users-round"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.total_seats }}</div>
-            <div class="stat-label">{{ '已审核' if is_review_mode else '总席位数' }}</div>
+            <div class="stat-label">{{ '已审核' if is_review_mode else '所有席位' }}</div>
         </div>
     </div>
     <div class="stat-card stat-warning">
         <div class="stat-icon"><i data-lucide="armchair"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.remaining_seats }}</div>
-            <div class="stat-label">{{ '未审核' if is_review_mode else '剩余席位' }}</div>
+            <div class="stat-label">{{ '未审核' if is_review_mode else '可用席位' }}</div>
         </div>
     </div>
-    {% else %}
-    <div class="stat-card stat-info">
-        <div class="stat-icon"><i data-lucide="ticket"></i></div>
-        <div class="stat-info-group">
-            <div class="stat-value">{{ stats.total_codes }}</div>
-            <div class="stat-label">兑换码总数</div>
-        </div>
-    </div>
-    <div class="stat-card stat-warning">
-        <div class="stat-icon"><i data-lucide="clipboard-list"></i></div>
-        <div class="stat-info-group">
-            <div class="stat-value">{{ stats.used_codes }}</div>
-            <div class="stat-label">已使用兑换码</div>
-        </div>
-    </div>
-    {% endif %}
 </div>
 
 <!-- Team 列表 -->

@@ -968,14 +968,6 @@ async def _render_team_dashboard_page(
             imported_from=parsed_imported_from,
             imported_to=parsed_imported_to,
         )
-    elif team_type == TEAM_TYPE_STANDARD:
-        code_stats = await redemption_service.get_stats(db)
-        stats = {
-            "total_teams": team_stats["total"],
-            "available_teams": team_stats["available"],
-            "total_codes": code_stats["total"],
-            "used_codes": code_stats["used"]
-        }
     else:
         stats = {
             "total_teams": team_stats["total"],

@@ -6,7 +6,7 @@ import logging
 import asyncio
 from typing import Optional, Dict, Any, List, Callable, Awaitable
 from datetime import datetime
-from sqlalchemy import select, update, delete, func, or_
+from sqlalchemy import select, update, delete, func, or_, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -23,6 +23,7 @@ from app.utils.time_utils import get_now
 logger = logging.getLogger(__name__)
 
 DEFAULT_TEAM_MAX_MEMBERS = 5
+TEAM_OWNER_RESERVED_SEATS = 1
 STANDARD_TRANSFER_CODE_COUNT = 4
 TEAM_TYPE_STANDARD = "standard"
 TEAM_TYPE_WARRANTY = "warranty"
@@ -3426,7 +3427,15 @@ class TeamService:
             available_result = await db_session.execute(available_stmt)
             available = available_result.scalar() or 0
 
-            total_seats_stmt = select(func.sum(Team.max_members))
+            # 所有席位统计为可进入成员位，不包含 Team 管理员自身占用的 owner 位。
+            total_seats_expr = case(
+                (
+                    Team.max_members > TEAM_OWNER_RESERVED_SEATS,
+                    Team.max_members - TEAM_OWNER_RESERVED_SEATS,
+                ),
+                else_=0,
+            )
+            total_seats_stmt = select(func.sum(total_seats_expr))
             if team_type:
                 total_seats_stmt = total_seats_stmt.where(Team.team_type == team_type)
             if import_status:

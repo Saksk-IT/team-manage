@@ -410,6 +410,7 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([team["id"] for team in available_standard["teams"]], [1, 2])
         self.assertEqual(total_standard_seats, 7)
         self.assertEqual(unified_stats["total"], 2)
+        self.assertEqual(unified_stats["total_seats"], 8)
         self.assertEqual(unified_stats["remaining_seats"], 7)
 
     async def test_transfer_to_warranty_is_rejected_for_compatibility(self):
