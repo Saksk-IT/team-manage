@@ -526,10 +526,10 @@ function isWarrantyTeamBannedStatus(status) {
 
 function getWarrantyTeamStatusBadge(status) {
     if (isWarrantyTeamBannedStatus(status)) {
-        return { label: '封禁', color: 'var(--danger)', bg: 'rgba(239, 68, 68, 0.12)' };
+        return { label: '封禁', className: 'status-badge--danger' };
     }
 
-    return { label: '可用', color: 'var(--success)', bg: 'rgba(34, 197, 94, 0.12)' };
+    return { label: '可用', className: 'status-badge--success' };
 }
 
 function getWarrantyTeamStatusMessage(data, canClaim) {
@@ -563,48 +563,34 @@ function renderWarrantyStatusResult(data, email) {
     const badge = getWarrantyTeamStatusBadge(latestTeam.status || latestTeam.status_label);
     const canClaim = Boolean(data?.can_claim);
     const statusMessage = getWarrantyTeamStatusMessage(data, canClaim);
+    const messageClass = canClaim ? 'status-panel__message--success' : 'status-panel__message--warning';
+
+    const detailItems = [
+        ['邮箱地址', email],
+        ['Team 名称', latestTeam.team_name || '-'],
+        ['Team 账号', latestTeam.email || '-'],
+        ['最近加入时间', formatDateTime(latestTeam.redeemed_at)],
+        ['剩余质保次数', String(warrantyInfo.remaining_claims ?? '-')],
+        ['剩余质保天数', String(warrantyInfo.remaining_days ?? '-')]
+    ].map(([label, value]) => `
+        <div class="status-panel__item">
+            <span class="status-panel__label">${escapeHtml(label)}</span>
+            <span class="status-panel__value">${escapeHtml(value)}</span>
+        </div>
+    `).join('');
 
     statusContainer.style.display = 'block';
     statusContainer.innerHTML = `
-        <div style="padding: 16px 18px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-base);">
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 12px;">
-                <div style="font-size: 1rem; font-weight: 600; color: var(--text-primary);">最近加入 Team 状态</div>
-                <span style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 10px; border-radius: 999px; background: ${badge.bg}; color: ${badge.color}; font-size: 0.875rem; font-weight: 600;">
-                    ${escapeHtml(badge.label)}
-                </span>
+        <div class="status-panel">
+            <div class="status-panel__header">
+                <div class="status-panel__title">最近加入 Team 状态</div>
+                <span class="status-badge ${badge.className}">${escapeHtml(badge.label)}</span>
             </div>
-            <div style="display: grid; gap: 10px;">
-                <div style="display: flex; justify-content: space-between; gap: 1rem;">
-                    <span style="color: var(--text-muted);">邮箱地址</span>
-                    <span style="color: var(--text-primary); text-align: right;">${escapeHtml(email)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; gap: 1rem;">
-                    <span style="color: var(--text-muted);">Team 名称</span>
-                    <span style="color: var(--text-primary); text-align: right;">${escapeHtml(latestTeam.team_name || '-')}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; gap: 1rem;">
-                    <span style="color: var(--text-muted);">Team 账号</span>
-                    <span style="color: var(--text-primary); text-align: right;">${escapeHtml(latestTeam.email || '-')}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; gap: 1rem;">
-                    <span style="color: var(--text-muted);">最近加入时间</span>
-                    <span style="color: var(--text-primary); text-align: right;">${escapeHtml(formatDateTime(latestTeam.redeemed_at))}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; gap: 1rem;">
-                    <span style="color: var(--text-muted);">剩余质保次数</span>
-                    <span style="color: var(--text-primary); text-align: right;">${escapeHtml(String(warrantyInfo.remaining_claims ?? '-'))}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; gap: 1rem;">
-                    <span style="color: var(--text-muted);">剩余质保天数</span>
-                    <span style="color: var(--text-primary); text-align: right;">${escapeHtml(String(warrantyInfo.remaining_days ?? '-'))}</span>
-                </div>
-            </div>
-            <div style="margin-top: 14px; font-size: 0.9rem; color: ${canClaim ? 'var(--success)' : 'var(--warning)'};">
-                ${escapeHtml(statusMessage)}
-            </div>
+            <div class="status-panel__list">${detailItems}</div>
+            <div class="status-panel__message ${messageClass}">${escapeHtml(statusMessage)}</div>
             ${canClaim ? `
-                <div style="margin-top: 16px;">
-                    <button type="button" id="continueWarrantyClaimBtn" class="btn btn-primary" style="width: 100%;">
+                <div class="status-panel__actions">
+                    <button type="button" id="continueWarrantyClaimBtn" class="btn btn-primary">
                         <i data-lucide="shield"></i> 提交质保
                     </button>
                 </div>
@@ -995,7 +981,7 @@ async function startRedeemFlow() {
     } finally {
         closeTransitionOverlay();
         verifyBtn.disabled = false;
-        setVerifyButtonContent('立即兑换');
+        setVerifyButtonContent('立即兑换席位');
     }
 }
 
@@ -1466,18 +1452,16 @@ function showSuccessResult(data) {
     const resultContent = document.getElementById('resultContent');
     const teamInfo = data.team_info || {};
     const warrantyNoticeHtml = warrantyServiceEnabled ? `
-            <div style="margin-bottom: 2rem; border-top: 1px solid var(--border-base); padding-top: 1.5rem;">
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
-                    <strong>质保说明</strong><br>
-                    如您购买了质保服务，兑换成功后邮箱会自动进入质保邮箱列表；若后续 Team 被封禁，请切换到“质保服务”提交该邮箱，系统会按剩余天数和次数处理质保。
-                </p>
-            </div>
+        <div class="result-notice">
+            <i data-lucide="shield-check"></i>
+            <span><strong>质保说明</strong><br>如您购买了质保服务，兑换成功后邮箱会自动进入质保邮箱列表；若后续 Team 被封禁，请切换到“质保服务”提交该邮箱，系统会按剩余天数和次数处理质保。</span>
+        </div>
     ` : '';
 
     resultContent.innerHTML = `
         <div class="result-success">
-            <div class="result-icon"><i data-lucide="check-circle" style="width: 64px; height: 64px; color: var(--success);"></i></div>
-            <div class="result-title">兑换成功!</div>
+            <div class="result-icon result-icon--success"><i data-lucide="check-circle"></i></div>
+            <div class="result-title">兑换成功</div>
             <div class="result-message">${escapeHtml(data.message) || '您已成功加入 Team'}</div>
 
             <div class="result-details">
@@ -1497,16 +1481,18 @@ function showSuccessResult(data) {
                 ` : ''}
             </div>
 
-            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 2rem; background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px; text-align: left;">
-                <i data-lucide="mail" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 5px;"></i>
-                邀请邮件已发送到您的邮箱，请查收并按照邮件指引接受邀请。
-            </p>
+            <div class="result-notice">
+                <i data-lucide="mail"></i>
+                <span>邀请邮件已发送到您的邮箱，请查收并按照邮件指引接受邀请。</span>
+            </div>
 
             ${warrantyNoticeHtml}
 
-            <button onclick="location.reload()" class="btn btn-primary" style="width: 100%;">
-                <i data-lucide="refresh-cw"></i> 再次兑换
-            </button>
+            <div class="result-actions result-actions--single">
+                <button onclick="location.reload()" class="btn btn-primary">
+                    <i data-lucide="refresh-cw"></i> 再次兑换
+                </button>
+            </div>
         </div>
     `;
     if (window.lucide) lucide.createIcons();
@@ -1543,7 +1529,7 @@ function showWarrantyClaimSuccessResult(data, email) {
 
     resultContent.innerHTML = `
         <div class="result-success">
-            <div class="result-icon"><i data-lucide="shield-check" style="width: 64px; height: 64px; color: var(--success);"></i></div>
+            <div class="result-icon result-icon--success"><i data-lucide="shield-check"></i></div>
             <div class="result-title">${escapeHtml(data.title || '质保邀请已发送')}</div>
             <div class="result-message">${escapeHtml(data.message || '系统已为您发送质保 Team 邀请，请查收邮箱。')}</div>
 
@@ -1571,14 +1557,16 @@ function showWarrantyClaimSuccessResult(data, email) {
                 ` : ''}
             </div>
 
-            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 2rem; background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px; text-align: left;">
-                <i data-lucide="mail" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 5px;"></i>
-                质保 Team 邀请已发送到您的邮箱，请查收并按照邮件提示完成加入。
-            </p>
+            <div class="result-notice">
+                <i data-lucide="mail"></i>
+                <span>质保 Team 邀请已发送到您的邮箱，请查收并按照邮件提示完成加入。</span>
+            </div>
 
-            <button onclick="location.reload()" class="btn btn-primary" style="width: 100%;">
-                <i data-lucide="refresh-cw"></i> 返回首页
-            </button>
+            <div class="result-actions result-actions--single">
+                <button onclick="location.reload()" class="btn btn-primary">
+                    <i data-lucide="refresh-cw"></i> 返回首页
+                </button>
+            </div>
         </div>
     `;
     if (window.lucide) lucide.createIcons();
@@ -1593,11 +1581,11 @@ function showErrorResult(errorMessage, title = '兑换失败') {
 
     resultContent.innerHTML = `
         <div class="result-error">
-            <div class="result-icon"><i data-lucide="x-circle" style="width: 64px; height: 64px; color: var(--danger);"></i></div>
+            <div class="result-icon result-icon--error"><i data-lucide="x-circle"></i></div>
             <div class="result-title">${escapeHtml(title)}</div>
             <div class="result-message">${escapeHtml(errorMessage)}</div>
 
-            <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 2rem;">
+            <div class="result-actions">
                 <button onclick="backToStep1()" class="btn btn-secondary">
                     <i data-lucide="arrow-left"></i> 返回重试
                 </button>

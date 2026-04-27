@@ -1,0 +1,138 @@
+/* Premium front desk responsive rules */
+
+.step {
+    display: none;
+}
+
+.step.active {
+    display: block;
+}
+
+@media (min-width: 920px) {
+    .front-page {
+        padding: 2rem;
+    }
+
+    .hero-card {
+        grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+        align-items: center;
+    }
+
+    .front-layout {
+        grid-template-columns: minmax(0, 720px) minmax(300px, 360px);
+        align-items: start;
+        justify-content: center;
+        gap: 1.35rem;
+    }
+
+    .front-sidebar {
+        position: sticky;
+        top: 1.5rem;
+    }
+
+    .customer-service-widget {
+        display: none;
+    }
+
+    .customer-service-modal-actions,
+    .confirm-modal-actions,
+    .result-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 760px) {
+    .front-page {
+        padding: 0.9rem;
+    }
+
+    .front-topbar {
+        align-items: flex-start;
+        border-radius: 28px;
+        flex-direction: column;
+    }
+
+    .front-topbar__actions,
+    .front-topbar__cta,
+    .front-topbar__link {
+        width: 100%;
+    }
+
+    .front-topbar__link {
+        justify-content: center;
+    }
+
+    .hero-card {
+        border-radius: 28px;
+    }
+
+    .hero-card h1 {
+        letter-spacing: -0.055em;
+    }
+
+    .status-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .card {
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 520px) {
+    .front-page {
+        padding: 0.75rem;
+    }
+
+    .front-brand small {
+        display: none;
+    }
+
+    .hero-card__badges,
+    .service-tabs {
+        gap: 0.6rem;
+    }
+
+    .spots-badge,
+    .service-tab {
+        width: 100%;
+    }
+
+    .status-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .lookup-result__item,
+    .status-panel__item,
+    .result-detail-item {
+        display: grid;
+        gap: 0.22rem;
+    }
+
+    .lookup-result__value,
+    .status-panel__value,
+    .result-detail-value {
+        text-align: left;
+    }
+
+    .customer-service-widget {
+        right: 1rem;
+        bottom: 1rem;
+    }
+
+    .customer-service-panel {
+        width: min(340px, calc(100vw - 1rem));
+        max-height: min(68vh, 520px);
+    }
+}
+
+
+@media (max-width: 760px) {
+    .front-topbar__cta,
+    .hero-purchase-button,
+    .support-link-btn {
+        white-space: normal;
+        line-height: 1.25;
+        text-align: center;
+    }
+}
