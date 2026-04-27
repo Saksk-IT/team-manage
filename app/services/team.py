@@ -340,7 +340,8 @@ class TeamService:
     async def _ensure_manual_warranty_email_whitelist(
         self,
         email: str,
-        db_session: AsyncSession
+        db_session: AsyncSession,
+        last_warranty_team_id: Optional[int] = None,
     ) -> Optional[WarrantyEmailEntry]:
         """管理员手动添加到质保 Team 的邮箱自动进入清理白名单。"""
         normalized_email = self._normalize_member_email(email)
@@ -352,6 +353,9 @@ class TeamService:
         )
         existing_entry = result.scalar_one_or_none()
         if existing_entry:
+            if last_warranty_team_id and not existing_entry.last_warranty_team_id:
+                existing_entry.last_warranty_team_id = last_warranty_team_id
+                await db_session.flush()
             return existing_entry
 
         whitelist_entry = WarrantyEmailEntry(
@@ -359,10 +363,64 @@ class TeamService:
             remaining_claims=0,
             expires_at=None,
             source="manual",
+            last_warranty_team_id=last_warranty_team_id,
         )
         db_session.add(whitelist_entry)
         await db_session.flush()
         return whitelist_entry
+
+    async def _backfill_manual_warranty_whitelist_from_snapshots(
+        self,
+        team: Team,
+        db_session: AsyncSession
+    ) -> int:
+        """从历史成员快照补写质保 Team 手动白名单。"""
+        if not team or team.team_type != TEAM_TYPE_WARRANTY:
+            return 0
+
+        result = await db_session.execute(
+            select(TeamMemberSnapshot.email).where(TeamMemberSnapshot.team_id == team.id)
+        )
+        owner_email = self._normalize_member_email(team.email)
+        snapshot_emails = {
+            normalized_email
+            for email in result.scalars().all()
+            if (normalized_email := self._normalize_member_email(email))
+            and normalized_email != owner_email
+        }
+        if not snapshot_emails:
+            return 0
+
+        existing_result = await db_session.execute(
+            select(WarrantyEmailEntry.email).where(WarrantyEmailEntry.email.in_(snapshot_emails))
+        )
+        existing_emails = {
+            normalized_email
+            for email in existing_result.scalars().all()
+            if (normalized_email := self._normalize_member_email(email))
+        }
+        missing_emails = sorted(snapshot_emails - existing_emails)
+
+        for email in missing_emails:
+            db_session.add(
+                WarrantyEmailEntry(
+                    email=email,
+                    remaining_claims=0,
+                    expires_at=None,
+                    source="manual",
+                    last_warranty_team_id=team.id,
+                )
+            )
+
+        if missing_emails:
+            await db_session.flush()
+            logger.info(
+                "已从历史成员快照补写质保 Team 手动白名单: team_id=%s count=%s",
+                team.id,
+                len(missing_emails),
+            )
+
+        return len(missing_emails)
 
     def _build_member_state_from_results(
         self,
@@ -2043,6 +2101,7 @@ class TeamService:
                 cleanup_allowed_emails = await self._get_bound_code_allowed_emails(team.id, db_session)
                 cleanup_scope_label = "标准 Team"
             elif should_cleanup_warranty_team:
+                await self._backfill_manual_warranty_whitelist_from_snapshots(team, db_session)
                 cleanup_allowed_emails = await self._get_warranty_cleanup_allowed_emails(db_session)
                 cleanup_scope_label = "质保 Team"
 
@@ -2612,7 +2671,11 @@ class TeamService:
                 }
 
             if team.team_type == TEAM_TYPE_WARRANTY:
-                await self._ensure_manual_warranty_email_whitelist(email, db_session)
+                await self._ensure_manual_warranty_email_whitelist(
+                    email,
+                    db_session,
+                    last_warranty_team_id=team.id,
+                )
 
             # 5. 更新成员数并二次校验邀请是否真的生效 (循环检测 3 次，防止接口返回 200 但实际延迟入库)
             is_verified = False

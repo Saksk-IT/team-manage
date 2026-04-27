@@ -315,6 +315,93 @@ class TeamStandardRefreshCleanupTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cleanup_record.removed_member_count, 1)
         self.assertEqual(cleanup_record.revoked_invite_count, 1)
 
+    async def test_warranty_team_refresh_backfills_snapshot_emails_before_cleanup(self):
+        async with self.Session() as session:
+            team = Team(
+                email="warranty-owner@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-warranty",
+                team_type=TEAM_TYPE_WARRANTY,
+                team_name="Warranty Team",
+                status="active",
+                current_members=0,
+                max_members=5,
+            )
+            session.add(team)
+            await session.flush()
+            session.add(
+                TeamMemberSnapshot(
+                    team_id=team.id,
+                    email="legacy-manual@example.com",
+                    member_state="joined",
+                )
+            )
+            await session.commit()
+
+            service = TeamService()
+            service.ensure_access_token = AsyncMock(return_value="access-token")
+            service.chatgpt_service.get_account_info = AsyncMock(return_value={
+                "success": True,
+                "accounts": [{
+                    "account_id": "acc-warranty",
+                    "name": "Warranty Team",
+                    "plan_type": "team",
+                    "subscription_plan": "chatgptteamplan",
+                    "expires_at": None,
+                    "has_active_subscription": True,
+                    "account_user_role": "account-owner",
+                }],
+            })
+            service.chatgpt_service.get_members = AsyncMock(side_effect=[
+                {
+                    "success": True,
+                    "total": 3,
+                    "members": [
+                        {"id": "owner-user", "email": "warranty-owner@example.com", "role": "account-owner"},
+                        {"id": "legacy-user", "email": "legacy-manual@example.com", "role": "standard-user"},
+                        {"id": "stray-user", "email": "stray@example.com", "role": "standard-user"},
+                    ],
+                },
+                {
+                    "success": True,
+                    "total": 2,
+                    "members": [
+                        {"id": "owner-user", "email": "warranty-owner@example.com", "role": "account-owner"},
+                        {"id": "legacy-user", "email": "legacy-manual@example.com", "role": "standard-user"},
+                    ],
+                },
+            ])
+            service.chatgpt_service.get_invites = AsyncMock(side_effect=[
+                {"success": True, "total": 0, "items": []},
+                {"success": True, "total": 0, "items": []},
+            ])
+            service.chatgpt_service.get_account_settings = AsyncMock(return_value={
+                "success": True,
+                "data": {"beta_settings": {"codex_device_code_auth": False}},
+            })
+            service.chatgpt_service.delete_member = AsyncMock(return_value={"success": True, "error": None})
+            service.chatgpt_service.delete_invite = AsyncMock(return_value={"success": True, "error": None})
+
+            result = await service.sync_team_info(team.id, session)
+            await session.commit()
+
+            entry = await session.scalar(
+                select(WarrantyEmailEntry).where(WarrantyEmailEntry.email == "legacy-manual@example.com")
+            )
+
+        self.assertTrue(result["success"])
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.source, "manual")
+        self.assertEqual(entry.remaining_claims, 0)
+        self.assertEqual(entry.last_warranty_team_id, team.id)
+        service.chatgpt_service.delete_member.assert_awaited_once_with(
+            "access-token",
+            "acc-warranty",
+            "stray-user",
+            session,
+            identifier="warranty-owner@example.com",
+        )
+
     async def test_admin_added_warranty_member_enters_manual_whitelist(self):
         async with self.Session() as session:
             team = Team(
