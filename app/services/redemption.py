@@ -79,6 +79,7 @@ class RedemptionService:
         expires_days: Optional[int] = None,
         has_warranty: bool = False,
         warranty_days: int = 30,
+        warranty_claims: int = 10,
         bound_team_id: Optional[int] = None,
         commit: bool = True
     ) -> Dict[str, Any]:
@@ -131,7 +132,8 @@ class RedemptionService:
                 expires_at=expires_at,
                 bound_team_id=bound_team_id,
                 has_warranty=has_warranty,
-                warranty_days=warranty_days
+                warranty_days=warranty_days,
+                warranty_claims=warranty_claims
             )
 
             db_session.add(redemption_code)
@@ -167,6 +169,7 @@ class RedemptionService:
         expires_days: Optional[int] = None,
         has_warranty: bool = False,
         warranty_days: int = 30,
+        warranty_claims: int = 10,
         bound_team_id: Optional[int] = None,
         commit: bool = True
     ) -> Dict[str, Any]:
@@ -214,7 +217,8 @@ class RedemptionService:
                     expires_at=expires_at,
                     bound_team_id=bound_team_id,
                     has_warranty=has_warranty,
-                    warranty_days=warranty_days
+                    warranty_days=warranty_days,
+                    warranty_claims=warranty_claims
                 )
                 db_session.add(redemption_code)
 

@@ -30,11 +30,11 @@
             <div class="stat-label">已使用</div>
         </div>
     </div>
-    <div class="stat-card stat-danger">
-        <div class="stat-icon">⏰</div>
+    <div class="stat-card stat-warning">
+        <div class="stat-icon">💺</div>
         <div class="stat-content">
-            <div class="stat-value">{{ stats.expired }}</div>
-            <div class="stat-label">已过期</div>
+            <div class="stat-value">{{ stats.available_seats }}</div>
+            <div class="stat-label">可用席位</div>
         </div>
     </div>
 </div>
@@ -373,11 +373,25 @@
             <form id="bulkWarrantyQuotaForm" onsubmit="handleBulkWarrantyQuotaUpdate(event)">
                 <div class="form-group">
                     <label>剩余天数 *</label>
-                    <input type="number" id="bulk-warranty-remaining-days" class="form-control" value="30" min="0" required>
+                    <input type="number" id="bulk-warranty-remaining-days" data-quick-target="remainingDays"
+                        class="form-control" value="30" min="0" required>
+                    <div class="quick-value-row" aria-label="质保剩余天数快捷值">
+                        <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'remainingDays', 1)">1天</button>
+                        <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'remainingDays', 7)">7天</button>
+                        <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'remainingDays', 15)">15天</button>
+                        <button type="button" class="quick-value-btn active" onclick="setQuickNumberValue(this, 'remainingDays', 30)">30天</button>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>剩余次数 *</label>
-                    <input type="number" id="bulk-warranty-remaining-claims" class="form-control" value="10" min="0" required>
+                    <input type="number" id="bulk-warranty-remaining-claims" data-quick-target="remainingClaims"
+                        class="form-control" value="10" min="0" required>
+                    <div class="quick-value-row" aria-label="质保剩余次数快捷值">
+                        <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'remainingClaims', 1)">1次</button>
+                        <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'remainingClaims', 7)">7次</button>
+                        <button type="button" class="quick-value-btn active" onclick="setQuickNumberValue(this, 'remainingClaims', 10)">10次</button>
+                        <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'remainingClaims', 15)">15次</button>
+                    </div>
                 </div>
                 <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">确认修改</button>
             </form>

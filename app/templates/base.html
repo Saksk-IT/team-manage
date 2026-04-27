@@ -284,13 +284,22 @@
     </div>
 
     <!-- 生成兑换码 模态框 -->
-    <div id="generateCodeModal" class="modal-overlay">
+    {% set code_generation_stats = stats if active_page == 'codes' and stats is defined else {} %}
+    {% set code_available_seats = code_generation_stats.available_seats if code_generation_stats.available_seats is defined else 0 %}
+    {% set code_unused_count = code_generation_stats.unused if code_generation_stats.unused is defined else 0 %}
+    {% set code_remaining_capacity = code_generation_stats.remaining_code_capacity if code_generation_stats.remaining_code_capacity is defined else 0 %}
+    <div id="generateCodeModal" class="modal-overlay" data-available-seats="{{ code_available_seats }}"
+        data-unused-codes="{{ code_unused_count }}" data-remaining-capacity="{{ code_remaining_capacity }}">
         <div class="modal">
             <div class="modal-header">
                 <h3>生成兑换码</h3>
                 <button class="modal-close" onclick="hideModal('generateCodeModal')">&times;</button>
             </div>
             <div class="modal-body">
+                <div class="alert alert-info" style="margin-bottom: 1rem;">
+                    <div>当前可用席位 <strong id="codeAvailableSeats">{{ code_available_seats }}</strong> 个，未使用兑换码 <strong id="codeUnusedCount">{{ code_unused_count }}</strong> 个。</div>
+                    <small class="text-muted">最多还能生成 <strong id="codeRemainingCapacity">{{ code_remaining_capacity }}</strong> 个兑换码，生成后未使用兑换码数不能超过可用席位数。</small>
+                </div>
                 <div class="modal-tabs">
                     <button class="modal-tab-btn active"
                         onclick="switchModalTab('generateCodeModal', 'singleGenerate')">单个生成</button>
@@ -321,6 +330,20 @@
                         <div class="form-group" id="single-warranty-days-group" style="display: none;">
                             <label>质保邮箱初始剩余天数 (天) *</label>
                             <input type="number" name="warrantyDays" class="form-control" value="30" min="1" max="3650">
+                            <div class="quick-value-row" aria-label="质保剩余天数快捷值">
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'warrantyDays', 1)">1天</button>
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'warrantyDays', 7)">7天</button>
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'warrantyDays', 15)">15天</button>
+                                <button type="button" class="quick-value-btn active" onclick="setQuickNumberValue(this, 'warrantyDays', 30)">30天</button>
+                            </div>
+                            <label style="margin-top: 0.875rem;">质保邮箱初始剩余次数 *</label>
+                            <input type="number" name="warrantyClaims" class="form-control" value="10" min="0" max="1000">
+                            <div class="quick-value-row" aria-label="质保剩余次数快捷值">
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'warrantyClaims', 1)">1次</button>
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'warrantyClaims', 7)">7次</button>
+                                <button type="button" class="quick-value-btn active" onclick="setQuickNumberValue(this, 'warrantyClaims', 10)">10次</button>
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'warrantyClaims', 15)">15次</button>
+                            </div>
                         </div>
                         <button type="submit" class="btn btn-primary">生成兑换码</button>
                     </form>
@@ -339,6 +362,12 @@
                             <label>生成数量 *</label>
                             <input type="number" name="count" class="form-control" placeholder="请输入生成数量" min="1"
                                 max="1000" required>
+                            <div class="quick-value-row" aria-label="生成数量快捷值">
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'count', 5)">5</button>
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'count', 10)">10</button>
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'count', 15)">15</button>
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'count', 20)">20</button>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label>有效期 (天数, 可选)</label>
@@ -356,6 +385,20 @@
                         <div class="form-group" id="batch-warranty-days-group" style="display: none;">
                             <label>质保邮箱初始剩余天数 (天) *</label>
                             <input type="number" name="warrantyDays" class="form-control" value="30" min="1" max="3650">
+                            <div class="quick-value-row" aria-label="质保剩余天数快捷值">
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'warrantyDays', 1)">1天</button>
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'warrantyDays', 7)">7天</button>
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'warrantyDays', 15)">15天</button>
+                                <button type="button" class="quick-value-btn active" onclick="setQuickNumberValue(this, 'warrantyDays', 30)">30天</button>
+                            </div>
+                            <label style="margin-top: 0.875rem;">质保邮箱初始剩余次数 *</label>
+                            <input type="number" name="warrantyClaims" class="form-control" value="10" min="0" max="1000">
+                            <div class="quick-value-row" aria-label="质保剩余次数快捷值">
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'warrantyClaims', 1)">1次</button>
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'warrantyClaims', 7)">7次</button>
+                                <button type="button" class="quick-value-btn active" onclick="setQuickNumberValue(this, 'warrantyClaims', 10)">10次</button>
+                                <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'warrantyClaims', 15)">15次</button>
+                            </div>
                         </div>
                         <button type="submit" class="btn btn-primary">批量生成</button>
                     </form>

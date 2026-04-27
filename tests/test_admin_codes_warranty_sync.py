@@ -9,7 +9,7 @@ from starlette.requests import Request
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import RedemptionCode, WarrantyEmailEntry
+from app.models import RedemptionCode, Team, WarrantyEmailEntry
 from app.routes.admin import (
     BulkWarrantyCodeQuotaUpdateRequest,
     bulk_update_warranty_code_quota,
@@ -110,6 +110,53 @@ class AdminCodesWarrantySyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('name="remaining_claims_max"', html)
         self.assertIn('id="bulkWarrantyQuotaModal"', html)
         self.assertIn('/admin/codes/bulk-warranty-quota-update', html)
+
+    async def test_codes_page_stats_show_available_seats_instead_of_expired_count(self):
+        async with self.Session() as session:
+            session.add_all([
+                Team(
+                    email="seat-owner@example.com",
+                    access_token_encrypted="dummy",
+                    account_id="acc-seat",
+                    status="active",
+                    current_members=4,
+                    max_members=9,
+                ),
+                RedemptionCode(code="EXPIRED-CODE-001", status="expired"),
+            ])
+            await session.commit()
+
+            response = await codes_list_page(
+                request=self._build_request(),
+                page=1,
+                per_page=50,
+                search=None,
+                status_filter=None,
+                team_id=None,
+                db=session,
+                current_user={"username": "admin"},
+            )
+
+        html = response.body.decode("utf-8")
+        self.assertNotIn('<div class="stat-label">已过期</div>', html)
+        self.assertRegex(
+            html,
+            r'<div class="stat-value">\s*5\s*</div>\s*<div class="stat-label">可用席位</div>',
+        )
+        self.assertIn('data-available-seats="5"', html)
+        self.assertIn('data-unused-codes="0"', html)
+        self.assertIn('>5<', html)
+        self.assertIn('>10<', html)
+        self.assertIn('>15<', html)
+        self.assertIn('>20<', html)
+        self.assertIn('1天', html)
+        self.assertIn('7天', html)
+        self.assertIn('15天', html)
+        self.assertIn('30天', html)
+        self.assertIn('1次', html)
+        self.assertIn('7次', html)
+        self.assertIn('10次', html)
+        self.assertIn('15次', html)
 
     async def test_bulk_warranty_code_quota_update_can_use_current_filters(self):
         async with self.Session() as session:

@@ -134,7 +134,8 @@ class CodeGenerateRequest(BaseModel):
     count: Optional[int] = Field(None, description="生成数量 (批量生成)")
     expires_days: Optional[int] = Field(None, description="有效期天数")
     has_warranty: bool = Field(False, description="是否为质保兑换码")
-    warranty_days: int = Field(30, description="质保天数")
+    warranty_days: int = Field(30, ge=1, description="质保天数")
+    warranty_claims: int = Field(10, ge=0, description="质保次数")
 
 
 class TeamUpdateRequest(BaseModel):
@@ -397,6 +398,41 @@ def _parse_member_count_filter_range(
     _validate_code_filter_range(parsed_members_min, parsed_members_max, "成员数")
 
     return parsed_members_min, parsed_members_max
+
+
+async def _get_code_generation_capacity(db: AsyncSession) -> Dict[str, int]:
+    """获取兑换码生成容量，保证未使用兑换码不超过实际可用席位。"""
+    available_seats = await team_service.get_total_available_seats(db)
+    unused_codes = await redemption_service.get_unused_count(db)
+    return {
+        "available_seats": int(available_seats or 0),
+        "unused_codes": int(unused_codes or 0),
+        "remaining_code_capacity": max(int(available_seats or 0) - int(unused_codes or 0), 0),
+    }
+
+
+async def _validate_code_generation_capacity(
+    db: AsyncSession,
+    requested_count: int,
+) -> Optional[JSONResponse]:
+    capacity = await _get_code_generation_capacity(db)
+    if requested_count <= capacity["remaining_code_capacity"]:
+        return None
+
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "success": False,
+            "error": (
+                "可用席位不足："
+                f"当前可用席位 {capacity['available_seats']}，"
+                f"未使用兑换码 {capacity['unused_codes']}，"
+                f"最多还能生成 {capacity['remaining_code_capacity']} 个兑换码"
+            ),
+            **capacity,
+            "requested_count": requested_count,
+        },
+    )
 
 
 def _normalize_team_status_filter(value: Optional[str]) -> Optional[str]:
@@ -2109,7 +2145,12 @@ async def codes_list_page(
         current_page = codes_result.get("current_page", 1)
 
         # 获取统计信息
-        stats = await redemption_service.get_stats(db)
+        code_stats = await redemption_service.get_stats(db)
+        capacity_stats = await _get_code_generation_capacity(db)
+        stats = {
+            **code_stats,
+            **capacity_stats,
+        }
         # 兼容旧模版中的 status 统计名 (unused/used/expired)
         # 注意: get_stats 返回的 used 已经包含了 warranty_active
 
@@ -2212,13 +2253,18 @@ async def generate_codes(
         logger.info(f"管理员生成兑换码: {generate_data.type}")
 
         if generate_data.type == "single":
+            capacity_error = await _validate_code_generation_capacity(db, requested_count=1)
+            if capacity_error:
+                return capacity_error
+
             # 单个生成
             result = await redemption_service.generate_code_single(
                 db_session=db,
                 code=generate_data.code,
                 expires_days=generate_data.expires_days,
                 has_warranty=generate_data.has_warranty,
-                warranty_days=generate_data.warranty_days
+                warranty_days=generate_data.warranty_days,
+                warranty_claims=generate_data.warranty_claims
             )
 
             if not result["success"]:
@@ -2240,12 +2286,20 @@ async def generate_codes(
                     }
                 )
 
+            capacity_error = await _validate_code_generation_capacity(
+                db,
+                requested_count=generate_data.count,
+            )
+            if capacity_error:
+                return capacity_error
+
             result = await redemption_service.generate_code_batch(
                 db_session=db,
                 count=generate_data.count,
                 expires_days=generate_data.expires_days,
                 has_warranty=generate_data.has_warranty,
-                warranty_days=generate_data.warranty_days
+                warranty_days=generate_data.warranty_days,
+                warranty_claims=generate_data.warranty_claims
             )
 
             if not result["success"]:

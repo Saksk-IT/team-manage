@@ -182,21 +182,91 @@ function resetBatchImportTag() {
     });
 }
 
-function setWarrantyDaysQuickValue(control, days) {
-    const normalizedDays = parseInt(days, 10);
-    if (!Number.isInteger(normalizedDays) || normalizedDays < 1) {
+function setQuickNumberValue(control, targetName, value) {
+    const normalizedValue = parseInt(value, 10);
+    if (!targetName || !Number.isInteger(normalizedValue) || normalizedValue < 0) {
         return;
     }
 
     const group = control?.closest?.('.form-group');
-    const input = group?.querySelector?.('input[name="warrantyDays"]');
+    const input = group?.querySelector?.(`input[name="${targetName}"], input[data-quick-target="${targetName}"]`);
     if (!input) {
         return;
     }
 
-    input.value = normalizedDays;
+    input.value = normalizedValue;
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const row = control?.closest?.('.quick-value-row');
+    if (row) {
+        row.querySelectorAll('.quick-value-btn').forEach((button) => {
+            button.classList.toggle('active', button === control);
+        });
+    }
+}
+
+function setWarrantyDaysQuickValue(control, days) {
+    setQuickNumberValue(control, 'warrantyDays', days);
+}
+
+function getCodeGenerationCapacity() {
+    const modal = document.getElementById('generateCodeModal');
+    if (!modal) {
+        return null;
+    }
+
+    const availableSeats = Number(modal.dataset.availableSeats);
+    const unusedCodes = Number(modal.dataset.unusedCodes);
+    const remainingCapacity = Number(modal.dataset.remainingCapacity);
+
+    if (![availableSeats, unusedCodes, remainingCapacity].every(Number.isFinite)) {
+        return null;
+    }
+
+    return { availableSeats, unusedCodes, remainingCapacity };
+}
+
+function updateCodeGenerationCapacity(generatedCount) {
+    const modal = document.getElementById('generateCodeModal');
+    const capacity = getCodeGenerationCapacity();
+    const normalizedCount = parseInt(generatedCount, 10);
+    if (!modal || !capacity || !Number.isInteger(normalizedCount) || normalizedCount <= 0) {
+        return;
+    }
+
+    const nextUnusedCodes = capacity.unusedCodes + normalizedCount;
+    const nextRemainingCapacity = Math.max(capacity.remainingCapacity - normalizedCount, 0);
+    modal.dataset.unusedCodes = String(nextUnusedCodes);
+    modal.dataset.remainingCapacity = String(nextRemainingCapacity);
+
+    const unusedEl = document.getElementById('codeUnusedCount');
+    const remainingEl = document.getElementById('codeRemainingCapacity');
+    if (unusedEl) unusedEl.textContent = String(nextUnusedCodes);
+    if (remainingEl) remainingEl.textContent = String(nextRemainingCapacity);
+}
+
+function validateCodeGenerationCapacity(requestedCount) {
+    const normalizedCount = parseInt(requestedCount, 10);
+    if (!Number.isInteger(normalizedCount) || normalizedCount <= 0) {
+        showToast('生成数量必须大于 0', 'error');
+        return false;
+    }
+
+    const capacity = getCodeGenerationCapacity();
+    if (!capacity) {
+        return true;
+    }
+
+    if (normalizedCount > capacity.remainingCapacity) {
+        showToast(
+            `可用席位不足：当前可用席位 ${capacity.availableSeats}，未使用兑换码 ${capacity.unusedCodes}，最多还能生成 ${capacity.remainingCapacity} 个兑换码`,
+            'error'
+        );
+        return false;
+    }
+
+    return true;
 }
 
 function showImportTeamModal(teamType = TEAM_TYPE_STANDARD) {
@@ -765,11 +835,17 @@ async function generateSingle(event) {
     const expiresDays = form.expiresDays.value;
     const hasWarranty = form.hasWarranty.checked;
     const warrantyDays = form.warrantyDays ? form.warrantyDays.value : 30;
+    const warrantyClaims = form.warrantyClaims ? form.warrantyClaims.value : 10;
+
+    if (!validateCodeGenerationCapacity(1)) {
+        return;
+    }
 
     const data = {
         type: 'single',
         has_warranty: hasWarranty,
-        warranty_days: parseInt(warrantyDays || 30)
+        warranty_days: parseInt(warrantyDays || 30),
+        warranty_claims: parseInt(warrantyClaims || 10)
     };
     if (customCode) data.code = customCode;
     if (expiresDays) data.expires_days = parseInt(expiresDays);
@@ -783,6 +859,7 @@ async function generateSingle(event) {
         document.getElementById('generatedCode').textContent = result.data.code;
         document.getElementById('singleResult').style.display = 'block';
         form.reset();
+        updateCodeGenerationCapacity(1);
         showToast('兑换码生成成功', 'success');
         // 如果在列表中，延迟刷新
         if (window.location.pathname === '/admin/codes') {
@@ -800,9 +877,14 @@ async function generateBatch(event) {
     const expiresDays = form.expiresDays.value;
     const hasWarranty = form.hasWarranty.checked;
     const warrantyDays = form.warrantyDays ? form.warrantyDays.value : 30;
+    const warrantyClaims = form.warrantyClaims ? form.warrantyClaims.value : 10;
 
     if (count < 1 || count > 1000) {
         showToast('生成数量必须在1-1000之间', 'error');
+        return;
+    }
+
+    if (!validateCodeGenerationCapacity(count)) {
         return;
     }
 
@@ -810,7 +892,8 @@ async function generateBatch(event) {
         type: 'batch',
         count: count,
         has_warranty: hasWarranty,
-        warranty_days: parseInt(warrantyDays || 30)
+        warranty_days: parseInt(warrantyDays || 30),
+        warranty_claims: parseInt(warrantyClaims || 10)
     };
     if (expiresDays) data.expires_days = parseInt(expiresDays);
 
@@ -824,6 +907,7 @@ async function generateBatch(event) {
         document.getElementById('batchCodes').value = result.data.codes.join('\n');
         document.getElementById('batchResult').style.display = 'block';
         form.reset();
+        updateCodeGenerationCapacity(result.data.total);
         showToast(`成功生成 ${result.data.total} 个兑换码`, 'success');
         if (window.location.pathname === '/admin/codes') {
             setTimeout(() => location.reload(), 3000);
