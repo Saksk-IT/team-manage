@@ -1,15 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}质保邮箱列表 - GPT Team 管理系统{% endblock %}
+{% block title %}质保 Team 白名单 - GPT Team 管理系统{% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <h2>质保邮箱列表</h2>
+    <h2>质保 Team 白名单</h2>
+    <p class="page-subtitle">集中维护允许保留在质保 Team 中的邮箱，支持新增、编辑、删除与筛选。</p>
 </div>
 
 <div class="content-section" id="warrantyEmailEditorCard">
     <div class="section-header">
-        <h3 id="warrantyEditorTitle">新增 / 编辑质保邮箱</h3>
+        <h3 id="warrantyEditorTitle">新增 / 编辑白名单邮箱</h3>
     </div>
 
     <form id="warrantyEmailForm" class="settings-form">
@@ -29,7 +30,7 @@
             <input type="number" id="warrantyRemainingClaims" class="form-control" min="0" value="10" required>
         </div>
         <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-            <button type="submit" class="btn btn-primary" id="warrantyEditorSubmitBtn">保存质保邮箱</button>
+            <button type="submit" class="btn btn-primary" id="warrantyEditorSubmitBtn">保存白名单</button>
             <button type="button" class="btn btn-secondary" onclick="resetWarrantyEmailForm()">清空表单</button>
         </div>
     </form>
@@ -37,7 +38,7 @@
 
 <div class="content-section">
     <div class="section-header">
-        <h3>邮箱列表</h3>
+        <h3>白名单列表</h3>
     </div>
 
     <form method="get" action="/admin/warranty-emails" class="warranty-email-filter-form">
@@ -153,7 +154,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="10" class="empty-state-cell">暂无质保邮箱记录</td>
+                    <td colspan="10" class="empty-state-cell">暂无质保 Team 白名单记录</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -162,7 +163,7 @@
 
     <div id="warrantyEmailBulkActionBar" class="bulk-action-bar" style="display: none;">
         <div class="bulk-info">
-            已选择 <span id="warrantyEmailSelectedCount">0</span> 个质保邮箱
+            已选择 <span id="warrantyEmailSelectedCount">0</span> 个白名单邮箱
         </div>
         <div class="bulk-actions">
             <button type="button" onclick="showBulkUpdateWarrantyEmailModal()" class="btn btn-primary">
@@ -181,7 +182,7 @@
         </div>
         <div class="modal-body">
             <div class="alert alert-info" style="margin-bottom: 1rem;">
-                您正在批量修改 <strong id="bulkWarrantyEmailSelectedCount">0</strong> 个质保邮箱。
+                您正在批量修改 <strong id="bulkWarrantyEmailSelectedCount">0</strong> 个白名单邮箱。
             </div>
             <form id="bulkUpdateWarrantyEmailForm" onsubmit="handleBulkUpdateWarrantyEmails(event)">
                 <div class="form-group">
@@ -208,6 +209,12 @@
 
 {% block extra_css %}
 <style>
+    .page-subtitle {
+        margin: 0.35rem 0 0;
+        color: var(--text-muted);
+        font-size: 0.9rem;
+    }
+
     .form-help {
         font-size: 0.8125rem;
         color: var(--text-muted);
@@ -362,11 +369,11 @@
         const submitBtn = document.getElementById('warrantyEditorSubmitBtn');
 
         if (title) {
-            title.textContent = isEditing ? '编辑质保邮箱' : '新增 / 编辑质保邮箱';
+            title.textContent = isEditing ? '编辑白名单邮箱' : '新增 / 编辑白名单邮箱';
         }
 
         if (submitBtn) {
-            submitBtn.textContent = isEditing ? '更新质保邮箱' : '保存质保邮箱';
+            submitBtn.textContent = isEditing ? '更新白名单' : '保存白名单';
         }
 
         if (notice) {
@@ -446,7 +453,7 @@
 
             const data = await response.json();
             if (response.ok && data.success) {
-                showToast('质保邮箱已保存', 'success');
+                showToast('质保 Team 白名单已保存', 'success');
                 setTimeout(() => window.location.reload(), 300);
             } else {
                 showToast(data.error || '保存失败', 'error');
@@ -516,7 +523,7 @@
     function showBulkUpdateWarrantyEmailModal() {
         const selectedIds = getSelectedWarrantyEmailIds();
         if (selectedIds.length === 0) {
-            showToast('请先选择要修改的质保邮箱', 'error');
+            showToast('请先选择要修改的白名单邮箱', 'error');
             return;
         }
 
@@ -536,7 +543,7 @@
         const remainingClaims = updateRemainingClaims ? Number(remainingClaimsValue) : null;
 
         if (entryIds.length === 0) {
-            showToast('请先选择要修改的质保邮箱', 'error');
+            showToast('请先选择要修改的白名单邮箱', 'error');
             return;
         }
 
@@ -569,7 +576,7 @@
             });
             const data = await response.json();
             if (response.ok && data.success) {
-                showToast(data.message || '质保邮箱批量更新完成', 'success');
+                showToast(data.message || '质保 Team 白名单批量更新完成', 'success');
                 hideModal('bulkUpdateWarrantyEmailModal');
                 setTimeout(() => window.location.reload(), 300);
             } else {
@@ -582,8 +589,8 @@
 
     async function deleteWarrantyEmail(entryId, email) {
         const confirmed = await showSystemConfirm({
-            title: '确认删除质保邮箱',
-            message: `确定要删除质保邮箱 ${email} 吗？`,
+            title: '确认删除白名单邮箱',
+            message: `确定要删除白名单邮箱 ${email} 吗？`,
             confirmText: '删除',
             danger: true,
         });
@@ -599,7 +606,7 @@
 
             const data = await response.json();
             if (response.ok && data.success) {
-                showToast('质保邮箱已删除', 'success');
+                showToast('质保 Team 白名单已删除', 'success');
                 setTimeout(() => window.location.reload(), 300);
             } else {
                 showToast(data.error || '删除失败', 'error');

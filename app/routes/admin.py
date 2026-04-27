@@ -3225,7 +3225,7 @@ async def warranty_emails_page(
         _validate_code_filter_range(parsed_remaining_days_min, parsed_remaining_days_max, "剩余天数")
 
         logger.info(
-            "管理员访问质保邮箱列表页 search=%s status=%s source=%s claims=%s-%s days=%s-%s",
+            "管理员访问质保 Team 白名单页 search=%s status=%s source=%s claims=%s-%s days=%s-%s",
             search,
             normalized_status,
             normalized_source,
@@ -3291,10 +3291,10 @@ async def warranty_emails_page(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"加载质保邮箱列表页失败: {e}")
+        logger.error(f"加载质保 Team 白名单页失败: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"加载质保邮箱列表页失败: {str(e)}"
+            detail=f"加载质保 Team 白名单页失败: {str(e)}"
         )
 
 
@@ -3433,7 +3433,7 @@ async def save_warranty_email(
         return JSONResponse(
             content={
                 "success": True,
-                "message": "质保邮箱已保存",
+                "message": "质保 Team 白名单已保存",
                 "entry": warranty_service.serialize_warranty_email_entry(entry)
             }
         )
@@ -3443,7 +3443,7 @@ async def save_warranty_email(
             content={"success": False, "error": str(e)}
         )
     except Exception as e:
-        logger.error(f"保存质保邮箱失败: {e}")
+        logger.error(f"保存质保 Team 白名单失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"保存失败: {str(e)}"}
@@ -3468,7 +3468,7 @@ async def bulk_update_warranty_emails(
         return JSONResponse(
             content={
                 "success": True,
-                "message": "质保邮箱批量更新完成",
+                "message": "质保 Team 白名单批量更新完成",
                 **result,
             }
         )
@@ -3478,7 +3478,7 @@ async def bulk_update_warranty_emails(
             content={"success": False, "error": str(e)}
         )
     except Exception as e:
-        logger.error(f"批量更新质保邮箱失败: {e}")
+        logger.error(f"批量更新质保 Team 白名单失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"批量更新失败: {str(e)}"}
@@ -3496,11 +3496,11 @@ async def delete_warranty_email(
         if not deleted:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
-                content={"success": False, "error": "质保邮箱记录不存在"}
+                content={"success": False, "error": "质保 Team 白名单记录不存在"}
             )
-        return JSONResponse(content={"success": True, "message": "质保邮箱已删除"})
+        return JSONResponse(content={"success": True, "message": "质保 Team 白名单已删除"})
     except Exception as e:
-        logger.error(f"删除质保邮箱失败: {e}")
+        logger.error(f"删除质保 Team 白名单失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"删除失败: {str(e)}"}
@@ -3516,7 +3516,7 @@ async def save_warranty_super_code(
 ):
     return JSONResponse(
         status_code=status.HTTP_410_GONE,
-        content={"success": False, "error": "超级兑换码功能已下线，请改用质保邮箱列表"}
+        content={"success": False, "error": "超级兑换码功能已下线，请改用质保 Team 白名单"}
     )
 
 
@@ -3529,7 +3529,7 @@ async def regenerate_warranty_super_code(
 ):
     return JSONResponse(
         status_code=status.HTTP_410_GONE,
-        content={"success": False, "error": "超级兑换码功能已下线，请改用质保邮箱列表"}
+        content={"success": False, "error": "超级兑换码功能已下线，请改用质保 Team 白名单"}
     )
 
 
@@ -3541,7 +3541,7 @@ async def disable_warranty_super_code(
 ):
     return JSONResponse(
         status_code=status.HTTP_410_GONE,
-        content={"success": False, "error": "超级兑换码功能已下线，请改用质保邮箱列表"}
+        content={"success": False, "error": "超级兑换码功能已下线，请改用质保 Team 白名单"}
     )
 
 
