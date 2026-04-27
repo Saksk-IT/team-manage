@@ -1233,14 +1233,14 @@ body.admin-shell {
 .code-preset-panel {
     border: 1px solid var(--border-base);
     border-radius: var(--radius-md);
-    padding: 0.875rem;
-    background: var(--bg-main);
+    padding: 1rem;
+    background: var(--bg-surface);
 }
 
 .code-preset-list {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 0.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0.625rem;
     margin-top: 0.75rem;
 }
 
@@ -1260,6 +1260,8 @@ body.admin-shell {
     line-height: 1.25;
     text-align: left;
     white-space: normal;
+    min-height: 66px;
+    padding: 0.65rem 0.8rem;
 }
 
 .code-preset-name {
@@ -1296,6 +1298,217 @@ body.admin-shell {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.5rem;
     margin-top: 0.75rem;
+}
+
+.modal-title-stack h3 {
+    margin: 0;
+}
+
+.modal-title-stack p {
+    margin: 0.25rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.modal.code-generation-modal {
+    max-width: min(960px, calc(100vw - 2rem));
+}
+
+.code-generation-modal .modal-header {
+    padding: 1.25rem 1.5rem;
+}
+
+.code-generation-modal .modal-body {
+    padding: 1.25rem 1.5rem 1.5rem;
+    background:
+        radial-gradient(circle at top right, rgba(99, 102, 241, 0.08), transparent 34%),
+        var(--bg-surface);
+}
+
+.code-generation-capacity {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+    padding: 0.875rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-base);
+    border-radius: var(--radius-lg);
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: var(--shadow-sm);
+}
+
+.code-generation-capacity-item {
+    min-width: 0;
+    padding: 0.75rem;
+    border-radius: var(--radius-md);
+    background: var(--bg-main);
+}
+
+.code-generation-capacity-item span {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+    font-weight: 600;
+}
+
+.code-generation-capacity-item strong {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
+    color: var(--text-main);
+    font-size: 1.45rem;
+    line-height: 1.1;
+}
+
+.code-generation-capacity-item strong span {
+    color: inherit;
+    font-size: inherit;
+}
+
+.code-generation-capacity-item em {
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+    font-style: normal;
+}
+
+.code-generation-capacity-item.is-highlight {
+    background: var(--primary-soft);
+}
+
+.code-generation-capacity-item.is-highlight strong {
+    color: var(--primary);
+}
+
+.code-generation-capacity p {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+}
+
+.code-generation-panel {
+    padding: 0;
+}
+
+.code-generation-form {
+    display: grid;
+    grid-template-columns: minmax(260px, 0.88fr) minmax(320px, 1.12fr);
+    gap: 0.875rem;
+    align-items: start;
+}
+
+.code-generation-card {
+    margin-bottom: 0;
+    border: 1px solid var(--border-base);
+    border-radius: var(--radius-lg);
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: var(--shadow-sm);
+}
+
+.code-generation-card > label,
+.code-generation-card-title label {
+    margin-bottom: 0.45rem;
+    font-weight: 700;
+}
+
+.code-generation-card .form-text {
+    display: block;
+    margin-top: 0.35rem;
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+}
+
+.code-generation-card .form-control {
+    min-height: 42px;
+}
+
+.code-generation-form .code-preset-panel {
+    grid-row: span 3;
+}
+
+.code-generation-card .code-generation-checkbox-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    margin-bottom: 0.45rem;
+    cursor: pointer;
+}
+
+.code-generation-checkbox-row input {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    margin-top: 0.1rem;
+    accent-color: var(--primary);
+}
+
+.code-generation-warranty-settings,
+.code-generation-actions {
+    grid-column: 1 / -1;
+}
+
+.code-generation-quota-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+#generateCodeModal .quick-value-row {
+    gap: 0.45rem;
+    margin-top: 0.625rem;
+}
+
+#generateCodeModal .quick-value-btn {
+    min-height: 34px;
+    padding: 0.45rem 0.85rem;
+}
+
+.code-generation-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 0.25rem;
+}
+
+.code-generation-actions .btn {
+    min-width: 180px;
+}
+
+.code-generation-result {
+    margin-top: 1rem;
+    padding: 1rem;
+    border: 1px solid rgba(16, 185, 129, 0.32);
+    border-radius: var(--radius-lg);
+    background: var(--success-soft);
+}
+
+.code-generation-result h4 {
+    margin-bottom: 0.75rem;
+    color: var(--success);
+}
+
+.code-display {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.code-display code {
+    flex: 1;
+    min-width: 0;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+    overflow-x: auto;
+}
+
+#batchCodes {
+    min-height: 124px;
+    margin: 0.75rem 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 
@@ -1693,6 +1906,19 @@ body.admin-shell {
     }
 }
 
+@media (max-width: 900px) {
+    .code-generation-form {
+        grid-template-columns: 1fr;
+    }
+
+    .code-generation-form .code-preset-panel,
+    .code-generation-warranty-settings,
+    .code-generation-actions {
+        grid-column: 1;
+        grid-row: auto;
+    }
+}
+
 @media (max-width: 768px) {
     .navbar-container {
         padding: 0 1rem;
@@ -1869,6 +2095,32 @@ body.admin-shell {
         max-width: 95%;
         margin: 1rem auto;
         max-height: calc(100vh - 2rem);
+    }
+
+    .modal.code-generation-modal {
+        max-width: 95%;
+    }
+
+    .code-generation-modal .modal-header,
+    .code-generation-modal .modal-body {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .code-generation-capacity,
+    .code-generation-quota-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .code-generation-actions,
+    .code-display {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .code-generation-actions .btn {
+        width: 100%;
+        min-width: 0;
     }
 
     .modal.modal-wide {
