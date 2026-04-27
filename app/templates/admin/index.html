@@ -117,12 +117,20 @@
                     </option>
                     {% endfor %}
                 </select>
+                <select name="imported_by_user_id" class="form-control" aria-label="导入人筛选">
+                    <option value="" {% if not imported_by_user_id_filter %}selected{% endif %}>全部导入人</option>
+                    {% for importer in importer_options %}
+                    <option value="{{ importer.id }}" {% if imported_by_user_id_filter == importer.id %}selected{% endif %}>
+                        {{ importer.username }}
+                    </option>
+                    {% endfor %}
+                </select>
                 <input type="date" name="imported_from" value="{{ imported_from_filter or '' }}" class="form-control"
                     aria-label="导入开始日期">
                 <input type="date" name="imported_to" value="{{ imported_to_filter or '' }}" class="form-control"
                     aria-label="导入结束日期">
                 <button type="submit" class="btn btn-secondary btn-sm">筛选</button>
-                {% if review_status_filter or import_tag_filter or imported_from_filter or imported_to_filter %}
+                {% if review_status_filter or import_tag_filter or imported_by_user_id_filter or imported_from_filter or imported_to_filter %}
                 <a href="{{ request.url.path }}" class="btn btn-minimal btn-sm">清空</a>
                 {% endif %}
             </form>
@@ -183,6 +191,9 @@
                     {% endif %}
                     {% if import_tag_filter %}
                     <input type="hidden" name="import_tag" value="{{ import_tag_filter }}">
+                    {% endif %}
+                    {% if imported_by_user_id_filter %}
+                    <input type="hidden" name="imported_by_user_id" value="{{ imported_by_user_id_filter }}">
                     {% endif %}
                     {% if imported_from_filter %}
                     <input type="hidden" name="imported_from" value="{{ imported_from_filter }}">

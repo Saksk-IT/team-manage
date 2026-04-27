@@ -793,6 +793,7 @@ async def _render_team_dashboard_page(
     imported_only: bool = False,
     review_status: Optional[str] = None,
     import_tag: Optional[str] = None,
+    imported_by_user_id_filter: Optional[int] = None,
     imported_from: Optional[str] = None,
     imported_to: Optional[str] = None,
 ):
@@ -807,6 +808,7 @@ async def _render_team_dashboard_page(
         else (None, None)
     )
     effective_import_status = normalized_review_status if is_review_mode else import_status
+    importer_options = await auth_service.list_sub_admins(db) if active_page == "pending_teams" else []
 
     auto_refresh_config = await settings_service.get_team_auto_refresh_config(db)
     teams_result = await team_service.get_all_teams(
@@ -817,7 +819,7 @@ async def _render_team_dashboard_page(
         status=status,
         team_type=team_type,
         import_status=effective_import_status,
-        imported_by_user_id=imported_by_user_id,
+        imported_by_user_id=imported_by_user_id if imported_by_user_id is not None else imported_by_user_id_filter,
         imported_only=imported_only,
         import_tag=normalized_import_tag,
         imported_from=parsed_imported_from,
@@ -828,7 +830,7 @@ async def _render_team_dashboard_page(
     if is_review_mode:
         stats = await _get_import_review_stats(
             db,
-            imported_by_user_id=imported_by_user_id,
+            imported_by_user_id=imported_by_user_id if imported_by_user_id is not None else imported_by_user_id_filter,
             import_tag=normalized_import_tag,
             imported_from=parsed_imported_from,
             imported_to=parsed_imported_to,
@@ -866,12 +868,14 @@ async def _render_team_dashboard_page(
             "status_filter": status,
             "review_status_filter": normalized_review_status,
             "import_tag_filter": normalized_import_tag,
+            "imported_by_user_id_filter": imported_by_user_id_filter,
             "imported_from_filter": imported_from or "",
             "imported_to_filter": imported_to or "",
             "import_tag_options": [
                 {"value": value, "label": label}
                 for value, label in IMPORT_TAG_LABELS.items()
             ],
+            "importer_options": importer_options,
             "team_auto_refresh_enabled": auto_refresh_config["enabled"],
             "team_auto_refresh_interval_minutes": auto_refresh_config["interval_minutes"],
             "pagination": {
@@ -962,6 +966,7 @@ async def pending_teams_dashboard(
     status: Optional[str] = None,
     review_status: Optional[str] = None,
     import_tag: Optional[str] = None,
+    imported_by_user_id: Optional[int] = None,
     imported_from: Optional[str] = None,
     imported_to: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
@@ -983,6 +988,7 @@ async def pending_teams_dashboard(
         imported_only=True,
         review_status=review_status,
         import_tag=import_tag,
+        imported_by_user_id_filter=imported_by_user_id,
         imported_from=imported_from,
         imported_to=imported_to,
     )
