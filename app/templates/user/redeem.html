@@ -24,45 +24,11 @@
         <div class="front-page__ambient front-page__ambient--blue" aria-hidden="true"></div>
 
         <div class="container front-shell">
-            <header class="front-topbar" aria-label="页面导航">
-                <a class="front-brand" href="/" aria-label="返回 GPT Team 服务台首页">
-                    <span class="front-brand__mark"><i data-lucide="sparkles"></i></span>
-                    <span>
-                        <strong>GPT Team Service</strong>
-                        <small>高效交付工作台</small>
-                    </span>
-                </a>
-
-                <div class="front-topbar__actions">
-                    {% if show_front_announcement %}
-                    <a href="#frontAnnouncement" class="front-topbar__link">
-                        <i data-lucide="megaphone"></i> 公告
-                    </a>
-                    {% endif %}
-                    {% if show_customer_service %}
-                    <button type="button" class="front-topbar__link" onclick="toggleCustomerServiceWidget(true)">
-                        <i data-lucide="message-circle"></i> 客服
-                    </button>
-                    {% endif %}
-                    {% if show_purchase_link %}
-                    <a
-                        id="purchaseLinkButton"
-                        href="{{ purchase_link.url }}"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="btn btn-primary front-topbar__cta"
-                    >
-                        <i data-lucide="shopping-bag"></i> {{ purchase_link.button_text or '购买套餐' }}
-                    </a>
-                    {% endif %}
-                </div>
-            </header>
-
             <section class="hero-card" aria-labelledby="heroTitle">
                 <div class="hero-card__content">
                     <div class="hero-card__eyebrow">Premium access desk</div>
                     <h1 id="heroTitle">ChatGPT Team</h1>
-                    <p class="subtitle">把兑换、状态查询、客服与购买入口收束到同一个高效页面。填写关键信息后，系统会自动完成校验、锁定席位并发送邀请。</p>
+                    <p class="subtitle">兑换、质保、客服与购买入口集中处理，填写后自动校验并发送邀请。</p>
                     <div class="hero-card__badges" aria-label="当前服务状态">
                         {% if remaining_spots is not none %}
                         <div class="spots-badge spots-badge--inventory">
@@ -82,37 +48,6 @@
                         </div>
                         {% endif %}
                     </div>
-                </div>
-
-                <div class="hero-card__action" aria-label="效率流程">
-                    <div class="hero-card__action-title">交付节奏</div>
-                    <div class="delivery-flow">
-                        <div class="delivery-flow__item">
-                            <span>01</span>
-                            <strong>验证资格</strong>
-                            <small>兑换码 / 邮箱</small>
-                        </div>
-                        <div class="delivery-flow__item">
-                            <span>02</span>
-                            <strong>锁定席位</strong>
-                            <small>自动匹配可用 Team</small>
-                        </div>
-                        <div class="delivery-flow__item">
-                            <span>03</span>
-                            <strong>发送邀请</strong>
-                            <small>前往邮箱加入</small>
-                        </div>
-                    </div>
-                    {% if show_purchase_link %}
-                    <a
-                        href="{{ purchase_link.url }}"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="btn btn-secondary hero-purchase-button"
-                    >
-                        <i data-lucide="external-link"></i> 没有兑换码，先去购买
-                    </a>
-                    {% endif %}
                 </div>
             </section>
 
@@ -369,6 +304,40 @@
                     </section>
                 </aside>
             </div>
+
+            <footer class="front-topbar front-bottom-bar" aria-label="页面辅助入口">
+                <a class="front-brand" href="/" aria-label="返回 GPT Team 服务台首页">
+                    <span class="front-brand__mark"><i data-lucide="sparkles"></i></span>
+                    <span>
+                        <strong>GPT Team Service</strong>
+                        <small>高效交付工作台</small>
+                    </span>
+                </a>
+
+                <div class="front-topbar__actions">
+                    {% if show_front_announcement %}
+                    <a href="#frontAnnouncement" class="front-topbar__link">
+                        <i data-lucide="megaphone"></i> 公告
+                    </a>
+                    {% endif %}
+                    {% if show_customer_service %}
+                    <button type="button" class="front-topbar__link" onclick="toggleCustomerServiceWidget(true)">
+                        <i data-lucide="message-circle"></i> 客服
+                    </button>
+                    {% endif %}
+                    {% if show_purchase_link %}
+                    <a
+                        id="purchaseLinkButton"
+                        href="{{ purchase_link.url }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="btn btn-primary front-topbar__cta"
+                    >
+                        <i data-lucide="shopping-bag"></i> {{ purchase_link.button_text or '购买套餐' }}
+                    </a>
+                    {% endif %}
+                </div>
+            </footer>
         </div>
     </div>
 

@@ -14,7 +14,7 @@
     }
 
     .hero-card {
-        grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+        grid-template-columns: minmax(0, 1fr);
         align-items: center;
     }
 
@@ -63,11 +63,15 @@
     }
 
     .hero-card {
-        border-radius: 28px;
+        border-radius: 24px;
     }
 
     .hero-card h1 {
-        letter-spacing: -0.055em;
+        letter-spacing: -0.035em;
+    }
+
+    .front-bottom-bar {
+        order: 10;
     }
 
     .status-grid {
