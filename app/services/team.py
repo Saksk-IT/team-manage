@@ -28,12 +28,49 @@ TEAM_TYPE_STANDARD = "standard"
 TEAM_TYPE_WARRANTY = "warranty"
 IMPORT_STATUS_PENDING = "pending"
 IMPORT_STATUS_CLASSIFIED = "classified"
+IMPORT_TAG_OTHER_PAID = "other_paid"
+IMPORT_TAG_SELF_PAID = "self_paid"
+IMPORT_TAG_LABELS = {
+    IMPORT_TAG_OTHER_PAID: "他付",
+    IMPORT_TAG_SELF_PAID: "自付",
+}
 CLASSIFY_TARGET_STANDARD = "standard"
 CLASSIFY_TARGET_WARRANTY_CODE = "warranty_code"
 CLASSIFY_TARGET_WARRANTY_TEAM = "warranty_team"
 IMPORT_RETRY_ATTEMPTS = 3
 IMPORT_RETRY_DELAYS_SECONDS = (1, 2)
 ProgressCallback = Optional[Callable[[Dict[str, Any]], Awaitable[None]]]
+
+
+def normalize_import_tag(value: Optional[str]) -> Optional[str]:
+    """标准化导入标签。"""
+    if value is None:
+        return None
+
+    normalized_value = str(value).strip()
+    if not normalized_value:
+        return None
+
+    alias_map = {
+        "他付": IMPORT_TAG_OTHER_PAID,
+        "other": IMPORT_TAG_OTHER_PAID,
+        "other-paid": IMPORT_TAG_OTHER_PAID,
+        "other_paid": IMPORT_TAG_OTHER_PAID,
+        "自付": IMPORT_TAG_SELF_PAID,
+        "self": IMPORT_TAG_SELF_PAID,
+        "self-paid": IMPORT_TAG_SELF_PAID,
+        "self_paid": IMPORT_TAG_SELF_PAID,
+    }
+    import_tag = alias_map.get(normalized_value.lower()) or alias_map.get(normalized_value)
+    if import_tag not in IMPORT_TAG_LABELS:
+        raise ValueError("无效的导入标签")
+
+    return import_tag
+
+
+def get_import_tag_label(value: Optional[str]) -> str:
+    """获取导入标签展示名。"""
+    return IMPORT_TAG_LABELS.get(value or "", "")
 
 
 class TeamService:
@@ -747,6 +784,7 @@ class TeamService:
         import_status: str = IMPORT_STATUS_CLASSIFIED,
         imported_by_user_id: Optional[int] = None,
         imported_by_username: Optional[str] = None,
+        import_tag: Optional[str] = None,
     ) -> Dict[str, Any]:
         retry_identifier = self._get_import_retry_identifier(access_token, email, account_id)
         last_result: Optional[Dict[str, Any]] = None
@@ -767,6 +805,7 @@ class TeamService:
                 import_status=import_status,
                 imported_by_user_id=imported_by_user_id,
                 imported_by_username=imported_by_username,
+                import_tag=import_tag,
             )
 
             if result.get("success"):
@@ -821,6 +860,7 @@ class TeamService:
         import_status: str = IMPORT_STATUS_CLASSIFIED,
         imported_by_user_id: Optional[int] = None,
         imported_by_username: Optional[str] = None,
+        import_tag: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         单个导入 Team
@@ -835,6 +875,8 @@ class TeamService:
             结果字典,包含 success, team_id (第一个导入的), message, error
         """
         try:
+            normalized_import_tag = normalize_import_tag(import_tag)
+
             # 1. 检查并尝试刷新 Token (如果 AT 缺失或过期)
             is_at_valid = False
             if access_token:
@@ -1135,6 +1177,7 @@ class TeamService:
                     import_status=import_status if import_status in {IMPORT_STATUS_PENDING, IMPORT_STATUS_CLASSIFIED} else IMPORT_STATUS_CLASSIFIED,
                     imported_by_user_id=imported_by_user_id,
                     imported_by_username=imported_by_username,
+                    import_tag=normalized_import_tag,
                 )
 
                 db_session.add(team)
@@ -1173,6 +1216,8 @@ class TeamService:
                     "account_id": team.account_id,
                     "team_type": team.team_type,
                     "bound_code_type": team.bound_code_type,
+                    "import_tag": team.import_tag,
+                    "import_tag_label": get_import_tag_label(team.import_tag),
                     "team_name": team.team_name,
                     "current_members": current_members,
                     "max_members": max_members,
@@ -1553,6 +1598,7 @@ class TeamService:
         import_status: str = IMPORT_STATUS_CLASSIFIED,
         imported_by_user_id: Optional[int] = None,
         imported_by_username: Optional[str] = None,
+        import_tag: Optional[str] = None,
     ):
         """
         批量导入 Team (流式返回进度)
@@ -1566,6 +1612,7 @@ class TeamService:
         """
         try:
             # 1. 解析文本
+            normalized_import_tag = normalize_import_tag(import_tag)
             parsed_data = self.token_parser.parse_team_import_text(text)
 
             if not parsed_data:
@@ -1626,6 +1673,7 @@ class TeamService:
                     import_status=import_status,
                     imported_by_user_id=imported_by_user_id,
                     imported_by_username=imported_by_username,
+                    import_tag=normalized_import_tag,
                 )
 
                 if result["success"]:
@@ -2872,6 +2920,9 @@ class TeamService:
         import_status: Optional[str] = IMPORT_STATUS_CLASSIFIED,
         imported_by_user_id: Optional[int] = None,
         imported_only: bool = False,
+        import_tag: Optional[str] = None,
+        imported_from: Optional[datetime] = None,
+        imported_to: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
         获取所有 Team 列表 (用于管理员页面)
@@ -2887,6 +2938,8 @@ class TeamService:
             结果字典,包含 success, teams, total, total_pages, current_page, error
         """
         try:
+            normalized_import_tag = normalize_import_tag(import_tag)
+
             # 1. 构建查询语句
             stmt = select(Team)
             
@@ -2922,6 +2975,15 @@ class TeamService:
 
             if imported_only:
                 stmt = stmt.where(Team.imported_by_user_id.is_not(None))
+
+            if normalized_import_tag:
+                stmt = stmt.where(Team.import_tag == normalized_import_tag)
+
+            if imported_from:
+                stmt = stmt.where(Team.created_at >= imported_from)
+
+            if imported_to:
+                stmt = stmt.where(Team.created_at <= imported_to)
 
             # 4. 获取总数
             count_stmt = select(func.count()).select_from(stmt.subquery())
@@ -3045,6 +3107,8 @@ class TeamService:
                     "import_decision_label": review_decision_label,
                     "imported_by_user_id": team.imported_by_user_id,
                     "imported_by_username": team.imported_by_username,
+                    "import_tag": team.import_tag,
+                    "import_tag_label": get_import_tag_label(team.import_tag),
                     "bound_code_type": team.bound_code_type or TEAM_TYPE_STANDARD,
                     "bound_code_type_label": "质保" if (team.bound_code_type or TEAM_TYPE_STANDARD) == TEAM_TYPE_WARRANTY else "普通",
                     "bound_code_warranty_days": bound_code_warranty_days,

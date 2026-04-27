@@ -5,6 +5,10 @@
 // Toast 提示函数
 const TEAM_TYPE_STANDARD = 'standard';
 const TEAM_TYPE_WARRANTY = 'warranty';
+const IMPORT_TAG_LABELS = {
+    other_paid: '他付',
+    self_paid: '自付'
+};
 let currentImportTeamType = TEAM_TYPE_STANDARD;
 
 function showToast(message, type = 'info') {
@@ -165,6 +169,34 @@ function handleImportWarrantyToggle(checkbox, hiddenInputId, daysGroupId, teamTy
     updateImportGeneratedCodeTitles(teamType);
 }
 
+function setBatchImportTag(control, importTag) {
+    const input = document.getElementById('batchImportTag');
+    const normalizedTag = IMPORT_TAG_LABELS[importTag] ? importTag : '';
+    const currentTag = input?.value || '';
+    const nextTag = currentTag === normalizedTag ? '' : normalizedTag;
+
+    if (input) {
+        input.value = nextTag;
+    }
+
+    document.querySelectorAll('#batchImportTagGroup .quick-value-btn[data-import-tag]').forEach(button => {
+        const isActive = button.dataset.importTag === nextTag;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+}
+
+function resetBatchImportTag() {
+    const input = document.getElementById('batchImportTag');
+    if (input) {
+        input.value = '';
+    }
+    document.querySelectorAll('#batchImportTagGroup .quick-value-btn[data-import-tag]').forEach(button => {
+        button.classList.remove('active');
+        button.setAttribute('aria-pressed', 'false');
+    });
+}
+
 function setWarrantyDaysQuickValue(control, days) {
     const normalizedDays = parseInt(days, 10);
     if (!Number.isInteger(normalizedDays) || normalizedDays < 1) {
@@ -209,6 +241,7 @@ function showImportTeamModal(teamType = TEAM_TYPE_STANDARD) {
     if (batchResultsContainer) batchResultsContainer.style.display = 'none';
     if (batchProgressContainer) batchProgressContainer.style.display = 'none';
 
+    resetBatchImportTag();
     setImportWarrantyOptionsVisibility(currentImportTeamType);
     updateBatchImportCodes([], currentImportTeamType, false);
     switchModalTab('importTeamModal', initialTabId);
@@ -238,6 +271,7 @@ function renderImportedTeamsSummary(importedTeams = [], teamType = TEAM_TYPE_STA
                 ? '质保 Team 不生成兑换码'
                 : `自动生成 ${team.generated_code_count} 个${(team.generated_code_has_warranty ?? generateWarrantyCodes) ? '质保绑定兑换码' : '绑定兑换码'}`)}
             </div>
+            ${team.import_tag_label ? `<div class="text-muted small">标签：${escapeHtml(team.import_tag_label)}</div>` : ''}
         </div>
     `).join('');
 }
@@ -589,6 +623,7 @@ async function handleBatchImport(event) {
     const generateWarrantyCodes = teamType === TEAM_TYPE_STANDARD && Boolean(form.generateWarrantyCodesCheckbox?.checked);
     const warrantyDays = form.warrantyDays ? parseInt(form.warrantyDays.value || '30', 10) : 30;
     const batchContent = form.batchContent.value.trim();
+    const importTag = form.importTag ? form.importTag.value.trim() : '';
     const submitButton = form.querySelector('button[type="submit"]');
     const importedCodes = [];
 
@@ -630,6 +665,7 @@ async function handleBatchImport(event) {
                 content: batchContent,
                 generate_warranty_codes: generateWarrantyCodes,
                 warranty_days: warrantyDays,
+                import_tag: importTag || null,
             })
         });
 
@@ -689,6 +725,7 @@ async function handleBatchImport(event) {
                                                     : (teamType === TEAM_TYPE_WARRANTY
                                                         ? '质保 Team 不生成兑换码'
                                                         : `已生成 ${team.generated_code_count} 个${(team.generated_code_has_warranty ?? generateWarrantyCodes) ? '质保绑定码' : '绑定码'}${(team.generated_code_has_warranty ?? generateWarrantyCodes) ? `（${team.generated_code_warranty_days || warrantyDays} 天）` : ''}`)}
+                                                ${team.import_tag_label ? `，标签 ${escapeHtml(team.import_tag_label)}` : ''}
                                                 ${team.generated_codes && team.generated_codes.length ? `
                                                     <div style="margin-top: 0.25rem; word-break: break-all;">
                                                         <code>${escapeHtml(team.generated_codes.join(', '))}</code>

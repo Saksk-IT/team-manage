@@ -25,9 +25,11 @@ from app.services.team import (
     TEAM_TYPE_WARRANTY,
     IMPORT_STATUS_PENDING,
     IMPORT_STATUS_CLASSIFIED,
+    IMPORT_TAG_LABELS,
     CLASSIFY_TARGET_STANDARD,
     CLASSIFY_TARGET_WARRANTY_CODE,
     CLASSIFY_TARGET_WARRANTY_TEAM,
+    normalize_import_tag,
 )
 from app.services.team_cleanup_record import team_cleanup_record_service
 from app.services.redemption import RedemptionService
@@ -78,6 +80,7 @@ class TeamImportRequest(BaseModel):
     email: Optional[str] = Field(None, description="邮箱 (单个导入)")
     account_id: Optional[str] = Field(None, description="Account ID (单个导入)")
     content: Optional[str] = Field(None, description="批量导入内容")
+    import_tag: Optional[str] = Field(None, description="导入标签: other_paid 或 self_paid")
 
 
 class AddMemberRequest(BaseModel):
@@ -213,6 +216,53 @@ def _parse_code_filter_datetime(value: Optional[str], *, is_end: bool, label: st
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"{label}格式不正确"
         ) from exc
+
+
+def _normalize_import_tag_filter(value: Optional[str]) -> Optional[str]:
+    try:
+        return normalize_import_tag(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="无效的导入标签筛选"
+        ) from exc
+
+
+def _normalize_review_status_filter(value: Optional[str]) -> Optional[str]:
+    normalized_value = _normalize_optional_filter_text(value)
+    if normalized_value is None:
+        return None
+
+    if normalized_value not in {IMPORT_STATUS_PENDING, IMPORT_STATUS_CLASSIFIED}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="无效的审核状态筛选"
+        )
+
+    return normalized_value
+
+
+def _parse_import_date_filter_range(
+    imported_from: Optional[str],
+    imported_to: Optional[str],
+) -> tuple[Optional[datetime], Optional[datetime]]:
+    parsed_imported_from = _parse_code_filter_datetime(
+        imported_from,
+        is_end=False,
+        label="导入开始时间"
+    )
+    parsed_imported_to = _parse_code_filter_datetime(
+        imported_to,
+        is_end=True,
+        label="导入结束时间"
+    )
+    if parsed_imported_from and parsed_imported_to and parsed_imported_from > parsed_imported_to:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="导入开始时间不能晚于结束时间"
+        )
+
+    return parsed_imported_from, parsed_imported_to
 
 
 def _validate_code_filter_range(
@@ -696,10 +746,19 @@ def _normalize_warranty_super_code_type(code_type: str) -> str:
 async def _get_import_review_stats(
     db: AsyncSession,
     imported_by_user_id: Optional[int] = None,
+    import_tag: Optional[str] = None,
+    imported_from: Optional[datetime] = None,
+    imported_to: Optional[datetime] = None,
 ) -> Dict[str, int]:
     base_filters = [Team.imported_by_user_id.is_not(None)]
     if imported_by_user_id is not None:
         base_filters.append(Team.imported_by_user_id == imported_by_user_id)
+    if import_tag:
+        base_filters.append(Team.import_tag == import_tag)
+    if imported_from:
+        base_filters.append(Team.created_at >= imported_from)
+    if imported_to:
+        base_filters.append(Team.created_at <= imported_to)
 
     total = await db.scalar(select(func.count(Team.id)).where(*base_filters)) or 0
     pending = await db.scalar(
@@ -732,8 +791,22 @@ async def _render_team_dashboard_page(
     import_status: Optional[str] = IMPORT_STATUS_CLASSIFIED,
     imported_by_user_id: Optional[int] = None,
     imported_only: bool = False,
+    review_status: Optional[str] = None,
+    import_tag: Optional[str] = None,
+    imported_from: Optional[str] = None,
+    imported_to: Optional[str] = None,
 ):
     from app.main import templates
+
+    is_review_mode = active_page in {"pending_teams", "import_only"}
+    normalized_review_status = _normalize_review_status_filter(review_status) if is_review_mode else None
+    normalized_import_tag = _normalize_import_tag_filter(import_tag) if is_review_mode else None
+    parsed_imported_from, parsed_imported_to = (
+        _parse_import_date_filter_range(imported_from, imported_to)
+        if is_review_mode
+        else (None, None)
+    )
+    effective_import_status = normalized_review_status if is_review_mode else import_status
 
     auto_refresh_config = await settings_service.get_team_auto_refresh_config(db)
     teams_result = await team_service.get_all_teams(
@@ -743,15 +816,23 @@ async def _render_team_dashboard_page(
         search=search,
         status=status,
         team_type=team_type,
-        import_status=import_status,
+        import_status=effective_import_status,
         imported_by_user_id=imported_by_user_id,
         imported_only=imported_only,
+        import_tag=normalized_import_tag,
+        imported_from=parsed_imported_from,
+        imported_to=parsed_imported_to,
     )
-    is_review_mode = active_page in {"pending_teams", "import_only"}
     team_stats = await team_service.get_stats(db, team_type=team_type) if import_status == IMPORT_STATUS_CLASSIFIED and team_type else {"total": teams_result.get("total", 0), "available": 0, "total_seats": 0, "remaining_seats": 0}
 
     if is_review_mode:
-        stats = await _get_import_review_stats(db, imported_by_user_id=imported_by_user_id)
+        stats = await _get_import_review_stats(
+            db,
+            imported_by_user_id=imported_by_user_id,
+            import_tag=normalized_import_tag,
+            imported_from=parsed_imported_from,
+            imported_to=parsed_imported_to,
+        )
     elif team_type == TEAM_TYPE_STANDARD:
         code_stats = await redemption_service.get_stats(db)
         stats = {
@@ -783,6 +864,14 @@ async def _render_team_dashboard_page(
             "stats": stats,
             "search": search,
             "status_filter": status,
+            "review_status_filter": normalized_review_status,
+            "import_tag_filter": normalized_import_tag,
+            "imported_from_filter": imported_from or "",
+            "imported_to_filter": imported_to or "",
+            "import_tag_options": [
+                {"value": value, "label": label}
+                for value, label in IMPORT_TAG_LABELS.items()
+            ],
             "team_auto_refresh_enabled": auto_refresh_config["enabled"],
             "team_auto_refresh_interval_minutes": auto_refresh_config["interval_minutes"],
             "pagination": {
@@ -871,6 +960,10 @@ async def pending_teams_dashboard(
     per_page: int = 20,
     search: Optional[str] = None,
     status: Optional[str] = None,
+    review_status: Optional[str] = None,
+    import_tag: Optional[str] = None,
+    imported_from: Optional[str] = None,
+    imported_to: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
@@ -888,6 +981,10 @@ async def pending_teams_dashboard(
         page_title="子管理员导入记录",
         import_status=None,
         imported_only=True,
+        review_status=review_status,
+        import_tag=import_tag,
+        imported_from=imported_from,
+        imported_to=imported_to,
     )
 
 
@@ -898,6 +995,10 @@ async def import_only_page(
     per_page: int = 20,
     search: Optional[str] = None,
     status: Optional[str] = None,
+    review_status: Optional[str] = None,
+    import_tag: Optional[str] = None,
+    imported_from: Optional[str] = None,
+    imported_to: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_team_import_admin)
 ):
@@ -917,6 +1018,10 @@ async def import_only_page(
         import_status=None,
         imported_by_user_id=imported_by_user_id,
         imported_only=not is_import_admin_user(current_user),
+        review_status=review_status,
+        import_tag=import_tag,
+        imported_from=imported_from,
+        imported_to=imported_to,
     )
 
 
@@ -1244,6 +1349,16 @@ async def team_import(
         import_status = IMPORT_STATUS_CLASSIFIED
         imported_by_user_id = None
         imported_by_username = current_user.get("username")
+        try:
+            import_tag = normalize_import_tag(import_data.import_tag)
+        except ValueError:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "success": False,
+                    "error": "无效的导入标签"
+                }
+            )
 
         if is_import_admin:
             team_type = TEAM_TYPE_STANDARD
@@ -1261,14 +1376,16 @@ async def team_import(
             import_status,
         )
 
-        import_context_kwargs = {}
+        import_context_kwargs = {
+            "import_tag": import_tag,
+        }
         if is_import_admin:
-            import_context_kwargs = {
+            import_context_kwargs.update({
                 "generate_codes_on_import": generate_codes_on_import,
                 "import_status": import_status,
                 "imported_by_user_id": imported_by_user_id,
                 "imported_by_username": imported_by_username,
-            }
+            })
 
         if import_data.import_type == "single":
             # 单个导入 - 允许通过 AT, RT 或 ST 导入

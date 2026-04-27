@@ -243,11 +243,22 @@
                     <form id="batchImportForm" onsubmit="handleBatchImport(event)">
                         <input type="hidden" id="batchImportTeamType" name="teamType" value="standard">
                         <input type="hidden" id="batchImportGenerateWarrantyCodes" name="generateWarrantyCodes" value="false">
+                        <input type="hidden" id="batchImportTag" name="importTag" value="">
                         <div class="form-group">
                             <label>批量导入内容 <span class="required">*</span></label>
                             <textarea name="batchContent" class="form-control" rows="8" placeholder="一行一个 AT Token..."
                                 required></textarea>
                             <small id="batchImportHelperText" class="form-text">支持粘贴一行一个 AT Token，也支持直接粘贴完整的多个 Team 账号 JSON，系统会自动提取 Access Token (AT)。</small>
+                        </div>
+                        <div class="form-group" id="batchImportTagGroup">
+                            <label>导入标签</label>
+                            <div class="quick-value-row" aria-label="导入标签快捷值">
+                                <button type="button" class="quick-value-btn" data-import-tag="other_paid"
+                                    onclick="setBatchImportTag(this, 'other_paid')">他付</button>
+                                <button type="button" class="quick-value-btn" data-import-tag="self_paid"
+                                    onclick="setBatchImportTag(this, 'self_paid')">自付</button>
+                            </div>
+                            <small class="form-text">可选；再次点击已选标签可取消。本次批量导入成功的 Team 会统一打上该标签。</small>
                         </div>
                         <div class="form-group" id="batchImportWarrantyOptions">
                             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">

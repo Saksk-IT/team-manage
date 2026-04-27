@@ -301,11 +301,19 @@ def run_auto_migration():
             cursor.execute("ALTER TABLE teams ADD COLUMN imported_by_username VARCHAR(100)")
             migrations_applied.append("teams.imported_by_username")
 
+        if not column_exists(cursor, "teams", "import_tag"):
+            logger.info("添加 teams.import_tag 字段")
+            cursor.execute("ALTER TABLE teams ADD COLUMN import_tag VARCHAR(20)")
+            migrations_applied.append("teams.import_tag")
+
         cursor.execute("""
             UPDATE teams
             SET import_status = 'classified'
             WHERE import_status IS NULL OR TRIM(import_status) = ''
         """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_import_tag ON teams (import_tag)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_created_at ON teams (created_at)")
 
         if not table_exists(cursor, "admin_users"):
             logger.info("创建 admin_users 表")

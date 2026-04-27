@@ -484,6 +484,21 @@ body.admin-shell {
     flex-wrap: wrap;
 }
 
+.review-filter-form {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.review-filter-form .form-control {
+    min-width: 120px;
+    width: auto;
+    height: 38px;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.8125rem;
+}
+
 /* Filter Tabs */
 .filter-tabs {
     display: flex;
@@ -1087,6 +1102,13 @@ body.admin-shell {
     outline: none;
 }
 
+.quick-value-btn.active {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-weight: 600;
+}
+
 
 .search-form-grid .form-group {
     margin-bottom: 0;
@@ -1582,6 +1604,11 @@ body.admin-shell {
     .header-group {
         width: 100%;
         justify-content: space-between;
+    }
+
+    .review-filter-form,
+    .review-filter-form .form-control {
+        width: 100%;
     }
 
     .header-actions {

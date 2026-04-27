@@ -21,6 +21,9 @@ class SubAdminImportModalTests(unittest.TestCase):
         self.assertNotIn('id="singleImport"', html)
         self.assertIn("批量导入", html)
         self.assertIn('id="batchImport" class="import-panel"', html)
+        self.assertIn('id="batchImportTag"', html)
+        self.assertIn('data-import-tag="other_paid"', html)
+        self.assertIn('data-import-tag="self_paid"', html)
 
     def test_import_modal_defaults_to_batch_import_on_import_only_page(self):
         main_js = Path("app/static/js/main.js").read_text(encoding="utf-8")
@@ -32,6 +35,10 @@ class SubAdminImportModalTests(unittest.TestCase):
         self.assertIn("批量进入控制台", template)
         self.assertIn("批量进入质保 Team", template)
         self.assertIn("data-import-status", template)
+        self.assertIn('name="review_status"', template)
+        self.assertIn('name="import_tag"', template)
+        self.assertIn('name="imported_from"', template)
+        self.assertIn('name="imported_to"', template)
         self.assertIn("/admin/teams/batch-classify/stream", template)
         self.assertIn("requireSelectedPendingReviewTargets", template)
         self.assertIn("setWarrantyDaysQuickValue(this, 30)", template)

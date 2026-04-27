@@ -59,6 +59,7 @@ class Team(Base):
     import_status = Column(String(20), nullable=False, default="classified", comment="导入状态: pending/classified")
     imported_by_user_id = Column(Integer, ForeignKey("admin_users.id"), comment="导入的子管理员 ID")
     imported_by_username = Column(String(100), comment="导入人用户名快照")
+    import_tag = Column(String(20), comment="导入标签: other_paid/self_paid")
     created_at = Column(DateTime, default=get_now, comment="创建时间")
 
     # 关系
@@ -71,6 +72,8 @@ class Team(Base):
         Index("idx_team_type", "team_type"),
         Index("idx_team_import_status", "import_status"),
         Index("idx_team_imported_by_user_id", "imported_by_user_id"),
+        Index("idx_team_import_tag", "import_tag"),
+        Index("idx_team_created_at", "created_at"),
     )
 
 

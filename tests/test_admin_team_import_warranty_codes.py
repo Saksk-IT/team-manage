@@ -49,6 +49,7 @@ class AdminTeamImportWarrantyCodeTests(unittest.IsolatedAsyncioTestCase):
             team_type="standard",
             generate_warranty_codes=True,
             warranty_days=45,
+            import_tag=None,
         )
 
     async def test_batch_import_passes_warranty_code_options(self):
@@ -82,6 +83,7 @@ class AdminTeamImportWarrantyCodeTests(unittest.IsolatedAsyncioTestCase):
             team_type="standard",
             generate_warranty_codes=True,
             warranty_days=45,
+            import_tag=None,
         )
 
 

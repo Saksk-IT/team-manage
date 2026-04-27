@@ -93,6 +93,40 @@
             </div>
 
             <!-- 状态筛选 -->
+            {% if is_review_mode %}
+            <form action="{{ request.url.path }}" method="get" class="review-filter-form">
+                {% if search %}
+                <input type="hidden" name="search" value="{{ search }}">
+                {% endif %}
+                {% if status_filter %}
+                <input type="hidden" name="status" value="{{ status_filter }}">
+                {% endif %}
+                {% if pagination and pagination.per_page != 20 %}
+                <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+                {% endif %}
+                <select name="review_status" class="form-control" aria-label="审核状态筛选">
+                    <option value="" {% if not review_status_filter %}selected{% endif %}>全部审核状态</option>
+                    <option value="pending" {% if review_status_filter == 'pending' %}selected{% endif %}>待审核</option>
+                    <option value="classified" {% if review_status_filter == 'classified' %}selected{% endif %}>已审核</option>
+                </select>
+                <select name="import_tag" class="form-control" aria-label="导入标签筛选">
+                    <option value="" {% if not import_tag_filter %}selected{% endif %}>全部标签</option>
+                    {% for option in import_tag_options %}
+                    <option value="{{ option.value }}" {% if import_tag_filter == option.value %}selected{% endif %}>
+                        {{ option.label }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <input type="date" name="imported_from" value="{{ imported_from_filter or '' }}" class="form-control"
+                    aria-label="导入开始日期">
+                <input type="date" name="imported_to" value="{{ imported_to_filter or '' }}" class="form-control"
+                    aria-label="导入结束日期">
+                <button type="submit" class="btn btn-secondary btn-sm">筛选</button>
+                {% if review_status_filter or import_tag_filter or imported_from_filter or imported_to_filter %}
+                <a href="{{ request.url.path }}" class="btn btn-minimal btn-sm">清空</a>
+                {% endif %}
+            </form>
+            {% else %}
             <div class="dropdown-wrapper">
                 <button class="btn btn-secondary dropdown-toggle" onclick="toggleDropdown('statusFilterDropdown')">
                     <i data-lucide="filter" style="width: 16px; height: 16px;"></i>
@@ -128,6 +162,7 @@
                     </div>
                 </div>
             </div>
+            {% endif %}
 
             <!-- 搜索框 -->
             <form action="{{ request.url.path }}" method="get" class="search-form">
@@ -142,6 +177,21 @@
                     {% endif %}
                     {% if status_filter %}
                     <input type="hidden" name="status" value="{{ status_filter }}">
+                    {% endif %}
+                    {% if review_status_filter %}
+                    <input type="hidden" name="review_status" value="{{ review_status_filter }}">
+                    {% endif %}
+                    {% if import_tag_filter %}
+                    <input type="hidden" name="import_tag" value="{{ import_tag_filter }}">
+                    {% endif %}
+                    {% if imported_from_filter %}
+                    <input type="hidden" name="imported_from" value="{{ imported_from_filter }}">
+                    {% endif %}
+                    {% if imported_to_filter %}
+                    <input type="hidden" name="imported_to" value="{{ imported_to_filter }}">
+                    {% endif %}
+                    {% if pagination and pagination.per_page != 20 %}
+                    <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
                     {% endif %}
                 </div>
             </form>
@@ -178,6 +228,8 @@
                 <th>Team 名称</th>
                 {% if is_review_mode %}
                 <th>导入人</th>
+                <th>标签</th>
+                <th>导入时间</th>
                 <th>审核状态</th>
                 {% elif not is_warranty_mode %}
                 <th>账号类型</th>
@@ -228,6 +280,20 @@
                 <td>{{ team.team_name or '-' }}</td>
                 {% if is_review_mode %}
                 <td>{{ team.imported_by_username or '-' }}</td>
+                <td>
+                    {% if team.import_tag_label %}
+                    <span class="status-badge status-info">{{ team.import_tag_label }}</span>
+                    {% else %}
+                    <span class="text-muted small">未标记</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if team.created_at %}
+                    {{ team.created_at|format_datetime }}
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
                 <td>
                     {% if team.import_status == 'pending' %}
                     <span class="status-badge status-warning" title="管理员尚未分类">待审核</span>
@@ -370,8 +436,13 @@
 
     {% if pagination.total_pages > 1 %}
     {% set search_param = '&search=' + search|urlencode if search else '' %}
+    {% set status_param = '&status=' + status_filter|urlencode if status_filter else '' %}
+    {% set review_status_param = '&review_status=' + review_status_filter|urlencode if review_status_filter else '' %}
+    {% set import_tag_param = '&import_tag=' + import_tag_filter|urlencode if import_tag_filter else '' %}
+    {% set imported_from_param = '&imported_from=' + imported_from_filter|urlencode if imported_from_filter else '' %}
+    {% set imported_to_param = '&imported_to=' + imported_to_filter|urlencode if imported_to_filter else '' %}
     {% set per_page_param = '&per_page=' + pagination.per_page|string if pagination.per_page != 20 else '' %}
-    {% set base_query = search_param + per_page_param %}
+    {% set base_query = search_param + status_param + review_status_param + import_tag_param + imported_from_param + imported_to_param + per_page_param %}
 
     <div class="pagination-controls">
         <!-- 首页 -->

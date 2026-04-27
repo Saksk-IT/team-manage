@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -14,6 +15,8 @@ from app.services.team import (
     CLASSIFY_TARGET_WARRANTY_TEAM,
     IMPORT_STATUS_CLASSIFIED,
     IMPORT_STATUS_PENDING,
+    IMPORT_TAG_OTHER_PAID,
+    IMPORT_TAG_SELF_PAID,
     TEAM_TYPE_STANDARD,
     TEAM_TYPE_WARRANTY,
     TeamService,
@@ -61,7 +64,13 @@ class PendingTeamClassificationTests(unittest.IsolatedAsyncioTestCase):
         if os.path.exists(self.db_path):
             os.remove(self.db_path)
 
-    async def _create_pending_team(self, session, username="importer01"):
+    async def _create_pending_team(
+        self,
+        session,
+        username="importer01",
+        import_tag=None,
+        created_at=None,
+    ):
         admin = AdminUser(
             username=username,
             password_hash="hash",
@@ -70,20 +79,24 @@ class PendingTeamClassificationTests(unittest.IsolatedAsyncioTestCase):
         )
         session.add(admin)
         await session.flush()
-        team = Team(
-            email=f"{username}@example.com",
-            access_token_encrypted="enc",
-            account_id=f"acc-{username}",
-            team_type=TEAM_TYPE_STANDARD,
-            bound_code_type=TEAM_TYPE_STANDARD,
-            team_name="Pending Team",
-            status="active",
-            current_members=1,
-            max_members=5,
-            import_status=IMPORT_STATUS_PENDING,
-            imported_by_user_id=admin.id,
-            imported_by_username=admin.username,
-        )
+        team_kwargs = {
+            "email": f"{username}@example.com",
+            "access_token_encrypted": "enc",
+            "account_id": f"acc-{username}",
+            "team_type": TEAM_TYPE_STANDARD,
+            "bound_code_type": TEAM_TYPE_STANDARD,
+            "team_name": "Pending Team",
+            "status": "active",
+            "current_members": 1,
+            "max_members": 5,
+            "import_status": IMPORT_STATUS_PENDING,
+            "imported_by_user_id": admin.id,
+            "imported_by_username": admin.username,
+            "import_tag": import_tag,
+        }
+        if created_at is not None:
+            team_kwargs["created_at"] = created_at
+        team = Team(**team_kwargs)
         session.add(team)
         await session.commit()
         return admin, team
@@ -186,6 +199,45 @@ class PendingTeamClassificationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status_by_id[reviewed_team.id]["import_status_label"], "已审核")
         self.assertEqual(status_by_id[reviewed_team.id]["import_decision_label"], "控制台 / 质保兑换码")
 
+    async def test_import_history_supports_review_tag_and_date_filters(self):
+        async with self.Session() as session:
+            _, matched_team = await self._create_pending_team(
+                session,
+                "importer01",
+                import_tag=IMPORT_TAG_OTHER_PAID,
+                created_at=datetime(2026, 4, 2, 10, 0, 0),
+            )
+            _, out_of_range_team = await self._create_pending_team(
+                session,
+                "importer02",
+                import_tag=IMPORT_TAG_OTHER_PAID,
+                created_at=datetime(2026, 4, 9, 10, 0, 0),
+            )
+            _, different_tag_team = await self._create_pending_team(
+                session,
+                "importer03",
+                import_tag=IMPORT_TAG_SELF_PAID,
+                created_at=datetime(2026, 4, 2, 10, 0, 0),
+            )
+            out_of_range_team.import_status = IMPORT_STATUS_CLASSIFIED
+            different_tag_team.import_status = IMPORT_STATUS_PENDING
+            await session.commit()
+
+            result = await self.service.get_all_teams(
+                session,
+                import_status=IMPORT_STATUS_PENDING,
+                imported_only=True,
+                import_tag=IMPORT_TAG_OTHER_PAID,
+                imported_from=datetime(2026, 4, 1, 0, 0, 0),
+                imported_to=datetime(2026, 4, 3, 23, 59, 59),
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["teams"][0]["id"], matched_team.id)
+        self.assertEqual(result["teams"][0]["import_tag"], IMPORT_TAG_OTHER_PAID)
+        self.assertEqual(result["teams"][0]["import_tag_label"], "他付")
+
     async def test_imported_only_history_excludes_super_admin_direct_imports(self):
         async with self.Session() as session:
             _, imported_team = await self._create_pending_team(session, "importer01")
@@ -251,6 +303,7 @@ class SubAdminImportRouteTests(unittest.IsolatedAsyncioTestCase):
                     access_token="eyJ.payload",
                     generate_warranty_codes=True,
                     warranty_days=45,
+                    import_tag=IMPORT_TAG_SELF_PAID,
                 ),
                 db="db-session",
                 current_user=current_user,
@@ -265,6 +318,7 @@ class SubAdminImportRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["import_status"], IMPORT_STATUS_PENDING)
         self.assertEqual(kwargs["imported_by_user_id"], 7)
         self.assertEqual(kwargs["imported_by_username"], "importer01")
+        self.assertEqual(kwargs["import_tag"], IMPORT_TAG_SELF_PAID)
 
 
 if __name__ == "__main__":
