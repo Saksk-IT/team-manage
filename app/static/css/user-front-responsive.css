@@ -136,3 +136,14 @@
         text-align: center;
     }
 }
+
+#step1.step.active {
+    display: grid;
+    gap: 1.35rem;
+}
+
+@media (max-width: 760px) {
+    #step1.step.active {
+        gap: 1.25rem;
+    }
+}
