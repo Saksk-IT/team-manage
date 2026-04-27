@@ -3317,6 +3317,8 @@ async def warranty_team_whitelist_page(
         from app.main import templates
 
         normalized_status = _normalize_optional_filter_text(status_filter)
+        if status_filter is None:
+            normalized_status = "active"
         if normalized_status and normalized_status not in warranty_team_whitelist_service.STATUS_LABELS:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -3357,7 +3359,7 @@ async def warranty_team_whitelist_page(
                 },
                 "has_whitelist_filters": any([
                     search,
-                    normalized_status,
+                    status_filter is not None and normalized_status,
                     normalized_source,
                 ]),
             }
@@ -3420,12 +3422,12 @@ async def delete_warranty_team_whitelist_entry(
                 status_code=status.HTTP_404_NOT_FOUND,
                 content={"success": False, "error": "质保 Team 白名单记录不存在"}
             )
-        return JSONResponse(content={"success": True, "message": "质保 Team 白名单已删除"})
+        return JSONResponse(content={"success": True, "message": "质保 Team 白名单已移出"})
     except Exception as e:
-        logger.error(f"删除质保 Team 白名单失败: {e}")
+        logger.error(f"移出质保 Team 白名单失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"success": False, "error": f"删除失败: {str(e)}"}
+            content={"success": False, "error": f"移出失败: {str(e)}"}
         )
 
 

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.database import Base
 from app.models import RedemptionCode, RedemptionRecord, Team, TeamCleanupRecord, TeamMemberSnapshot, WarrantyEmailEntry, WarrantyTeamWhitelistEntry
 from app.services.team import TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY, TeamService
+from app.services.warranty_team_whitelist import warranty_team_whitelist_service
 from app.utils.time_utils import get_now
 from datetime import timedelta
 
@@ -506,6 +507,99 @@ class TeamStandardRefreshCleanupTests(unittest.IsolatedAsyncioTestCase):
             session,
             identifier="warranty-owner@example.com",
         )
+
+    async def test_deleted_manual_whitelist_entry_is_removed_on_warranty_refresh(self):
+        async with self.Session() as session:
+            team = Team(
+                email="warranty-owner@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-warranty",
+                team_type=TEAM_TYPE_WARRANTY,
+                team_name="Warranty Team",
+                status="active",
+                current_members=0,
+                max_members=5,
+            )
+            session.add(team)
+            await session.flush()
+            manual_entry = WarrantyTeamWhitelistEntry(
+                email="manual@example.com",
+                source="manual",
+                is_active=True,
+                last_warranty_team_id=team.id,
+            )
+            session.add_all([
+                manual_entry,
+                TeamMemberSnapshot(
+                    team_id=team.id,
+                    email="manual@example.com",
+                    member_state="joined",
+                ),
+            ])
+            await session.commit()
+
+            await warranty_team_whitelist_service.delete_entry(session, manual_entry.id)
+
+            service = TeamService()
+            service.ensure_access_token = AsyncMock(return_value="access-token")
+            service.chatgpt_service.get_account_info = AsyncMock(return_value={
+                "success": True,
+                "accounts": [{
+                    "account_id": "acc-warranty",
+                    "name": "Warranty Team",
+                    "plan_type": "team",
+                    "subscription_plan": "chatgptteamplan",
+                    "expires_at": None,
+                    "has_active_subscription": True,
+                    "account_user_role": "account-owner",
+                }],
+            })
+            service.chatgpt_service.get_members = AsyncMock(side_effect=[
+                {
+                    "success": True,
+                    "total": 2,
+                    "members": [
+                        {"id": "owner-user", "email": "warranty-owner@example.com", "role": "account-owner"},
+                        {"id": "manual-user", "email": "manual@example.com", "role": "standard-user"},
+                    ],
+                },
+                {
+                    "success": True,
+                    "total": 1,
+                    "members": [
+                        {"id": "owner-user", "email": "warranty-owner@example.com", "role": "account-owner"},
+                    ],
+                },
+            ])
+            service.chatgpt_service.get_invites = AsyncMock(side_effect=[
+                {"success": True, "total": 0, "items": []},
+                {"success": True, "total": 0, "items": []},
+            ])
+            service.chatgpt_service.get_account_settings = AsyncMock(return_value={
+                "success": True,
+                "data": {"beta_settings": {"codex_device_code_auth": False}},
+            })
+            service.chatgpt_service.delete_member = AsyncMock(return_value={"success": True, "error": None})
+            service.chatgpt_service.delete_invite = AsyncMock(return_value={"success": True, "error": None})
+
+            result = await service.sync_team_info(team.id, session)
+            await session.commit()
+
+            whitelist_entry = await session.scalar(
+                select(WarrantyTeamWhitelistEntry).where(WarrantyTeamWhitelistEntry.email == "manual@example.com")
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["cleanup_removed_member_count"], 1)
+        service.chatgpt_service.delete_member.assert_awaited_once_with(
+            "access-token",
+            "acc-warranty",
+            "manual-user",
+            session,
+            identifier="warranty-owner@example.com",
+        )
+        self.assertIsNotNone(whitelist_entry)
+        self.assertFalse(whitelist_entry.is_active)
 
     async def test_admin_added_warranty_member_enters_manual_whitelist(self):
         async with self.Session() as session:

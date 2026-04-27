@@ -152,11 +152,18 @@ class WarrantyTeamWhitelistTests(unittest.IsolatedAsyncioTestCase):
                 db=session,
                 current_user={"username": "admin"},
             )
+            entry = await session.scalar(
+                select(WarrantyTeamWhitelistEntry).where(WarrantyTeamWhitelistEntry.id == entry_id)
+            )
+            allowed_emails = await warranty_team_whitelist_service.get_allowed_emails(session)
 
         self.assertEqual(save_response.status_code, 200)
         self.assertTrue(save_payload["success"])
         self.assertEqual(save_payload["entry"]["source"], "manual")
         self.assertEqual(delete_response.status_code, 200)
+        self.assertIsNotNone(entry)
+        self.assertFalse(entry.is_active)
+        self.assertNotIn("manual@example.com", allowed_emails)
 
 
 if __name__ == "__main__":

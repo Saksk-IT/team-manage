@@ -391,6 +391,7 @@ class TeamService:
                 source=warranty_team_whitelist_service.SOURCE_MANUAL_PULL,
                 last_warranty_team_id=team.id,
                 commit=False,
+                reactivate_existing=False,
             )
             processed_count += 1
 

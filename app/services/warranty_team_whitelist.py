@@ -125,6 +125,8 @@ class WarrantyTeamWhitelistService:
         for email, warranty_entry in legacy_manual_pull_entries.items():
             existing_entry = whitelist_by_email.get(email)
             if existing_entry:
+                if not existing_entry.is_active and existing_entry.source != self.SOURCE_WARRANTY_EMAIL:
+                    continue
                 if not existing_entry.is_active:
                     reactivated_count += 1
                 existing_entry.is_active = True
@@ -297,6 +299,7 @@ class WarrantyTeamWhitelistService:
         source: str = SOURCE_MANUAL_PULL,
         last_warranty_team_id: Optional[int] = None,
         commit: bool = False,
+        reactivate_existing: bool = True,
     ) -> Optional[WarrantyTeamWhitelistEntry]:
         normalized_email = self.normalize_email(email)
         if not normalized_email:
@@ -311,6 +314,8 @@ class WarrantyTeamWhitelistService:
         )
         existing_entry = result.scalar_one_or_none()
         if existing_entry:
+            if not existing_entry.is_active and not reactivate_existing:
+                return existing_entry
             existing_entry.is_active = True
             if existing_entry.source == self.SOURCE_WARRANTY_EMAIL:
                 existing_entry.source = normalized_source
@@ -343,7 +348,9 @@ class WarrantyTeamWhitelistService:
         if not entry:
             return False
 
-        await db_session.delete(entry)
+        entry.is_active = False
+        if not entry.note:
+            entry.note = "已由管理员移出白名单"
         await db_session.commit()
         return True
 

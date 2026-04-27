@@ -107,7 +107,7 @@
                     <td style="text-align: right;">
                         <div style="display: inline-flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
                             <button type="button" class="btn btn-secondary btn-sm" onclick='fillWhitelistForm({{ entry|tojson }})'>编辑</button>
-                            <button type="button" class="btn btn-danger btn-sm" onclick="deleteWhitelistEntry({{ entry.id }}, '{{ entry.email|escape_js }}')">删除</button>
+                            <button type="button" class="btn btn-danger btn-sm" onclick="deleteWhitelistEntry({{ entry.id }}, '{{ entry.email|escape_js }}')">移出</button>
                         </div>
                     </td>
                 </tr>
@@ -281,9 +281,9 @@
 
     async function deleteWhitelistEntry(entryId, email) {
         const confirmed = await showSystemConfirm({
-            title: '确认删除白名单账号',
-            message: `确定要删除白名单账号 ${email} 吗？`,
-            confirmText: '删除',
+            title: '确认移出白名单账号',
+            message: `确定要将 ${email} 移出白名单吗？移出后该邮箱不会再受质保 Team 自动清理保护。`,
+            confirmText: '移出',
             danger: true,
         });
         if (!confirmed) {
@@ -297,10 +297,10 @@
             });
             const data = await response.json();
             if (response.ok && data.success) {
-                showToast(data.message || '质保 Team 白名单已删除', 'success');
+                showToast(data.message || '质保 Team 白名单已移出', 'success');
                 setTimeout(() => window.location.reload(), 300);
             } else {
-                showToast(data.error || '删除失败', 'error');
+                showToast(data.error || '移出失败', 'error');
             }
         } catch (error) {
             showToast('网络错误', 'error');
