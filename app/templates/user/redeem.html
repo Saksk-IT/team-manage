@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GPT Team 兑换</title>
     <link rel="stylesheet" href="/static/css/user.css">
+    <link rel="stylesheet" href="/static/css/user-front.css">
     <link rel="stylesheet" href="/static/css/system-dialog.css">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -15,170 +16,278 @@
     {% set show_front_announcement = front_announcement.enabled and front_announcement.content %}
     {% set show_customer_service = customer_service.enabled and (customer_service.qr_code_url or customer_service.link_url or customer_service.text_content) %}
     {% set show_purchase_link = purchase_link.enabled and purchase_link.url %}
-    {% if show_front_announcement %}
-        {% set page_shell_class = 'page-shell page-shell--with-left' %}
-    {% else %}
-        {% set page_shell_class = 'page-shell page-shell--single' %}
-    {% endif %}
-    <div class="container">
-        <div class="header">
-            <h1>GPT Team 兑换</h1>
-            <p class="subtitle">使用兑换码加入 ChatGPT Team</p>
-            {% if remaining_spots is not none %}
-            <div class="spots-badge"
-                style="display: inline-flex; align-items: center; gap: 6px; background: var(--primary-soft); padding: 6px 12px; border-radius: 20px; font-size: 0.875rem; color: var(--primary); margin-top: 10px; border: 1px solid var(--border-base);">
-                <i data-lucide="users" style="width: 14px; height: 14px;"></i> 剩余车位: <span id="remainingSpotsValue">{{ remaining_spots }}</span>
-            </div>
-            {% endif %}
-        </div>
 
-        {% if show_purchase_link %}
-        <div class="purchase-link-panel">
-            <a
-                id="purchaseLinkButton"
-                href="{{ purchase_link.url }}"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="btn btn-primary purchase-link-button"
-            >
-                <i data-lucide="shopping-cart"></i> {{ purchase_link.button_text or '立即购买' }}
-            </a>
-        </div>
-        {% endif %}
-
-        <div class="{{ page_shell_class }}">
-            {% if show_front_announcement %}
-            <aside class="side-column announcement-column">
-                <div class="card side-card side-card--announcement">
-                    <div class="side-card-title">
-                        <i data-lucide="bell" style="width: 18px; height: 18px;"></i>
-                        <span>公告通知</span>
-                    </div>
-                    <div class="side-card-text">{{ front_announcement.content }}</div>
-                </div>
-            </aside>
-            {% endif %}
-
-            <main class="main-column">
-                <!-- 步骤1: 输入兑换码 -->
-                <div id="step1" class="step active">
-                    <div class="card">
-                        <h2>输入兑换信息</h2>
-                        <div style="display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
-                            <button type="button" id="redeemModeBtn" class="btn btn-primary" style="flex: 1; min-width: 140px;"
-                                onclick="switchServiceMode('redeem')">
-                                <i data-lucide="ticket"></i> 兑换服务
-                            </button>
-                            {% if warranty_service_enabled %}
-                            <button type="button" id="warrantyModeBtn" class="btn btn-secondary" style="flex: 1; min-width: 140px;"
-                                onclick="switchServiceMode('warranty')">
-                                <i data-lucide="shield"></i> 质保服务
-                            </button>
-                            {% endif %}
+    <div class="front-page">
+        <div class="container">
+            <header class="hero-card">
+                <div class="hero-card__content">
+                    <div class="hero-card__eyebrow">ChatGPT Team 自助服务</div>
+                    <h1>兑换与质保，一页完成</h1>
+                    <p class="subtitle">先选择服务，再按提示填写信息。系统会自动校验兑换码、邮箱和质保资格。</p>
+                    <div class="hero-card__badges" aria-label="当前服务状态">
+                        {% if remaining_spots is not none %}
+                        <div class="spots-badge">
+                            <i data-lucide="users" style="width: 14px; height: 14px;"></i>
+                            <span>剩余车位</span>
+                            <strong id="remainingSpotsValue">{{ remaining_spots }}</strong>
                         </div>
-
-                        <div id="redeemPane">
-                            <form id="verifyForm">
-                                <div class="form-group">
-                                    <label for="email">邮箱地址</label>
-                                    <input type="email" id="email" name="email" required placeholder="请输入您的邮箱地址" class="form-input">
-                                    <p class="form-help">请填写您要接受邀请的账号的邮箱，邀请将发送到此邮箱</p>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="code">兑换码</label>
-                                    <input type="text" id="code" name="code" required placeholder="请输入兑换码" class="form-input">
-                                </div>
-
-                                <button type="submit" class="btn btn-primary" id="verifyBtn">
-                                    <i data-lucide="shield-check"></i> 立即兑换
-                                </button>
-                            </form>
-
-                            <div class="lookup-section">
-                                <div class="lookup-section__header">
-                                    <div class="lookup-section__title-row">
-                                        <h3>查询绑定邮箱</h3>
-                                        <span class="lookup-section__title-addon">自助撤销</span>
-                                    </div>
-                                    <p>输入兑换码后，可查询当前绑定的完整邮箱，也可在查询结果中撤销兑换码并恢复为未使用状态。</p>
-                                </div>
-                                <form id="boundEmailLookupForm" class="lookup-form">
-                                    <div class="form-group">
-                                        <label for="boundEmailLookupCode">兑换码</label>
-                                        <input
-                                            type="text"
-                                            id="boundEmailLookupCode"
-                                            name="code"
-                                            required
-                                            placeholder="请输入要查询的兑换码"
-                                            class="form-input"
-                                        >
-                                    </div>
-                                    <button type="submit" class="btn btn-secondary" id="boundEmailLookupBtn">
-                                        <i data-lucide="search"></i> 查询绑定邮箱
-                                    </button>
-                                </form>
-                                <div id="boundEmailLookupResult" class="lookup-result" style="display: none;"></div>
-                            </div>
-
-                            {% if warranty_service_enabled %}
-                            <div class="warranty-section"
-                                style="margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--border-base);">
-                                <h3 style="font-size: 1.1rem; margin-bottom: 15px; color: var(--text-primary);">
-                                    <i data-lucide="shield" style="width: 18px; height: 18px; vertical-align: middle;"></i>
-                                    质保说明
-                                </h3>
-                                <div
-                                    style="padding: 16px 18px; border-radius: 12px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.18); color: var(--text-primary); line-height: 1.7;">
-                                    <div style="font-size: 0.95rem; color: var(--text-secondary);">
-                                        如您购买了质保服务，可切换到“质保服务”先查看该邮箱最近加入的 Team 状态。只有最近加入的 Team 状态为“封禁”时，才可以继续提交质保。
-                                    </div>
-                                </div>
-                            </div>
-                            {% endif %}
-                        </div>
-
+                        {% endif %}
                         {% if warranty_service_enabled %}
-                        <div id="warrantyPane" style="display: none;">
-                            <form id="warrantyClaimForm">
-                                <div class="form-group">
-                                    <label for="warrantyEmail">邮箱地址</label>
-                                    <input type="email" id="warrantyEmail" name="email" required placeholder="请输入您的质保邮箱" class="form-input">
-                                    <p class="form-help">系统会先校验该邮箱是否具备质保资格，再返回该邮箱最近加入的 Team 信息与状态。</p>
-                                </div>
-                                <button type="submit" class="btn btn-primary" id="claimBtn">
-                                    <i data-lucide="search"></i> 查看状态
-                                </button>
-                            </form>
-                            <div id="warrantyStatusResult" style="display: none; margin-top: 1rem;"></div>
+                        <div class="spots-badge spots-badge--success">
+                            <i data-lucide="shield-check" style="width: 14px; height: 14px;"></i>
+                            <span>质保服务已开启</span>
                         </div>
                         {% endif %}
                     </div>
                 </div>
 
-                <!-- 步骤2: 选择Team (已废弃，保留占位符防止 JS 报错) -->
-                <div id="step2" class="step" style="display: none;">
-                    <div class="card">
-                        <h2>选择 Team</h2>
-                        <div id="teamsList" class="teams-list"></div>
-                        <div class="actions">
-                            <button onclick="backToStep1()" class="btn btn-secondary">返回</button>
-                            <button onclick="autoSelectTeam()" class="btn btn-primary">自动选择</button>
+                {% if show_purchase_link %}
+                <div class="hero-card__action">
+                    <div class="hero-card__action-title">还没有兑换码？</div>
+                    <p>先购买商品，再回到本页完成兑换。</p>
+                    <a
+                        id="purchaseLinkButton"
+                        href="{{ purchase_link.url }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="btn btn-primary hero-purchase-button"
+                    >
+                        <i data-lucide="shopping-cart"></i> {{ purchase_link.button_text or '立即购买' }}
+                    </a>
+                </div>
+                {% endif %}
+            </header>
+
+            <div class="front-layout">
+                <main class="front-main">
+                    <!-- 步骤1: 输入兑换码 -->
+                    <div id="step1" class="step active">
+                        <section class="card service-card" aria-labelledby="serviceCardTitle">
+                            <div class="section-heading">
+                                <div class="section-kicker">自助办理</div>
+                                <h2 id="serviceCardTitle">选择要办理的服务</h2>
+                                <p>{% if warranty_service_enabled %}兑换加入 Team，或查看质保资格并提交质保。{% else %}填写邮箱和兑换码，完成 Team 自助兑换。{% endif %}</p>
+                            </div>
+
+                            <div class="service-tabs" role="tablist" aria-label="服务类型">
+                                <button
+                                    type="button"
+                                    id="redeemModeBtn"
+                                    class="service-tab service-tab--active"
+                                    role="tab"
+                                    aria-selected="true"
+                                    aria-controls="redeemPane"
+                                    onclick="switchServiceMode('redeem')"
+                                >
+                                    <span class="service-tab__icon"><i data-lucide="ticket"></i></span>
+                                    <span>
+                                        <strong>兑换服务</strong>
+                                        <small>加入 Team</small>
+                                    </span>
+                                </button>
+                                {% if warranty_service_enabled %}
+                                <button
+                                    type="button"
+                                    id="warrantyModeBtn"
+                                    class="service-tab"
+                                    role="tab"
+                                    aria-selected="false"
+                                    aria-controls="warrantyPane"
+                                    onclick="switchServiceMode('warranty')"
+                                >
+                                    <span class="service-tab__icon"><i data-lucide="shield"></i></span>
+                                    <span>
+                                        <strong>质保服务</strong>
+                                        <small>仅 Team 封禁时可提交</small>
+                                    </span>
+                                </button>
+                                {% endif %}
+                            </div>
+
+                            <div id="redeemPane" class="service-pane" role="tabpanel" aria-labelledby="redeemModeBtn">
+                                <form id="verifyForm" class="action-form">
+                                    <div class="form-group">
+                                        <label for="email">接收邀请的邮箱</label>
+                                        <input type="email" id="email" name="email" required placeholder="请输入您的邮箱地址" class="form-input">
+                                        <p class="form-help">邀请将发送到此邮箱，请确认该邮箱可以正常登录。</p>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="code">兑换码</label>
+                                        <input type="text" id="code" name="code" required placeholder="请输入兑换码" class="form-input">
+                                        <p class="form-help">提交前会再次确认邮箱，避免填错后无法接收邀请。</p>
+                                    </div>
+
+                                    <button type="submit" class="btn btn-primary" id="verifyBtn">
+                                        <i data-lucide="shield-check"></i> 确认并兑换
+                                    </button>
+                                </form>
+                            </div>
+
+                            {% if warranty_service_enabled %}
+                            <div id="warrantyPane" class="service-pane" style="display: none;" role="tabpanel" aria-labelledby="warrantyModeBtn">
+                                <div class="service-notice">
+                                    <i data-lucide="info" style="width: 18px; height: 18px;"></i>
+                                    <span><strong>质保说明</strong>：如您购买了质保服务，系统会先查询最近加入的 Team。只有状态为“封禁”时，才可以继续提交质保。</span>
+                                </div>
+                                <form id="warrantyClaimForm" class="action-form">
+                                    <div class="form-group">
+                                        <label for="warrantyEmail">质保邮箱</label>
+                                        <input type="email" id="warrantyEmail" name="email" required placeholder="请输入您的质保邮箱" class="form-input">
+                                        <p class="form-help">查询结果会展示最近加入的 Team、剩余质保次数和剩余天数。</p>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary" id="claimBtn">
+                                        <i data-lucide="search"></i> 查看状态
+                                    </button>
+                                </form>
+                                <div id="warrantyStatusResult" style="display: none; margin-top: 1rem;"></div>
+                            </div>
+                            {% endif %}
+                        </section>
+
+                        <section class="card lookup-card" aria-labelledby="lookupCardTitle">
+                            <div class="section-heading section-heading--compact">
+                                <div class="section-kicker">自助工具</div>
+                                <h2 id="lookupCardTitle">查询绑定邮箱 / 自助撤销</h2>
+                                <p>输入兑换码后，可查询当前绑定的完整邮箱，也可在查询结果中撤销兑换码并恢复为未使用状态。</p>
+                            </div>
+                            <form id="boundEmailLookupForm" class="lookup-form">
+                                <div class="form-group">
+                                    <label for="boundEmailLookupCode">兑换码</label>
+                                    <input
+                                        type="text"
+                                        id="boundEmailLookupCode"
+                                        name="code"
+                                        required
+                                        placeholder="请输入要查询的兑换码"
+                                        class="form-input"
+                                    >
+                                </div>
+                                <button type="submit" class="btn btn-secondary" id="boundEmailLookupBtn">
+                                    <i data-lucide="search"></i> 查询绑定邮箱
+                                </button>
+                            </form>
+                            <div id="boundEmailLookupResult" class="lookup-result" style="display: none;"></div>
+                        </section>
+                    </div>
+
+                    <!-- 步骤2: 选择Team (已废弃，保留占位符防止 JS 报错) -->
+                    <div id="step2" class="step" style="display: none;">
+                        <div class="card">
+                            <h2>选择 Team</h2>
+                            <div id="teamsList" class="teams-list"></div>
+                            <div class="actions">
+                                <button onclick="backToStep1()" class="btn btn-secondary">返回</button>
+                                <button onclick="autoSelectTeam()" class="btn btn-primary">自动选择</button>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- 步骤3: 兑换结果 -->
-                <div id="step3" class="step">
-                    <div class="card">
-                        <div id="resultContent">
-                            <!-- 结果内容将通过JavaScript动态生成 -->
+                    <!-- 步骤3: 兑换结果 -->
+                    <div id="step3" class="step">
+                        <div class="card">
+                            <div id="resultContent">
+                                <!-- 结果内容将通过JavaScript动态生成 -->
+                            </div>
                         </div>
                     </div>
-                </div>
-            </main>
+                </main>
 
+                <aside class="front-sidebar" aria-label="辅助信息">
+                    {% if show_front_announcement %}
+                    <section class="card side-card side-card--announcement">
+                        <div class="side-card-title">
+                            <i data-lucide="megaphone" style="width: 18px; height: 18px;"></i>
+                            <span>公告通知</span>
+                        </div>
+                        <div class="side-card-text">{{ front_announcement.content }}</div>
+                    </section>
+                    {% endif %}
+
+                    {% if show_purchase_link %}
+                    <section class="card side-card side-card--purchase">
+                        <div class="side-card-title">
+                            <i data-lucide="shopping-bag" style="width: 18px; height: 18px;"></i>
+                            <span>商品链接</span>
+                        </div>
+                        <p class="side-card-text">需要新的兑换码时，可从这里进入购买页面。</p>
+                        <a
+                            href="{{ purchase_link.url }}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="btn btn-secondary support-link-btn"
+                        >
+                            <i data-lucide="external-link"></i> {{ purchase_link.button_text or '立即购买' }}
+                        </a>
+                    </section>
+                    {% endif %}
+
+                    {% if show_customer_service %}
+                    <section class="card side-card front-support-card">
+                        <div class="side-card-title">
+                            <i data-lucide="message-circle" style="width: 18px; height: 18px;"></i>
+                            <span>客服支持</span>
+                        </div>
+                        <div class="customer-service-reminder customer-service-reminder--compact">
+                            <div class="customer-service-reminder-icon">
+                                <i data-lucide="users" style="width: 18px; height: 18px;"></i>
+                            </div>
+                            <div class="customer-service-reminder-body">
+                                <div class="customer-service-reminder-title">建议兑换后加群</div>
+                                <div class="customer-service-reminder-text">便于接收通知、查看说明和联系人工协助。</div>
+                            </div>
+                        </div>
+
+                        {% if customer_service.qr_code_url %}
+                        <div class="support-block">
+                            <div class="support-block-title">扫码联系客服</div>
+                            <img
+                                src="{{ customer_service.qr_code_url }}"
+                                alt="客服二维码"
+                                class="support-qr"
+                            >
+                        </div>
+                        {% endif %}
+
+                        {% if customer_service.link_url %}
+                        <div class="support-block">
+                            <a
+                                href="{{ customer_service.link_url }}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="btn btn-secondary support-link-btn"
+                            >
+                                <i data-lucide="external-link"></i> {{ customer_service.link_text or '立即联系' }}
+                            </a>
+                        </div>
+                        {% endif %}
+
+                        {% if customer_service.text_content %}
+                        <div class="support-block">
+                            <div class="support-block-title">客服说明</div>
+                            <div class="side-card-text">{{ customer_service.text_content }}</div>
+                        </div>
+                        {% endif %}
+                    </section>
+                    {% endif %}
+
+                    <section class="card side-card guide-card">
+                        <div class="side-card-title">
+                            <i data-lucide="list-checks" style="width: 18px; height: 18px;"></i>
+                            <span>操作流程</span>
+                        </div>
+                        <ol class="guide-list">
+                            <li><strong>兑换</strong><span>填写邮箱和兑换码，确认无误后提交。</span></li>
+                            <li><strong>加入</strong><span>前往邮箱接收 Team 邀请并完成加入。</span></li>
+                            {% if warranty_service_enabled %}
+                            <li><strong>质保</strong><span>如 Team 被封禁，切换到质保服务查询后提交。</span></li>
+                            {% else %}
+                            <li><strong>帮助</strong><span>如遇加入问题，请联系管理员协助处理。</span></li>
+                            {% endif %}
+                        </ol>
+                    </section>
+                </aside>
+            </div>
         </div>
     </div>
 

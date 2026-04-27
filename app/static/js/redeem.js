@@ -898,6 +898,18 @@ function backToStep1() {
     selectedTeamId = null;
 }
 
+function updateServiceModeButton(button, isActive) {
+    if (!button) return;
+
+    if (button.classList.contains('service-tab')) {
+        button.classList.toggle('service-tab--active', isActive);
+        button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        return;
+    }
+
+    button.className = isActive ? 'btn btn-primary' : 'btn btn-secondary';
+}
+
 function switchServiceMode(mode) {
     if (mode === 'warranty' && !warrantyServiceEnabled) {
         mode = 'redeem';
@@ -913,15 +925,17 @@ function switchServiceMode(mode) {
     const redeemModeBtn = document.getElementById('redeemModeBtn');
     const warrantyModeBtn = document.getElementById('warrantyModeBtn');
 
-    if (redeemPane) redeemPane.style.display = currentServiceMode === 'redeem' ? 'block' : 'none';
-    if (warrantyPane) warrantyPane.style.display = currentServiceMode === 'warranty' ? 'block' : 'none';
+    if (redeemPane) {
+        redeemPane.style.display = currentServiceMode === 'redeem' ? 'block' : 'none';
+        redeemPane.setAttribute('aria-hidden', currentServiceMode === 'redeem' ? 'false' : 'true');
+    }
+    if (warrantyPane) {
+        warrantyPane.style.display = currentServiceMode === 'warranty' ? 'block' : 'none';
+        warrantyPane.setAttribute('aria-hidden', currentServiceMode === 'warranty' ? 'false' : 'true');
+    }
 
-    if (redeemModeBtn) {
-        redeemModeBtn.className = currentServiceMode === 'redeem' ? 'btn btn-primary' : 'btn btn-secondary';
-    }
-    if (warrantyModeBtn) {
-        warrantyModeBtn.className = currentServiceMode === 'warranty' ? 'btn btn-primary' : 'btn btn-secondary';
-    }
+    updateServiceModeButton(redeemModeBtn, currentServiceMode === 'redeem');
+    updateServiceModeButton(warrantyModeBtn, currentServiceMode === 'warranty');
 
     if (window.lucide) {
         lucide.createIcons();
