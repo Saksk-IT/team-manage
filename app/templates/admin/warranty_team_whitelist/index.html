@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+
+{% block title %}质保 Team 白名单 - GPT Team 管理系统{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>质保 Team 白名单</h2>
+    <p class="page-subtitle">白名单账号不会被质保 Team 自动刷新 / 清理机制移除；系统会自动同步质保邮箱列表中的有效账号。</p>
+</div>
+
+<div class="content-section" id="whitelistEditorCard">
+    <div class="section-header">
+        <h3 id="whitelistEditorTitle">新增 / 编辑白名单账号</h3>
+    </div>
+
+    <form id="whitelistForm" class="settings-form">
+        <input type="hidden" id="whitelistEntryId" value="">
+        <div id="whitelistEditorNotice" class="editor-notice" style="display: none;"></div>
+        <div class="form-group">
+            <label for="whitelistEmail">邮箱</label>
+            <input type="email" id="whitelistEmail" class="form-control" placeholder="user@example.com" required>
+        </div>
+        <div class="form-group">
+            <label for="whitelistIsActive">白名单状态</label>
+            <select id="whitelistIsActive" class="form-control">
+                <option value="true">启用</option>
+                <option value="false">停用</option>
+            </select>
+            <p class="form-help">停用后不会保护该邮箱；如果该邮箱仍是质保邮箱列表中的有效账号，系统会自动重新启用。</p>
+        </div>
+        <div class="form-group">
+            <label for="whitelistNote">备注</label>
+            <input type="text" id="whitelistNote" class="form-control" maxlength="500" placeholder="可选，例如手动拉人、客服备注">
+        </div>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button type="submit" class="btn btn-primary" id="whitelistSubmitBtn">保存白名单</button>
+            <button type="button" class="btn btn-secondary" onclick="resetWhitelistForm()">清空表单</button>
+        </div>
+    </form>
+</div>
+
+<div class="content-section">
+    <div class="section-header">
+        <h3>白名单账号</h3>
+    </div>
+
+    <form method="get" action="/admin/warranty-team-whitelist" class="whitelist-filter-form">
+        <label class="whitelist-filter-field whitelist-filter-field-wide">
+            关键词
+            <input type="text" name="search" value="{{ search or '' }}" class="form-control" placeholder="搜索邮箱或备注">
+        </label>
+        <label class="whitelist-filter-field">
+            状态
+            <select name="status_filter" class="form-control">
+                <option value="" {% if not whitelist_filters.status_filter %}selected{% endif %}>全部状态</option>
+                <option value="active" {% if whitelist_filters.status_filter == 'active' %}selected{% endif %}>启用</option>
+                <option value="inactive" {% if whitelist_filters.status_filter == 'inactive' %}selected{% endif %}>停用</option>
+            </select>
+        </label>
+        <label class="whitelist-filter-field">
+            来源
+            <select name="source_filter" class="form-control">
+                <option value="" {% if not whitelist_filters.source_filter %}selected{% endif %}>全部来源</option>
+                <option value="warranty_email" {% if whitelist_filters.source_filter == 'warranty_email' %}selected{% endif %}>质保邮箱列表有效账号</option>
+                <option value="manual" {% if whitelist_filters.source_filter == 'manual' %}selected{% endif %}>管理员手动维护</option>
+                <option value="manual_pull" {% if whitelist_filters.source_filter == 'manual_pull' %}selected{% endif %}>管理员手动拉人</option>
+            </select>
+        </label>
+        <div class="whitelist-filter-actions">
+            <button type="submit" class="btn btn-secondary">
+                <i data-lucide="filter" style="width: 16px; height: 16px;"></i> 筛选
+            </button>
+            {% if has_whitelist_filters %}
+            <a href="/admin/warranty-team-whitelist" class="btn btn-secondary">
+                <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i> 清空
+            </a>
+            {% endif %}
+        </div>
+    </form>
+
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>邮箱</th>
+                    <th>状态</th>
+                    <th>来源</th>
+                    <th>最近质保 Team</th>
+                    <th>备注</th>
+                    <th>更新时间</th>
+                    <th style="text-align: right;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in entries %}
+                <tr>
+                    <td>{{ entry.email }}</td>
+                    <td>
+                        <span class="status-badge {% if entry.is_active %}status-active{% else %}status-expired{% endif %}">
+                            {{ entry.status_label }}
+                        </span>
+                    </td>
+                    <td>{{ entry.source_label }}</td>
+                    <td>{{ entry.last_warranty_team_id or '-' }}</td>
+                    <td>{{ entry.note or '-' }}</td>
+                    <td>{{ entry.updated_at|format_datetime }}</td>
+                    <td style="text-align: right;">
+                        <div style="display: inline-flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick='fillWhitelistForm({{ entry|tojson }})'>编辑</button>
+                            <button type="button" class="btn btn-danger btn-sm" onclick="deleteWhitelistEntry({{ entry.id }}, '{{ entry.email|escape_js }}')">删除</button>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="empty-state-cell">暂无质保 Team 白名单记录</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-subtitle {
+        margin: 0.35rem 0 0;
+        color: var(--text-muted);
+        font-size: 0.9rem;
+    }
+
+    .form-help {
+        font-size: 0.8125rem;
+        color: var(--text-muted);
+        margin-top: 0.375rem;
+    }
+
+    .empty-state-cell {
+        text-align: center;
+        color: var(--text-muted);
+        padding: 2rem 1rem;
+    }
+
+    .editor-notice {
+        margin-bottom: 1rem;
+        padding: 0.75rem 1rem;
+        border-radius: 10px;
+        border: 1px solid rgba(99, 102, 241, 0.18);
+        background: rgba(99, 102, 241, 0.08);
+        color: var(--text-primary);
+        font-size: 0.875rem;
+    }
+
+    .editor-active {
+        box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.25);
+    }
+
+    .whitelist-filter-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 0.75rem;
+        align-items: end;
+        margin-bottom: 1rem;
+    }
+
+    .whitelist-filter-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        margin: 0;
+        min-width: 0;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-muted);
+    }
+
+    .whitelist-filter-field-wide {
+        grid-column: span 2;
+    }
+
+    .whitelist-filter-actions {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    @media (max-width: 768px) {
+        .whitelist-filter-form {
+            grid-template-columns: 1fr;
+        }
+
+        .whitelist-filter-field-wide {
+            grid-column: span 1;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function setWhitelistEditorMode(isEditing, entry = null) {
+        const card = document.getElementById('whitelistEditorCard');
+        const title = document.getElementById('whitelistEditorTitle');
+        const notice = document.getElementById('whitelistEditorNotice');
+        const submitBtn = document.getElementById('whitelistSubmitBtn');
+
+        if (title) {
+            title.textContent = isEditing ? '编辑白名单账号' : '新增 / 编辑白名单账号';
+        }
+        if (submitBtn) {
+            submitBtn.textContent = isEditing ? '更新白名单' : '保存白名单';
+        }
+        if (notice) {
+            if (isEditing && entry?.email) {
+                notice.style.display = 'block';
+                notice.textContent = `当前正在编辑：${entry.email}`;
+            } else {
+                notice.style.display = 'none';
+                notice.textContent = '';
+            }
+        }
+        if (card) {
+            card.classList.toggle('editor-active', Boolean(isEditing));
+        }
+    }
+
+    function resetWhitelistForm() {
+        document.getElementById('whitelistEntryId').value = '';
+        document.getElementById('whitelistEmail').value = '';
+        document.getElementById('whitelistIsActive').value = 'true';
+        document.getElementById('whitelistNote').value = '';
+        setWhitelistEditorMode(false);
+    }
+
+    function fillWhitelistForm(entry) {
+        document.getElementById('whitelistEntryId').value = entry.id || '';
+        document.getElementById('whitelistEmail').value = entry.email || '';
+        document.getElementById('whitelistIsActive').value = entry.is_active ? 'true' : 'false';
+        document.getElementById('whitelistNote').value = entry.note || '';
+        setWhitelistEditorMode(true, entry);
+        document.getElementById('whitelistEmail')?.focus();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    document.getElementById('whitelistForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const entryId = document.getElementById('whitelistEntryId').value.trim();
+        const email = document.getElementById('whitelistEmail').value.trim();
+        const isActive = document.getElementById('whitelistIsActive').value === 'true';
+        const note = document.getElementById('whitelistNote').value.trim();
+
+        if (!email) {
+            showToast('请输入邮箱', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/warranty-team-whitelist/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    entry_id: entryId ? Number(entryId) : null,
+                    email,
+                    is_active: isActive,
+                    note,
+                })
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                showToast(data.message || '质保 Team 白名单已保存', 'success');
+                setTimeout(() => window.location.reload(), 300);
+            } else {
+                showToast(data.error || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    });
+
+    async function deleteWhitelistEntry(entryId, email) {
+        const confirmed = await showSystemConfirm({
+            title: '确认删除白名单账号',
+            message: `确定要删除白名单账号 ${email} 吗？`,
+            confirmText: '删除',
+            danger: true,
+        });
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/admin/warranty-team-whitelist/${entryId}/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                showToast(data.message || '质保 Team 白名单已删除', 'success');
+                setTimeout(() => window.location.reload(), 300);
+            } else {
+                showToast(data.error || '删除失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    }
+</script>
+{% endblock %}

@@ -61,12 +61,11 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
             )
 
         html = response.body.decode("utf-8")
-        self.assertIn("质保 Team 白名单", html)
+        self.assertIn("质保邮箱列表", html)
         self.assertIn("buyer@example.com", html)
         self.assertIn("CODE-123", html)
         self.assertIn('id="warrantyRemainingDays" class="form-control" min="0" value="30"', html)
-        self.assertIn("支持新增、编辑、删除与筛选", html)
-        self.assertIn("质保 Team 白名单</span>", html)
+        self.assertIn("质保邮箱列表</span>", html)
         self.assertIn('id="warrantyRemainingClaims" class="form-control" min="0" value="10" required', html)
 
         fill_script_start = html.index("function fillWarrantyEmailForm(entry)")

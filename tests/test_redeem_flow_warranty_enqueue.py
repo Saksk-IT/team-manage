@@ -55,7 +55,7 @@ class RedeemFlowWarrantyEnqueueTests(unittest.IsolatedAsyncioTestCase):
             )
             await session.commit()
 
-            service.team_service.sync_team_info = AsyncMock(return_value={
+            service.team_service.refresh_team_state = AsyncMock(return_value={
                 "success": True,
                 "message": "同步成功",
                 "error": None,
@@ -121,7 +121,7 @@ class RedeemFlowWarrantyEnqueueTests(unittest.IsolatedAsyncioTestCase):
             )
             await session.commit()
 
-            service.team_service.sync_team_info = AsyncMock(return_value={
+            service.team_service.refresh_team_state = AsyncMock(return_value={
                 "success": True,
                 "message": "同步成功",
                 "error": None,

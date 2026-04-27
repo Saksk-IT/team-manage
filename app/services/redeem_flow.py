@@ -55,7 +55,8 @@ class RedeemFlowService:
                 "error": "该兑换码绑定的 Team 不存在，请联系管理员处理"
             }
 
-        sync_result = await self.team_service.sync_team_info(bound_team_id, db_session)
+        sync_result = await self.team_service.refresh_team_state(bound_team_id, db_session)
+        await db_session.commit()
         if not sync_result.get("success"):
             logger.warning(
                 "绑定 Team 刷新失败: team_id=%s, error=%s",
@@ -312,7 +313,8 @@ class RedeemFlowService:
                             await db_session.rollback()
 
                         # 1. 前置同步：拉人前确保人数状态绝对实时 (耗时操作)
-                        sync_result = await self.team_service.sync_team_info(team_id_final, db_session)
+                        sync_result = await self.team_service.refresh_team_state(team_id_final, db_session)
+                        await db_session.commit()
                         if bound_team_locked and not sync_result.get("success"):
                             raise Exception("该兑换码绑定的 Team 刷新失败，请稍后重试")
                         
@@ -436,10 +438,18 @@ class RedeemFlowService:
                                 redeem_code=code,
                                 has_warranty_code=bool(rc.has_warranty),
                             )
-                            target_team.current_members += 1
-                            if target_team.current_members >= target_team.max_members:
-                                target_team.status = "full"
-                            
+                            await db_session.commit()
+
+                            post_sync_result = await self.team_service.refresh_team_state(
+                                team_id_final,
+                                db_session,
+                            )
+                            if not post_sync_result.get("success"):
+                                logger.warning(
+                                    "兑换成功后统一刷新 Team 失败: team_id=%s error=%s",
+                                    team_id_final,
+                                    post_sync_result.get("error"),
+                                )
                             await db_session.commit()
                             
                             # 核心步骤成功，准备返回结果
@@ -520,7 +530,8 @@ class RedeemFlowService:
                 for i in range(3):
                     await asyncio.sleep(5)
                     # 每次同步前确保 session 是最新的
-                    sync_res = await self.team_service.sync_team_info(team_id, db_session)
+                    sync_res = await self.team_service.refresh_team_state(team_id, db_session)
+                    await db_session.commit()
                     member_emails = [m.lower() for m in sync_res.get("member_emails", [])]
                     if email.lower() in member_emails:
                         is_verified = True

@@ -869,7 +869,7 @@ class WarrantyService:
 
         previous_team_status = (latest_team.status or "").strip().lower()
         try:
-            sync_result = await self.team_service.sync_team_info(latest_team.id, db_session)
+            sync_result = await self.team_service.refresh_team_state(latest_team.id, db_session)
             if not sync_result.get("success"):
                 latest_team_status = (latest_team.status or "").strip().lower()
                 team_became_banned_during_refresh = (
@@ -905,6 +905,7 @@ class WarrantyService:
                     sync_result.get("error")
                 )
                 raise RuntimeError(sync_result.get("error") or "实时刷新最近 Team 状态失败，请稍后重试")
+            await db_session.commit()
         except Exception as exc:
             logger.warning(
                 "质保状态查询刷新最近 Team 异常 email=%s team_id=%s error=%s",
@@ -1170,19 +1171,20 @@ class WarrantyService:
         warranty_teams = await self._get_available_warranty_teams(db_session)
 
         for team in warranty_teams:
-            members_result = await self.team_service.get_team_members(team.id, db_session)
-            if not members_result.get("success"):
+            refresh_result = await self.team_service.refresh_team_state(team.id, db_session)
+            await db_session.commit()
+            if not refresh_result.get("success"):
                 logger.warning(
                     "检查质保 Team 现有成员失败，跳过 team_id=%s error=%s",
                     team.id,
-                    members_result.get("error")
+                    refresh_result.get("error")
                 )
                 continue
 
-            all_members = members_result.get("members", [])
+            all_members = refresh_result.get("member_emails", [])
             already_exists = any(
-                (member.get("email") or "").strip().lower() == normalized_email
-                for member in all_members
+                (member_email or "").strip().lower() == normalized_email
+                for member_email in all_members
             )
             if already_exists:
                 return team
@@ -1227,15 +1229,16 @@ class WarrantyService:
         if not team or team.status not in {"active", "full"}:
             return None
 
-        members_result = await self.team_service.get_team_members(team.id, db_session)
-        if not members_result.get("success"):
+        refresh_result = await self.team_service.refresh_team_state(team.id, db_session)
+        await db_session.commit()
+        if not refresh_result.get("success"):
             return None
 
         normalized_email = self.normalize_email(entry.email)
-        all_members = members_result.get("members", [])
+        all_members = refresh_result.get("member_emails", [])
         already_exists = any(
-            self.normalize_email(member.get("email")) == normalized_email
-            for member in all_members
+            self.normalize_email(member_email) == normalized_email
+            for member_email in all_members
         )
         return team if already_exists else None
 
@@ -1438,11 +1441,17 @@ class WarrantyService:
         latest_team = None
         latest_team_info = None
         if require_latest_team_banned:
-            latest_context = await self._load_latest_team_context_for_email(
-                db_session,
-                normalized_email,
-                warranty_entry=warranty_entry
-            )
+            try:
+                latest_context = await self._refresh_latest_team_context_for_email(
+                    db_session,
+                    normalized_email,
+                    warranty_entry=warranty_entry
+                )
+            except RuntimeError as exc:
+                return {
+                    "success": False,
+                    "error": str(exc) or "实时刷新最近 Team 状态失败，请稍后重试"
+                }
             if not latest_context:
                 logger.warning("质保申请失败: 未找到最近 Team 记录或成员快照 email=%s", normalized_email)
                 return {
@@ -1624,7 +1633,8 @@ class WarrantyService:
                 # 如果数据库有记录，但 API 列表里没你，说明是虚假成功，直接后台修复
                 if team.status != "banned" and team.status != "expired":
                     logger.info(f"质保查询: 正在实时测试 Team {team.id} ({team.team_name}) 的状态")
-                    sync_res = await self.team_service.sync_team_info(team.id, db_session)
+                    sync_res = await self.team_service.refresh_team_state(team.id, db_session)
+                    await db_session.commit()
                     member_emails = [m.lower() for m in sync_res.get("member_emails", [])]
                     
                     if record.email.lower() not in member_emails:
@@ -1785,7 +1795,8 @@ class WarrantyService:
                         # --- 自愈逻辑：验证是否真的在 Team 中 ---
                         # 针对“虚假成功”导致的拉人记录残留进行清理
                         logger.info(f"验证质保重复使用: 发现活跃 record，正在同步 Team {team.id} 以校验成员是否存在")
-                        sync_res = await self.team_service.sync_team_info(team.id, db_session)
+                        sync_res = await self.team_service.refresh_team_state(team.id, db_session)
+                        await db_session.commit()
                         member_emails = [m.lower() for m in sync_res.get("member_emails", [])]
                         
                         if record.email.lower() not in member_emails:

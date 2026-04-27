@@ -59,14 +59,14 @@ class RedeemFlowBoundTeamRefreshTests(unittest.IsolatedAsyncioTestCase):
                 await db_session.commit()
                 return {"success": True, "message": "同步成功", "error": None}
 
-            service.team_service.sync_team_info = AsyncMock(side_effect=mock_sync)
+            service.team_service.refresh_team_state = AsyncMock(side_effect=mock_sync)
 
             result = await service.verify_code_and_get_teams("BOUND-CODE-001", session)
 
         self.assertTrue(result["success"])
         self.assertFalse(result["valid"])
         self.assertEqual(result["reason"], "该兑换码绑定的 Team 已满，请联系管理员处理")
-        service.team_service.sync_team_info.assert_awaited_once()
+        service.team_service.refresh_team_state.assert_awaited_once()
 
     async def test_redeem_aborts_when_bound_team_refresh_fails(self):
         service = RedeemFlowService()
@@ -93,7 +93,7 @@ class RedeemFlowBoundTeamRefreshTests(unittest.IsolatedAsyncioTestCase):
             )
             await session.commit()
 
-            service.team_service.sync_team_info = AsyncMock(return_value={
+            service.team_service.refresh_team_state = AsyncMock(return_value={
                 "success": False,
                 "message": None,
                 "error": "同步失败"

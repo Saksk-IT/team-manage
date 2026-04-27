@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 from datetime import timedelta
+from unittest.mock import AsyncMock
 
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -136,7 +137,12 @@ class WarrantyFakeSuccessValidationTests(unittest.IsolatedAsyncioTestCase):
             await self._add_latest_team_record(session, "buyer@example.com", team_status="active")
             await session.commit()
 
-            result = await WarrantyService().validate_warranty_claim_input(
+            service = WarrantyService()
+            service.team_service.refresh_team_state = AsyncMock(return_value={
+                "success": True,
+                "member_emails": ["buyer@example.com"],
+            })
+            result = await service.validate_warranty_claim_input(
                 db_session=session,
                 email="buyer@example.com",
                 require_latest_team_banned=True

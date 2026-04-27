@@ -42,6 +42,7 @@ class TeamAddMemberRetryFlagsTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = TeamService()
+            service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
             service.ensure_access_token = AsyncMock(return_value="token")
             service.chatgpt_service.send_invite = AsyncMock(
                 return_value={
@@ -76,6 +77,7 @@ class TeamAddMemberRetryFlagsTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = TeamService()
+            service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
             service.ensure_access_token = AsyncMock(return_value="token")
             service.chatgpt_service.send_invite = AsyncMock(
                 return_value={

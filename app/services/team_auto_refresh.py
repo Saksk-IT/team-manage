@@ -134,11 +134,10 @@ class TeamAutoRefreshService:
 
                 try:
                     async with AsyncSessionLocal() as session:
-                        result = await team_service.sync_team_info(
+                        result = await team_service.refresh_team_state(
                             team_id,
                             session,
                             force_refresh=False,
-                            enforce_bound_email_cleanup=True,
                         )
                         await session.commit()
 

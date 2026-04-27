@@ -45,11 +45,10 @@ async def refresh_team(
     try:
         logger.info(f"刷新 Team {team_id} 信息, force={force}")
 
-        result = await team_service.sync_team_info(
+        result = await team_service.refresh_team_state(
             team_id,
             db,
             force_refresh=force,
-            enforce_bound_email_cleanup=True
         )
         await db.commit()
 

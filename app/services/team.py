@@ -320,6 +320,17 @@ class TeamService:
             if normalized_email:
                 allowed_emails.add(normalized_email)
 
+        record_result = await db_session.execute(
+            select(RedemptionRecord.email).where(
+                RedemptionRecord.team_id == team_id,
+                RedemptionRecord.email.is_not(None),
+            )
+        )
+        for email in record_result.scalars().all():
+            normalized_email = self._normalize_member_email(email)
+            if normalized_email:
+                allowed_emails.add(normalized_email)
+
         return allowed_emails
 
     async def _get_warranty_cleanup_allowed_emails(
@@ -327,47 +338,26 @@ class TeamService:
         db_session: AsyncSession
     ) -> set[str]:
         """获取质保 Team 自动清理白名单邮箱。"""
-        result = await db_session.execute(select(WarrantyEmailEntry.email))
+        from app.services.warranty_team_whitelist import warranty_team_whitelist_service
 
-        allowed_emails: set[str] = set()
-        for email in result.scalars().all():
-            normalized_email = self._normalize_member_email(email)
-            if normalized_email:
-                allowed_emails.add(normalized_email)
-
-        return allowed_emails
+        return await warranty_team_whitelist_service.get_allowed_emails(db_session)
 
     async def _ensure_manual_warranty_email_whitelist(
         self,
         email: str,
         db_session: AsyncSession,
         last_warranty_team_id: Optional[int] = None,
-    ) -> Optional[WarrantyEmailEntry]:
+    ) -> None:
         """管理员手动添加到质保 Team 的邮箱自动进入清理白名单。"""
-        normalized_email = self._normalize_member_email(email)
-        if not normalized_email:
-            return None
+        from app.services.warranty_team_whitelist import warranty_team_whitelist_service
 
-        result = await db_session.execute(
-            select(WarrantyEmailEntry).where(WarrantyEmailEntry.email == normalized_email)
-        )
-        existing_entry = result.scalar_one_or_none()
-        if existing_entry:
-            if last_warranty_team_id and not existing_entry.last_warranty_team_id:
-                existing_entry.last_warranty_team_id = last_warranty_team_id
-                await db_session.flush()
-            return existing_entry
-
-        whitelist_entry = WarrantyEmailEntry(
-            email=normalized_email,
-            remaining_claims=0,
-            expires_at=None,
-            source="manual",
+        await warranty_team_whitelist_service.ensure_manual_entry(
+            db_session=db_session,
+            email=email,
+            source=warranty_team_whitelist_service.SOURCE_MANUAL_PULL,
             last_warranty_team_id=last_warranty_team_id,
+            commit=False,
         )
-        db_session.add(whitelist_entry)
-        await db_session.flush()
-        return whitelist_entry
 
     async def _backfill_manual_warranty_whitelist_from_snapshots(
         self,
@@ -377,6 +367,8 @@ class TeamService:
         """从历史成员快照补写质保 Team 手动白名单。"""
         if not team or team.team_type != TEAM_TYPE_WARRANTY:
             return 0
+
+        from app.services.warranty_team_whitelist import warranty_team_whitelist_service
 
         result = await db_session.execute(
             select(TeamMemberSnapshot.email).where(TeamMemberSnapshot.team_id == team.id)
@@ -391,36 +383,26 @@ class TeamService:
         if not snapshot_emails:
             return 0
 
-        existing_result = await db_session.execute(
-            select(WarrantyEmailEntry.email).where(WarrantyEmailEntry.email.in_(snapshot_emails))
-        )
-        existing_emails = {
-            normalized_email
-            for email in existing_result.scalars().all()
-            if (normalized_email := self._normalize_member_email(email))
-        }
-        missing_emails = sorted(snapshot_emails - existing_emails)
-
-        for email in missing_emails:
-            db_session.add(
-                WarrantyEmailEntry(
-                    email=email,
-                    remaining_claims=0,
-                    expires_at=None,
-                    source="manual",
-                    last_warranty_team_id=team.id,
-                )
+        processed_count = 0
+        for email in sorted(snapshot_emails):
+            await warranty_team_whitelist_service.ensure_manual_entry(
+                db_session=db_session,
+                email=email,
+                source=warranty_team_whitelist_service.SOURCE_MANUAL_PULL,
+                last_warranty_team_id=team.id,
+                commit=False,
             )
+            processed_count += 1
 
-        if missing_emails:
+        if processed_count:
             await db_session.flush()
             logger.info(
-                "已从历史成员快照补写质保 Team 手动白名单: team_id=%s count=%s",
+                "已从历史成员快照补写质保 Team 白名单: team_id=%s count=%s",
                 team.id,
-                len(missing_emails),
+                processed_count,
             )
 
-        return len(missing_emails)
+        return processed_count
 
     def _build_member_state_from_results(
         self,
@@ -2260,6 +2242,27 @@ class TeamService:
                 "error": f"同步失败: {str(e)}"
             }
 
+    async def refresh_team_state(
+        self,
+        team_id: int,
+        db_session: AsyncSession,
+        force_refresh: bool = False,
+        progress_callback: ProgressCallback = None,
+    ) -> Dict[str, Any]:
+        """
+        统一刷新 Team 后台状态。
+
+        所有主动/自动刷新入口都应调用本方法，确保成员数、成员快照、
+        状态和自动清理机制使用同一套语义。
+        """
+        return await self.sync_team_info(
+            team_id,
+            db_session,
+            force_refresh=force_refresh,
+            progress_callback=progress_callback,
+            enforce_bound_email_cleanup=True,
+        )
+
     async def sync_all_teams(
         self,
         db_session: AsyncSession
@@ -2295,7 +2298,7 @@ class TeamService:
             failed_count = 0
 
             for team in teams:
-                result = await self.sync_team_info(team.id, db_session)
+                result = await self.refresh_team_state(team.id, db_session)
 
                 if result["success"]:
                     success_count += 1
@@ -2543,7 +2546,7 @@ class TeamService:
                 }
 
             # 4. 更新成员数 (不再手动 -1，同步最新数据)
-            await self.sync_team_info(team_id, db_session)
+            await self.refresh_team_state(team_id, db_session)
 
             await db_session.commit()
 
@@ -2595,6 +2598,16 @@ class TeamService:
                     "success": False,
                     "message": None,
                     "error": f"Team ID {team_id} 不存在"
+                }
+
+            refresh_result = await self.refresh_team_state(team_id, db_session)
+            await db_session.commit()
+            if not refresh_result.get("success"):
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": refresh_result.get("error") or "刷新 Team 状态失败",
+                    "allow_try_next_team": bool(refresh_result.get("allow_try_next_team")),
                 }
 
             # 2. 检查 Team 状态
@@ -2681,7 +2694,8 @@ class TeamService:
             is_verified = False
             for i in range(3):
                 await asyncio.sleep(5)
-                sync_res = await self.sync_team_info(team_id, db_session)
+                sync_res = await self.refresh_team_state(team_id, db_session)
+                await db_session.commit()
                 member_emails = [m.lower() for m in sync_res.get("member_emails", [])]
                 if email.lower() in member_emails:
                     is_verified = True
@@ -2794,7 +2808,7 @@ class TeamService:
                 }
 
             # 4. 更新成员数 (不再手动 -1，同步最新数据)
-            await self.sync_team_info(team_id, db_session)
+            await self.refresh_team_state(team_id, db_session)
 
             await db_session.commit()
 

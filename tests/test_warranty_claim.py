@@ -154,6 +154,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = WarrantyService()
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
             service._find_existing_warranty_team_for_email = AsyncMock(return_value=None)
             service.team_service.add_team_member = AsyncMock(return_value={"success": True, "message": "邀请已发送"})
 
@@ -206,6 +207,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = WarrantyService()
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
             result = await service.claim_warranty_invite(
                 db_session=session,
                 email="buyer@example.com"
@@ -265,6 +267,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = WarrantyService()
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
             service._find_existing_warranty_team_for_email = AsyncMock(return_value=None)
             service.team_service.add_team_member = AsyncMock(return_value={"success": True, "message": "邀请已发送"})
 
@@ -317,6 +320,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = WarrantyService()
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
             service._find_existing_warranty_team_for_email = AsyncMock(return_value=None)
             service.team_service.add_team_member = AsyncMock(
                 return_value={"success": False, "error": "发送邀请失败: upstream timeout"}
@@ -374,6 +378,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = WarrantyService()
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
             service._find_existing_warranty_team_for_email = AsyncMock(return_value=None)
             service.team_service.add_team_member = AsyncMock(side_effect=[
                 {
@@ -444,6 +449,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = WarrantyService()
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
             service._find_existing_warranty_team_for_email = AsyncMock(return_value=None)
             service.team_service.add_team_member = AsyncMock(return_value={"success": True, "message": "邀请已发送"})
 
@@ -481,6 +487,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = WarrantyService()
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
             service.team_service.add_team_member = AsyncMock()
 
             result = await service.claim_warranty_invite(
@@ -516,6 +523,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = WarrantyService()
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
 
             async def fake_sync(team_id, db_session, force_refresh=False, progress_callback=None):
                 team = await db_session.get(Team, team_id)
@@ -523,7 +531,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
                 await db_session.commit()
                 return {"success": True}
 
-            service.team_service.sync_team_info = AsyncMock(side_effect=fake_sync)
+            service.team_service.refresh_team_state = AsyncMock(side_effect=fake_sync)
 
             result = await service.get_warranty_claim_status(
                 db_session=session,
@@ -533,7 +541,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["success"])
         self.assertTrue(result["can_claim"])
         self.assertEqual(result["latest_team"]["status"], "banned")
-        service.team_service.sync_team_info.assert_awaited_once_with(ordinary_team.id, session)
+        service.team_service.refresh_team_state.assert_awaited_once_with(ordinary_team.id, session)
 
     async def test_get_warranty_claim_status_requires_live_refresh_success(self):
         async with self.Session() as session:
@@ -557,7 +565,8 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = WarrantyService()
-            service.team_service.sync_team_info = AsyncMock(
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
+            service.team_service.refresh_team_state = AsyncMock(
                 return_value={"success": False, "error": "上游接口超时"}
             )
 
@@ -568,7 +577,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(result["success"])
         self.assertEqual(result["error"], "上游接口超时")
-        service.team_service.sync_team_info.assert_awaited_once_with(ordinary_team.id, session)
+        service.team_service.refresh_team_state.assert_awaited_once_with(ordinary_team.id, session)
 
     async def test_get_warranty_claim_status_treats_deactivated_workspace_as_banned(self):
         async with self.Session() as session:
@@ -593,6 +602,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = WarrantyService()
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
 
             async def fake_sync(team_id, db_session, force_refresh=False, progress_callback=None):
                 team = await db_session.get(Team, team_id)
@@ -603,7 +613,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
                     "error_code": "deactivated_workspace"
                 }
 
-            service.team_service.sync_team_info = AsyncMock(side_effect=fake_sync)
+            service.team_service.refresh_team_state = AsyncMock(side_effect=fake_sync)
 
             result = await service.get_warranty_claim_status(
                 db_session=session,
@@ -641,6 +651,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = WarrantyService()
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
 
             async def fake_sync(team_id, db_session, force_refresh=False, progress_callback=None):
                 team = await db_session.get(Team, team_id)
@@ -652,7 +663,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
                     "error_code": None
                 }
 
-            service.team_service.sync_team_info = AsyncMock(side_effect=fake_sync)
+            service.team_service.refresh_team_state = AsyncMock(side_effect=fake_sync)
 
             result = await service.get_warranty_claim_status(
                 db_session=session,
@@ -691,7 +702,8 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = WarrantyService()
-            service.team_service.sync_team_info = AsyncMock(return_value={"success": True})
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True})
 
             result = await service.get_warranty_claim_status(
                 db_session=session,
@@ -702,7 +714,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["can_claim"])
         self.assertEqual(result["latest_team"]["id"], warranty_team.id)
         self.assertEqual(result["latest_team"]["email"], warranty_team.email)
-        service.team_service.sync_team_info.assert_awaited_once_with(warranty_team.id, session)
+        service.team_service.refresh_team_state.assert_awaited_once_with(warranty_team.id, session)
 
     async def test_get_warranty_claim_status_uses_team_member_snapshot_after_live_refresh(self):
         async with self.Session() as session:
@@ -726,7 +738,8 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = WarrantyService()
-            service.team_service.sync_team_info = AsyncMock(return_value={"success": True})
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True})
 
             result = await service.get_warranty_claim_status(
                 db_session=session,
@@ -737,7 +750,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["can_claim"])
         self.assertEqual(result["latest_team"]["status"], "banned")
         self.assertEqual(result["latest_team"]["code"], None)
-        service.team_service.sync_team_info.assert_awaited_once_with(ordinary_team.id, session)
+        service.team_service.refresh_team_state.assert_awaited_once_with(ordinary_team.id, session)
 
     async def test_claim_warranty_uses_team_member_snapshot_when_no_redemption_record_exists(self):
         async with self.Session() as session:
@@ -761,6 +774,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             await session.commit()
 
             service = WarrantyService()
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
             service._find_existing_warranty_team_for_email = AsyncMock(return_value=None)
             service.team_service.add_team_member = AsyncMock(return_value={"success": True, "message": "邀请已发送"})
 
@@ -798,7 +812,9 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             )
             await session.commit()
 
-            result = await WarrantyService().validate_warranty_claim_input(
+            service = WarrantyService()
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
+            result = await service.validate_warranty_claim_input(
                 db_session=session,
                 email="buyer@example.com",
                 require_latest_team_banned=True,

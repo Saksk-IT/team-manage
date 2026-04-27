@@ -35,6 +35,7 @@ from app.services.team_cleanup_record import team_cleanup_record_service
 from app.services.redemption import RedemptionService
 from app.services.settings import settings_service
 from app.services.warranty import warranty_service
+from app.services.warranty_team_whitelist import warranty_team_whitelist_service
 from app.services.auth import auth_service
 from app.utils.time_utils import get_now
 from app.utils.storage import (
@@ -431,6 +432,13 @@ class BulkWarrantyEmailUpdateRequest(BaseModel):
     remaining_days: Optional[int] = Field(None, ge=0, description="剩余天数")
     update_remaining_claims: bool = Field(False, description="是否修改剩余次数")
     remaining_claims: Optional[int] = Field(None, ge=0, description="剩余次数")
+
+
+class WarrantyTeamWhitelistSaveRequest(BaseModel):
+    entry_id: Optional[int] = Field(None, description="质保 Team 白名单记录 ID")
+    email: EmailStr = Field(..., description="白名单邮箱")
+    is_active: bool = Field(True, description="是否启用")
+    note: Optional[str] = Field(None, max_length=500, description="备注")
 
 
 class FrontAnnouncementSettingsRequest(BaseModel):
@@ -1696,12 +1704,11 @@ async def batch_refresh_teams_stream(
     logger.info(f"管理员流式批量刷新 {len(action_data.ids)} 个 Team")
 
     async def item_runner(team_id: int, progress_callback):
-        result = await team_service.sync_team_info(
+        result = await team_service.refresh_team_state(
             team_id,
             db,
             force_refresh=True,
             progress_callback=progress_callback,
-            enforce_bound_email_cleanup=True,
         )
         await db.commit()
         return result
@@ -1732,13 +1739,12 @@ async def batch_refresh_teams(
         
         for team_id in action_data.ids:
             try:
-                # 注意: 这里使用 sync_team_info, 它会自动处理 Token 刷新和信息同步
+                # 注意: 这里使用统一刷新入口, 它会自动处理 Token 刷新、信息同步和清理
                 # force_refresh=True 代表强制同步 API
-                result = await team_service.sync_team_info(
+                result = await team_service.refresh_team_state(
                     team_id,
                     db,
                     force_refresh=True,
-                    enforce_bound_email_cleanup=True
                 )
                 await db.commit()
                 if result.get("success"):
@@ -3225,7 +3231,7 @@ async def warranty_emails_page(
         _validate_code_filter_range(parsed_remaining_days_min, parsed_remaining_days_max, "剩余天数")
 
         logger.info(
-            "管理员访问质保 Team 白名单页 search=%s status=%s source=%s claims=%s-%s days=%s-%s",
+            "管理员访问质保邮箱列表页 search=%s status=%s source=%s claims=%s-%s days=%s-%s",
             search,
             normalized_status,
             normalized_source,
@@ -3291,10 +3297,135 @@ async def warranty_emails_page(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"加载质保邮箱列表页失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"加载质保邮箱列表页失败: {str(e)}"
+        )
+
+
+@router.get("/warranty-team-whitelist", response_class=HTMLResponse)
+async def warranty_team_whitelist_page(
+    request: Request,
+    search: Optional[str] = None,
+    status_filter: Optional[str] = None,
+    source_filter: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        from app.main import templates
+
+        normalized_status = _normalize_optional_filter_text(status_filter)
+        if normalized_status and normalized_status not in warranty_team_whitelist_service.STATUS_LABELS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="无效的白名单状态筛选"
+            )
+
+        normalized_source = _normalize_optional_filter_text(source_filter)
+        if normalized_source and normalized_source not in warranty_team_whitelist_service.SOURCE_LABELS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="无效的白名单来源筛选"
+            )
+
+        logger.info(
+            "管理员访问质保 Team 白名单页 search=%s status=%s source=%s",
+            search,
+            normalized_status,
+            normalized_source,
+        )
+        entries = await warranty_team_whitelist_service.list_entries(
+            db_session=db,
+            search=search,
+            status_filter=normalized_status,
+            source_filter=normalized_source,
+        )
+        return templates.TemplateResponse(
+            request,
+            "admin/warranty_team_whitelist/index.html",
+            {
+                "request": request,
+                "user": current_user,
+                "active_page": "warranty_team_whitelist",
+                "entries": entries,
+                "search": search or "",
+                "whitelist_filters": {
+                    "status_filter": normalized_status or "",
+                    "source_filter": normalized_source or "",
+                },
+                "has_whitelist_filters": any([
+                    search,
+                    normalized_status,
+                    normalized_source,
+                ]),
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
         logger.error(f"加载质保 Team 白名单页失败: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"加载质保 Team 白名单页失败: {str(e)}"
+        )
+
+
+@router.post("/warranty-team-whitelist/save")
+async def save_warranty_team_whitelist_entry(
+    payload: WarrantyTeamWhitelistSaveRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        entry = await warranty_team_whitelist_service.save_entry(
+            db_session=db,
+            entry_id=payload.entry_id,
+            email=payload.email,
+            is_active=payload.is_active,
+            note=payload.note,
+            source=warranty_team_whitelist_service.SOURCE_MANUAL,
+        )
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": "质保 Team 白名单已保存",
+                "entry": warranty_team_whitelist_service.serialize_entry(entry),
+            }
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"success": False, "error": str(e)}
+        )
+    except Exception as e:
+        logger.error(f"保存质保 Team 白名单失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"保存失败: {str(e)}"}
+        )
+
+
+@router.post("/warranty-team-whitelist/{entry_id}/delete")
+async def delete_warranty_team_whitelist_entry(
+    entry_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        deleted = await warranty_team_whitelist_service.delete_entry(db, entry_id)
+        if not deleted:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"success": False, "error": "质保 Team 白名单记录不存在"}
+            )
+        return JSONResponse(content={"success": True, "message": "质保 Team 白名单已删除"})
+    except Exception as e:
+        logger.error(f"删除质保 Team 白名单失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"删除失败: {str(e)}"}
         )
 
 
@@ -3433,7 +3564,7 @@ async def save_warranty_email(
         return JSONResponse(
             content={
                 "success": True,
-                "message": "质保 Team 白名单已保存",
+                "message": "质保邮箱已保存",
                 "entry": warranty_service.serialize_warranty_email_entry(entry)
             }
         )
@@ -3443,7 +3574,7 @@ async def save_warranty_email(
             content={"success": False, "error": str(e)}
         )
     except Exception as e:
-        logger.error(f"保存质保 Team 白名单失败: {e}")
+        logger.error(f"保存质保邮箱失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"保存失败: {str(e)}"}
@@ -3468,7 +3599,7 @@ async def bulk_update_warranty_emails(
         return JSONResponse(
             content={
                 "success": True,
-                "message": "质保 Team 白名单批量更新完成",
+                "message": "质保邮箱批量更新完成",
                 **result,
             }
         )
@@ -3478,7 +3609,7 @@ async def bulk_update_warranty_emails(
             content={"success": False, "error": str(e)}
         )
     except Exception as e:
-        logger.error(f"批量更新质保 Team 白名单失败: {e}")
+        logger.error(f"批量更新质保邮箱失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"批量更新失败: {str(e)}"}
@@ -3496,11 +3627,11 @@ async def delete_warranty_email(
         if not deleted:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
-                content={"success": False, "error": "质保 Team 白名单记录不存在"}
+                content={"success": False, "error": "质保邮箱记录不存在"}
             )
-        return JSONResponse(content={"success": True, "message": "质保 Team 白名单已删除"})
+        return JSONResponse(content={"success": True, "message": "质保邮箱已删除"})
     except Exception as e:
-        logger.error(f"删除质保 Team 白名单失败: {e}")
+        logger.error(f"删除质保邮箱失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"删除失败: {str(e)}"}
@@ -3516,7 +3647,7 @@ async def save_warranty_super_code(
 ):
     return JSONResponse(
         status_code=status.HTTP_410_GONE,
-        content={"success": False, "error": "超级兑换码功能已下线，请改用质保 Team 白名单"}
+        content={"success": False, "error": "超级兑换码功能已下线，请改用质保邮箱列表"}
     )
 
 
@@ -3529,7 +3660,7 @@ async def regenerate_warranty_super_code(
 ):
     return JSONResponse(
         status_code=status.HTTP_410_GONE,
-        content={"success": False, "error": "超级兑换码功能已下线，请改用质保 Team 白名单"}
+        content={"success": False, "error": "超级兑换码功能已下线，请改用质保邮箱列表"}
     )
 
 
@@ -3541,7 +3672,7 @@ async def disable_warranty_super_code(
 ):
     return JSONResponse(
         status_code=status.HTTP_410_GONE,
-        content={"success": False, "error": "超级兑换码功能已下线，请改用质保 Team 白名单"}
+        content={"success": False, "error": "超级兑换码功能已下线，请改用质保邮箱列表"}
     )
 
 
