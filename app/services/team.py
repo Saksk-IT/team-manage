@@ -322,6 +322,48 @@ class TeamService:
 
         return allowed_emails
 
+    async def _get_warranty_cleanup_allowed_emails(
+        self,
+        db_session: AsyncSession
+    ) -> set[str]:
+        """获取质保 Team 自动清理白名单邮箱。"""
+        result = await db_session.execute(select(WarrantyEmailEntry.email))
+
+        allowed_emails: set[str] = set()
+        for email in result.scalars().all():
+            normalized_email = self._normalize_member_email(email)
+            if normalized_email:
+                allowed_emails.add(normalized_email)
+
+        return allowed_emails
+
+    async def _ensure_manual_warranty_email_whitelist(
+        self,
+        email: str,
+        db_session: AsyncSession
+    ) -> Optional[WarrantyEmailEntry]:
+        """管理员手动添加到质保 Team 的邮箱自动进入清理白名单。"""
+        normalized_email = self._normalize_member_email(email)
+        if not normalized_email:
+            return None
+
+        result = await db_session.execute(
+            select(WarrantyEmailEntry).where(WarrantyEmailEntry.email == normalized_email)
+        )
+        existing_entry = result.scalar_one_or_none()
+        if existing_entry:
+            return existing_entry
+
+        whitelist_entry = WarrantyEmailEntry(
+            email=normalized_email,
+            remaining_claims=0,
+            expires_at=None,
+            source="manual",
+        )
+        db_session.add(whitelist_entry)
+        await db_session.flush()
+        return whitelist_entry
+
     def _build_member_state_from_results(
         self,
         members_result: Dict[str, Any],
@@ -364,7 +406,9 @@ class TeamService:
         account_id: str,
         members_result: Dict[str, Any],
         invites_result: Dict[str, Any],
-        db_session: AsyncSession
+        db_session: AsyncSession,
+        allowed_emails: Optional[set[str]] = None,
+        cleanup_scope_label: str = "标准 Team",
     ) -> Dict[str, Any]:
         cleanup_summary = {
             "removed_member_count": 0,
@@ -376,15 +420,19 @@ class TeamService:
             "attempted": False,
         }
 
-        allowed_emails = await self._get_bound_code_allowed_emails(team.id, db_session)
+        effective_allowed_emails = (
+            set(allowed_emails)
+            if allowed_emails is not None
+            else await self._get_bound_code_allowed_emails(team.id, db_session)
+        )
         owner_email = self._normalize_member_email(team.email)
         if owner_email:
-            allowed_emails.add(owner_email)
+            effective_allowed_emails.add(owner_email)
 
         removable_members = []
         for member in members_result.get("members", []):
             normalized_email = self._normalize_member_email(member.get("email"))
-            if not normalized_email or normalized_email in allowed_emails:
+            if not normalized_email or normalized_email in effective_allowed_emails:
                 continue
 
             if (member.get("role") or "").strip().lower() == "account-owner":
@@ -398,7 +446,7 @@ class TeamService:
         revocable_invites = []
         for invite in invites_result.get("items", []):
             normalized_email = self._normalize_member_email(invite.get("email_address"))
-            if not normalized_email or normalized_email in allowed_emails:
+            if not normalized_email or normalized_email in effective_allowed_emails:
                 continue
 
             revocable_invites.append({"email": normalized_email})
@@ -420,7 +468,8 @@ class TeamService:
                     "error": "缺少用户 ID，无法删除成员",
                 })
                 logger.warning(
-                    "标准 Team 自动清理跳过成员: team_id=%s email=%s reason=%s",
+                    "%s 自动清理跳过成员: team_id=%s email=%s reason=%s",
+                    cleanup_scope_label,
                     team.id,
                     target_email,
                     "缺少用户 ID",
@@ -439,7 +488,8 @@ class TeamService:
                 cleanup_summary["removed_member_count"] += 1
                 cleanup_summary["removed_member_emails"].append(target_email)
                 logger.info(
-                    "标准 Team 自动清理已删除成员: team_id=%s email=%s",
+                    "%s 自动清理已删除成员: team_id=%s email=%s",
+                    cleanup_scope_label,
                     team.id,
                     target_email,
                 )
@@ -452,7 +502,8 @@ class TeamService:
                 "error": delete_result.get("error") or "删除成员失败",
             })
             logger.warning(
-                "标准 Team 自动清理删除成员失败: team_id=%s email=%s error=%s",
+                "%s 自动清理删除成员失败: team_id=%s email=%s error=%s",
+                cleanup_scope_label,
                 team.id,
                 target_email,
                 delete_result.get("error"),
@@ -472,7 +523,8 @@ class TeamService:
                 cleanup_summary["revoked_invite_count"] += 1
                 cleanup_summary["revoked_invite_emails"].append(target_email)
                 logger.info(
-                    "标准 Team 自动清理已撤回邀请: team_id=%s email=%s",
+                    "%s 自动清理已撤回邀请: team_id=%s email=%s",
+                    cleanup_scope_label,
                     team.id,
                     target_email,
                 )
@@ -485,7 +537,8 @@ class TeamService:
                 "error": revoke_result.get("error") or "撤回邀请失败",
             })
             logger.warning(
-                "标准 Team 自动清理撤回邀请失败: team_id=%s email=%s error=%s",
+                "%s 自动清理撤回邀请失败: team_id=%s email=%s error=%s",
+                cleanup_scope_label,
                 team.id,
                 target_email,
                 revoke_result.get("error"),
@@ -1978,7 +2031,22 @@ class TeamService:
             invited_member_emails = member_state["invited_member_emails"]
             current_members = member_state["current_members"]
 
-            if enforce_bound_email_cleanup and team.team_type == TEAM_TYPE_STANDARD:
+            cleanup_allowed_emails = None
+            cleanup_scope_label = ""
+            should_cleanup_standard_team = (
+                enforce_bound_email_cleanup
+                and team.team_type == TEAM_TYPE_STANDARD
+            )
+            should_cleanup_warranty_team = team.team_type == TEAM_TYPE_WARRANTY
+
+            if should_cleanup_standard_team:
+                cleanup_allowed_emails = await self._get_bound_code_allowed_emails(team.id, db_session)
+                cleanup_scope_label = "标准 Team"
+            elif should_cleanup_warranty_team:
+                cleanup_allowed_emails = await self._get_warranty_cleanup_allowed_emails(db_session)
+                cleanup_scope_label = "质保 Team"
+
+            if should_cleanup_standard_team or should_cleanup_warranty_team:
                 cleanup_summary = await self._cleanup_non_bound_team_emails(
                     team=team,
                     access_token=access_token,
@@ -1986,6 +2054,8 @@ class TeamService:
                     members_result=members_result,
                     invites_result=invites_result,
                     db_session=db_session,
+                    allowed_emails=cleanup_allowed_emails,
+                    cleanup_scope_label=cleanup_scope_label,
                 )
 
                 if cleanup_summary["attempted"]:
@@ -2000,7 +2070,7 @@ class TeamService:
                         )
                     except Exception as cleanup_record_error:
                         logger.error(
-                            "写入标准 Team 自动清理记录失败: team_id=%s error=%s",
+                            "写入 Team 自动清理记录失败: team_id=%s error=%s",
                             team.id,
                             cleanup_record_error,
                         )
@@ -2540,6 +2610,9 @@ class TeamService:
                     "error_code": "invite_intercepted_empty_list",
                     "allow_try_next_team": True
                 }
+
+            if team.team_type == TEAM_TYPE_WARRANTY:
+                await self._ensure_manual_warranty_email_whitelist(email, db_session)
 
             # 5. 更新成员数并二次校验邀请是否真的生效 (循环检测 3 次，防止接口返回 200 但实际延迟入库)
             is_verified = False

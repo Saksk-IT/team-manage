@@ -1,5 +1,5 @@
 """
-标准 Team 自动清理记录服务
+Team 自动清理记录服务
 """
 import json
 import logging
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class TeamCleanupRecordService:
-    """标准 Team 自动清理记录服务"""
+    """Team 自动清理记录服务"""
 
     STATUS_LABELS = {
         "success": "清理成功",
@@ -90,7 +90,7 @@ class TeamCleanupRecordService:
         await db_session.flush()
 
         logger.info(
-            "已写入标准 Team 自动清理记录: team_id=%s removed=%s revoked=%s failed=%s",
+            "已写入 Team 自动清理记录: team_id=%s removed=%s revoked=%s failed=%s",
             team_id,
             removed_member_count,
             revoked_invite_count,
