@@ -519,24 +519,25 @@ async function syncFakeWarrantySuccessRemainingSpots() {
     }
 }
 
-function getWarrantyTeamStatusBadge(status) {
+function isWarrantyTeamBannedStatus(status) {
     const normalizedStatus = String(status || '').toLowerCase();
-    if (normalizedStatus === 'banned') {
+    return normalizedStatus === 'banned' || normalizedStatus === '封禁';
+}
+
+function getWarrantyTeamStatusBadge(status) {
+    if (isWarrantyTeamBannedStatus(status)) {
         return { label: '封禁', color: 'var(--danger)', bg: 'rgba(239, 68, 68, 0.12)' };
     }
-    if (normalizedStatus === 'active') {
-        return { label: '正常', color: 'var(--success)', bg: 'rgba(34, 197, 94, 0.12)' };
+
+    return { label: '可用', color: 'var(--success)', bg: 'rgba(34, 197, 94, 0.12)' };
+}
+
+function getWarrantyTeamStatusMessage(data, canClaim) {
+    if (canClaim) {
+        return data?.message || '该邮箱最近加入的 Team 已封禁，可以继续提交质保。';
     }
-    if (normalizedStatus === 'full') {
-        return { label: '已满', color: 'var(--warning)', bg: 'rgba(245, 158, 11, 0.12)' };
-    }
-    if (normalizedStatus === 'expired') {
-        return { label: '已过期', color: 'var(--text-muted)', bg: 'rgba(148, 163, 184, 0.14)' };
-    }
-    if (normalizedStatus === 'error') {
-        return { label: '异常', color: 'var(--warning)', bg: 'rgba(245, 158, 11, 0.12)' };
-    }
-    return { label: '未知', color: 'var(--text-muted)', bg: 'rgba(148, 163, 184, 0.14)' };
+
+    return '该邮箱最近加入的 Team 当前状态为可用，只有当状态为封禁时才可以提交质保';
 }
 
 function resetWarrantyStatusResult() {
@@ -561,6 +562,7 @@ function renderWarrantyStatusResult(data, email) {
     const warrantyInfo = data?.warranty_info || {};
     const badge = getWarrantyTeamStatusBadge(latestTeam.status || latestTeam.status_label);
     const canClaim = Boolean(data?.can_claim);
+    const statusMessage = getWarrantyTeamStatusMessage(data, canClaim);
 
     statusContainer.style.display = 'block';
     statusContainer.innerHTML = `
@@ -568,7 +570,7 @@ function renderWarrantyStatusResult(data, email) {
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 12px;">
                 <div style="font-size: 1rem; font-weight: 600; color: var(--text-primary);">最近加入 Team 状态</div>
                 <span style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 10px; border-radius: 999px; background: ${badge.bg}; color: ${badge.color}; font-size: 0.875rem; font-weight: 600;">
-                    ${escapeHtml(latestTeam.status_label || badge.label)}
+                    ${escapeHtml(badge.label)}
                 </span>
             </div>
             <div style="display: grid; gap: 10px;">
@@ -598,7 +600,7 @@ function renderWarrantyStatusResult(data, email) {
                 </div>
             </div>
             <div style="margin-top: 14px; font-size: 0.9rem; color: ${canClaim ? 'var(--success)' : 'var(--warning)'};">
-                ${escapeHtml(data?.message || '')}
+                ${escapeHtml(statusMessage)}
             </div>
             ${canClaim ? `
                 <div style="margin-top: 16px;">
