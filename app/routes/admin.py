@@ -34,6 +34,11 @@ from app.services.team import (
 from app.services.team_cleanup_record import team_cleanup_record_service
 from app.services.redemption import RedemptionService
 from app.services.settings import settings_service
+from app.services.admin_sidebar import (
+    get_admin_sidebar_items,
+    get_admin_sidebar_items_for_user,
+    get_default_admin_sidebar_order,
+)
 from app.services.warranty import warranty_service
 from app.services.email_whitelist import email_whitelist_service
 from app.services.auth import auth_service
@@ -65,6 +70,39 @@ router = APIRouter(
 # 服务实例
 team_service = TeamService()
 redemption_service = RedemptionService()
+
+
+async def _resolve_admin_sidebar_order(
+    db: AsyncSession,
+    current_user: dict,
+) -> list[str] | None:
+    if not current_user.get("is_super_admin", current_user.get("username") == "admin"):
+        return None
+    if not isinstance(db, AsyncSession):
+        return None
+
+    try:
+        return await settings_service.get_admin_sidebar_order(db)
+    except Exception as e:
+        logger.warning("加载管理后台侧边栏排序失败，已使用默认排序: %s", e)
+        return None
+
+
+async def _build_admin_template_context(
+    request: Request,
+    db: AsyncSession,
+    current_user: dict,
+    active_page: str,
+    **extra_context: Any,
+) -> dict[str, Any]:
+    sidebar_order = await _resolve_admin_sidebar_order(db, current_user)
+    return {
+        "request": request,
+        "user": current_user,
+        "active_page": active_page,
+        "sidebar_items": get_admin_sidebar_items_for_user(current_user, sidebar_order),
+        **extra_context,
+    }
 
 
 # 请求模型
@@ -862,37 +900,38 @@ async def _render_team_dashboard_page(
     return templates.TemplateResponse(
         request,
         "admin/index.html",
-        {
-            "request": request,
-            "user": current_user,
-            "active_page": active_page,
-            "page_title": page_title,
-            "team_mode": team_type or TEAM_TYPE_STANDARD,
-            "is_pending_mode": is_review_mode,
-            "is_review_mode": is_review_mode,
-            "teams": teams_result.get("teams", []),
-            "stats": stats,
-            "search": search,
-            "status_filter": status,
-            "review_status_filter": normalized_review_status,
-            "import_tag_filter": normalized_import_tag,
-            "imported_by_user_id_filter": imported_by_user_id_filter,
-            "imported_from_filter": imported_from or "",
-            "imported_to_filter": imported_to or "",
-            "import_tag_options": [
+        await _build_admin_template_context(
+            request,
+            db,
+            current_user,
+            active_page,
+            page_title=page_title,
+            team_mode=team_type or TEAM_TYPE_STANDARD,
+            is_pending_mode=is_review_mode,
+            is_review_mode=is_review_mode,
+            teams=teams_result.get("teams", []),
+            stats=stats,
+            search=search,
+            status_filter=status,
+            review_status_filter=normalized_review_status,
+            import_tag_filter=normalized_import_tag,
+            imported_by_user_id_filter=imported_by_user_id_filter,
+            imported_from_filter=imported_from or "",
+            imported_to_filter=imported_to or "",
+            import_tag_options=[
                 {"value": value, "label": label}
                 for value, label in IMPORT_TAG_LABELS.items()
             ],
-            "importer_options": importer_options,
-            "team_auto_refresh_enabled": auto_refresh_config["enabled"],
-            "team_auto_refresh_interval_minutes": auto_refresh_config["interval_minutes"],
-            "pagination": {
+            importer_options=importer_options,
+            team_auto_refresh_enabled=auto_refresh_config["enabled"],
+            team_auto_refresh_interval_minutes=auto_refresh_config["interval_minutes"],
+            pagination={
                 "current_page": teams_result.get("current_page", page),
                 "total_pages": teams_result.get("total_pages", 1),
                 "total": teams_result.get("total", 0),
                 "per_page": per_page
             }
-        }
+        )
     )
 
 
@@ -1051,12 +1090,13 @@ async def sub_admins_page(
     return templates.TemplateResponse(
         request,
         "admin/sub_admins/index.html",
-        {
-            "request": request,
-            "user": current_user,
-            "active_page": "sub_admins",
-            "sub_admins": sub_admins,
-        }
+        await _build_admin_template_context(
+            request,
+            db,
+            current_user,
+            "sub_admins",
+            sub_admins=sub_admins,
+        )
     )
 
 
@@ -2043,17 +2083,18 @@ async def codes_list_page(
         return templates.TemplateResponse(
             request,
             "admin/codes/index.html",
-            {
-                "request": request,
-                "user": current_user,
-                "active_page": "codes",
-                "codes": codes,
-                "stats": stats,
-                "search": search,
-                "status_filter": status_filter,
-                "team_options": team_options,
-                "selected_team_id": selected_team_id,
-                "code_filters": {
+            await _build_admin_template_context(
+                request,
+                db,
+                current_user,
+                "codes",
+                codes=codes,
+                stats=stats,
+                search=search,
+                status_filter=status_filter,
+                team_options=team_options,
+                selected_team_id=selected_team_id,
+                code_filters={
                     "code_type": code_filter_kwargs["code_type"] or "",
                     "created_from": created_from or "",
                     "created_to": created_to or "",
@@ -2083,15 +2124,15 @@ async def codes_list_page(
                         else ""
                     ),
                 },
-                "filter_query": filter_query,
-                "reset_query": reset_query,
-                "pagination": {
+                filter_query=filter_query,
+                reset_query=reset_query,
+                pagination={
                     "current_page": current_page,
                     "total_pages": total_pages,
                     "total": total_codes,
                     "per_page": per_page
                 }
-            }
+            )
         )
 
     except HTTPException:
@@ -2756,26 +2797,27 @@ async def records_page(
         return templates.TemplateResponse(
             request,
             "admin/records/index.html",
-            {
-                "request": request,
-                "user": current_user,
-                "active_page": "records",
-                "records": paginated_records,
-                "stats": stats,
-                "filters": {
+            await _build_admin_template_context(
+                request,
+                db,
+                current_user,
+                "records",
+                records=paginated_records,
+                stats=stats,
+                filters={
                     "email": email,
                     "code": code,
                     "team_id": team_id,
                     "start_date": start_date,
                     "end_date": end_date
                 },
-                "pagination": {
+                pagination={
                     "current_page": page_int,
                     "total_pages": total_pages,
                     "total": total_records,
                     "per_page": per_page
                 }
-            }
+            )
         )
 
     except Exception as e:
@@ -2855,26 +2897,32 @@ async def settings_page(
         default_team_max_members = await settings_service.get_default_team_max_members(db)
         warranty_service_config = await settings_service.get_warranty_service_config(db)
         warranty_fake_success_config = await settings_service.get_warranty_fake_success_config(db)
+        admin_sidebar_order = await _resolve_admin_sidebar_order(db, current_user)
+        admin_sidebar_order = admin_sidebar_order or get_default_admin_sidebar_order()
 
         return templates.TemplateResponse(
             request,
             "admin/settings/index.html",
-            {
-                "request": request,
-                "user": current_user,
-                "active_page": "settings",
-                "proxy_enabled": proxy_config["enabled"],
-                "proxy": proxy_config["proxy"],
-                "log_level": log_level,
-                "team_auto_refresh_enabled": team_auto_refresh_config["enabled"],
-                "team_auto_refresh_interval_minutes": team_auto_refresh_config["interval_minutes"],
-                "default_team_max_members": default_team_max_members,
-                "warranty_service_enabled": warranty_service_config["enabled"],
-                "warranty_fake_success_enabled": warranty_fake_success_config["enabled"],
-                "webhook_url": await settings_service.get_setting(db, "webhook_url", ""),
-                "low_stock_threshold": await settings_service.get_setting(db, "low_stock_threshold", "10"),
-                "api_key": await settings_service.get_setting(db, "api_key", "")
-            }
+            await _build_admin_template_context(
+                request,
+                db,
+                current_user,
+                "settings",
+                proxy_enabled=proxy_config["enabled"],
+                proxy=proxy_config["proxy"],
+                log_level=log_level,
+                team_auto_refresh_enabled=team_auto_refresh_config["enabled"],
+                team_auto_refresh_interval_minutes=team_auto_refresh_config["interval_minutes"],
+                default_team_max_members=default_team_max_members,
+                warranty_service_enabled=warranty_service_config["enabled"],
+                warranty_fake_success_enabled=warranty_fake_success_config["enabled"],
+                webhook_url=await settings_service.get_setting(db, "webhook_url", ""),
+                low_stock_threshold=await settings_service.get_setting(db, "low_stock_threshold", "10"),
+                api_key=await settings_service.get_setting(db, "api_key", ""),
+                admin_sidebar_order=admin_sidebar_order,
+                admin_sidebar_items=get_admin_sidebar_items(admin_sidebar_order),
+                admin_sidebar_default_order=get_default_admin_sidebar_order(),
+            )
         )
 
     except Exception as e:
@@ -2906,21 +2954,22 @@ async def front_page_settings_page(
         return templates.TemplateResponse(
             request,
             "admin/front_page/index.html",
-            {
-                "request": request,
-                "user": current_user,
-                "active_page": "front_page",
-                "front_announcement_enabled": front_announcement_config["enabled"],
-                "front_announcement_content": front_announcement_config["content"],
-                "customer_service_enabled": customer_service_config["enabled"],
-                "customer_service_qr_code_url": customer_service_config["qr_code_url"],
-                "customer_service_link_url": customer_service_config["link_url"],
-                "customer_service_link_text": customer_service_config["link_text"],
-                "customer_service_text_content": customer_service_config["text_content"],
-                "purchase_link_enabled": purchase_link_config["enabled"],
-                "purchase_link_url": purchase_link_config["url"],
-                "purchase_link_button_text": purchase_link_config["button_text"],
-            }
+            await _build_admin_template_context(
+                request,
+                db,
+                current_user,
+                "front_page",
+                front_announcement_enabled=front_announcement_config["enabled"],
+                front_announcement_content=front_announcement_config["content"],
+                customer_service_enabled=customer_service_config["enabled"],
+                customer_service_qr_code_url=customer_service_config["qr_code_url"],
+                customer_service_link_url=customer_service_config["link_url"],
+                customer_service_link_text=customer_service_config["link_text"],
+                customer_service_text_content=customer_service_config["text_content"],
+                purchase_link_enabled=purchase_link_config["enabled"],
+                purchase_link_url=purchase_link_config["url"],
+                purchase_link_button_text=purchase_link_config["button_text"],
+            )
         )
 
     except Exception as e:
@@ -2971,6 +3020,11 @@ class WarrantyServiceSettingsRequest(BaseModel):
 class WarrantyFakeSuccessSettingsRequest(BaseModel):
     """前台质保模拟成功开关请求"""
     enabled: bool = Field(..., description="是否启用前台质保模拟成功")
+
+
+class AdminSidebarOrderSettingsRequest(BaseModel):
+    """管理后台侧边栏排序请求"""
+    order: List[str] = Field(..., min_length=1, description="侧边栏菜单 ID 排序")
 
 
 @router.post("/front-page/announcement")
@@ -3253,13 +3307,14 @@ async def warranty_emails_page(
         return templates.TemplateResponse(
             request,
             "admin/warranty_emails/index.html",
-            {
-                "request": request,
-                "user": current_user,
-                "active_page": "warranty_emails",
-                "entries": entries,
-                "search": search or "",
-                "warranty_email_filters": {
+            await _build_admin_template_context(
+                request,
+                db,
+                current_user,
+                "warranty_emails",
+                entries=entries,
+                search=search or "",
+                warranty_email_filters={
                     "status_filter": normalized_status or "",
                     "source_filter": normalized_source or "",
                     "remaining_claims_min": (
@@ -3283,7 +3338,7 @@ async def warranty_emails_page(
                         else ""
                     ),
                 },
-                "has_warranty_email_filters": any([
+                has_warranty_email_filters=any([
                     search,
                     normalized_status,
                     normalized_source,
@@ -3292,7 +3347,7 @@ async def warranty_emails_page(
                     parsed_remaining_days_min is not None,
                     parsed_remaining_days_max is not None,
                 ])
-            }
+            )
         )
     except HTTPException:
         raise
@@ -3352,22 +3407,23 @@ async def email_whitelist_page(
         return templates.TemplateResponse(
             request,
             "admin/email_whitelist/index.html",
-            {
-                "request": request,
-                "user": current_user,
-                "active_page": "email_whitelist",
-                "entries": entries,
-                "search": search or "",
-                "whitelist_filters": {
+            await _build_admin_template_context(
+                request,
+                db,
+                current_user,
+                "email_whitelist",
+                entries=entries,
+                search=search or "",
+                whitelist_filters={
                     "status_filter": normalized_status or "",
                     "source_filter": normalized_source or "",
                 },
-                "has_whitelist_filters": any([
+                has_whitelist_filters=any([
                     search,
                     status_filter is not None and normalized_status,
                     normalized_source,
                 ]),
-            }
+            )
         )
     except HTTPException:
         raise
@@ -3491,15 +3547,16 @@ async def warranty_claim_records_page(
         return templates.TemplateResponse(
             request,
             "admin/warranty_claim_records/index.html",
-            {
-                "request": request,
-                "user": current_user,
-                "active_page": "warranty_claim_records",
-                "records": result["records"],
-                "search": search or "",
-                "claim_status": (claim_status or "").strip().lower(),
-                "pagination": result["pagination"],
-            }
+            await _build_admin_template_context(
+                request,
+                db,
+                current_user,
+                "warranty_claim_records",
+                records=result["records"],
+                search=search or "",
+                claim_status=(claim_status or "").strip().lower(),
+                pagination=result["pagination"],
+            )
         )
     except Exception as e:
         logger.error(f"加载质保提交记录页失败: {e}")
@@ -3546,15 +3603,16 @@ async def team_cleanup_records_page(
         return templates.TemplateResponse(
             request,
             "admin/team_cleanup_records/index.html",
-            {
-                "request": request,
-                "user": current_user,
-                "active_page": "team_cleanup_records",
-                "records": result["records"],
-                "search": search or "",
-                "cleanup_status": (cleanup_status or "").strip().lower(),
-                "pagination": result["pagination"],
-            }
+            await _build_admin_template_context(
+                request,
+                db,
+                current_user,
+                "team_cleanup_records",
+                records=result["records"],
+                search=search or "",
+                cleanup_status=(cleanup_status or "").strip().lower(),
+                pagination=result["pagination"],
+            )
         )
     except Exception as e:
         logger.error(f"加载自动清理记录页失败: {e}")
@@ -3917,6 +3975,41 @@ async def update_default_team_max_members_settings(
         )
     except Exception as e:
         logger.error(f"更新 Team 默认最大人数失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"更新失败: {str(e)}"}
+        )
+
+
+@router.post("/settings/sidebar-order")
+async def update_admin_sidebar_order_settings(
+    sidebar_data: AdminSidebarOrderSettingsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """
+    更新管理后台侧边栏菜单排序。
+    """
+    try:
+        normalized_order = await settings_service.update_admin_sidebar_order(
+            db,
+            sidebar_data.order
+        )
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": "侧边栏排序已保存",
+                "order": normalized_order,
+                "items": get_admin_sidebar_items(normalized_order),
+            }
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"success": False, "error": str(e)}
+        )
+    except Exception as e:
+        logger.error(f"更新侧边栏排序失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"更新失败: {str(e)}"}

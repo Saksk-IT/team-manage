@@ -44,6 +44,16 @@
         <!-- 侧边栏 -->
         <aside class="sidebar" id="adminSidebar">
             <ul class="sidebar-menu">
+                {% if sidebar_items is defined and sidebar_items %}
+                {% for item in sidebar_items %}
+                <li class="menu-item {% if active_page == item.active_page %}active{% endif %}">
+                    <a href="{{ item.href }}">
+                        <span class="menu-icon" data-lucide="{{ item.icon }}"></span>
+                        <span class="menu-text">{{ item.label }}</span>
+                    </a>
+                </li>
+                {% endfor %}
+                {% else %}
                 {% if user.get("is_super_admin", user.get("username") == "admin") %}
                 <li class="menu-item {% if active_page == 'dashboard' %}active{% endif %}">
                     <a href="/admin">
@@ -124,6 +134,7 @@
                         <span class="menu-text">导入 Team / 我的导入</span>
                     </a>
                 </li>
+                {% endif %}
                 {% endif %}
             </ul>
         </aside>

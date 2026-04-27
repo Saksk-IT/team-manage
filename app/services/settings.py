@@ -2,12 +2,17 @@
 系统设置服务
 管理系统配置的读取、更新和缓存
 """
+import json
 import secrets
 import string
-from typing import Optional, Dict
+from typing import Optional, Dict, Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Setting
+from app.services.admin_sidebar import (
+    get_default_admin_sidebar_order,
+    normalize_admin_sidebar_order,
+)
 from app.utils.storage import is_customer_service_upload_url, resolve_customer_service_upload_display_url
 import logging
 
@@ -35,6 +40,7 @@ class SettingsService:
     WARRANTY_TIME_LIMIT_DAYS_KEY = "warranty_time_limit_days"
     WARRANTY_FAKE_SUCCESS_ENABLED_KEY = "warranty_fake_success_enabled"
     WARRANTY_FAKE_SUCCESS_REMAINING_SPOTS_KEY = "warranty_fake_success_remaining_spots"
+    ADMIN_SIDEBAR_ORDER_KEY = "admin_sidebar_order"
     WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT = "usage_limit"
     WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT = "time_limit"
     DEFAULT_WARRANTY_SERVICE_ENABLED = True
@@ -632,6 +638,39 @@ class SettingsService:
             logger.info(f"日志级别已更新为: {level.upper()}")
 
         return success
+
+    async def get_admin_sidebar_order(self, session: AsyncSession) -> list[str]:
+        """
+        获取管理后台侧边栏排序。存量配置缺失或损坏时回退到默认排序。
+        """
+        raw_order = await self.get_setting(session, self.ADMIN_SIDEBAR_ORDER_KEY, "")
+        if not raw_order:
+            return get_default_admin_sidebar_order()
+
+        try:
+            parsed_order = json.loads(raw_order)
+            return normalize_admin_sidebar_order(parsed_order)
+        except (TypeError, ValueError, json.JSONDecodeError) as e:
+            logger.warning("管理后台侧边栏排序配置无效，已使用默认排序: %s", e)
+            return get_default_admin_sidebar_order()
+
+    async def update_admin_sidebar_order(
+        self,
+        session: AsyncSession,
+        order: Sequence[str]
+    ) -> list[str]:
+        """
+        更新管理后台侧边栏排序。
+        """
+        normalized_order = normalize_admin_sidebar_order(order)
+        success = await self.update_setting(
+            session,
+            self.ADMIN_SIDEBAR_ORDER_KEY,
+            json.dumps(normalized_order, ensure_ascii=False)
+        )
+        if not success:
+            raise RuntimeError("保存侧边栏排序失败")
+        return normalized_order
 
     def _generate_warranty_super_code(self, length: int = 20) -> str:
         alphabet = string.ascii_uppercase + string.digits

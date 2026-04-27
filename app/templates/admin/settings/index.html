@@ -7,6 +7,35 @@
     <h2>系统设置</h2>
 </div>
 
+<!-- 后台侧边栏排序 -->
+<div class="content-section">
+    <div class="section-header">
+        <h3>后台侧边栏排序</h3>
+    </div>
+
+    <form id="sidebarOrderForm" class="settings-form">
+        <p class="form-help">可拖动菜单项，或使用“上移 / 下移”按钮调整左侧导航顺序；保存后全体总管理员生效。</p>
+        <ul id="sidebarOrderList" class="sidebar-order-list">
+            {% for item in admin_sidebar_items | default([]) %}
+            <li class="sidebar-order-item" draggable="true" data-menu-id="{{ item.id }}">
+                <span class="sidebar-order-handle" aria-hidden="true">⋮⋮</span>
+                <span class="sidebar-order-icon" data-lucide="{{ item.icon }}"></span>
+                <span class="sidebar-order-label">{{ item.label }}</span>
+                <span class="sidebar-order-actions">
+                    <button type="button" class="btn btn-secondary btn-xs" data-order-action="up">上移</button>
+                    <button type="button" class="btn btn-secondary btn-xs" data-order-action="down">下移</button>
+                </span>
+            </li>
+            {% endfor %}
+        </ul>
+
+        <div class="sidebar-order-buttons">
+            <button type="submit" class="btn btn-primary">保存侧边栏排序</button>
+            <button type="button" id="resetSidebarOrderBtn" class="btn btn-secondary">恢复默认排序</button>
+        </div>
+    </form>
+</div>
+
 <!-- 代理配置 -->
 <div class="content-section">
     <div class="section-header">
@@ -242,11 +271,246 @@
         margin-top: 0.375rem;
     }
 
+    .sidebar-order-list {
+        display: grid;
+        gap: 0.625rem;
+        list-style: none;
+        margin: 1rem 0;
+        padding: 0;
+    }
+
+    .sidebar-order-item {
+        display: grid;
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        border: 1px solid var(--border-base);
+        border-radius: var(--radius-md);
+        background: var(--bg-surface);
+    }
+
+    .sidebar-order-item.dragging {
+        opacity: 0.55;
+    }
+
+    .sidebar-order-handle {
+        color: var(--text-muted);
+        cursor: grab;
+        font-weight: 700;
+        letter-spacing: -0.2rem;
+        line-height: 1;
+    }
+
+    .sidebar-order-icon {
+        display: inline-flex;
+        color: var(--text-muted);
+    }
+
+    .sidebar-order-label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 600;
+    }
+
+    .sidebar-order-actions,
+    .sidebar-order-buttons {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    @media (max-width: 640px) {
+        .sidebar-order-item {
+            grid-template-columns: auto auto minmax(0, 1fr);
+        }
+
+        .sidebar-order-actions {
+            grid-column: 1 / -1;
+            justify-content: stretch;
+        }
+
+        .sidebar-order-actions .btn {
+            flex: 1;
+        }
+    }
+
 </style>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    const sidebarOrderItems = {{ admin_sidebar_items | default([]) | tojson }};
+    const defaultSidebarOrder = {{ admin_sidebar_default_order | default([]) | tojson }};
+    const sidebarOrderItemMap = new Map(sidebarOrderItems.map((item) => [item.id, item]));
+    const sidebarOrderList = document.getElementById('sidebarOrderList');
+    let draggedSidebarMenuId = null;
+    let sidebarOrderState = normalizeSidebarOrder(
+        Array.from(sidebarOrderList?.querySelectorAll('[data-menu-id]') || [])
+            .map((item) => item.dataset.menuId)
+    );
+
+    function normalizeSidebarOrder(order) {
+        const knownIds = sidebarOrderItems.map((item) => item.id);
+        const uniqueIds = (order || []).filter((id, index, ids) => {
+            return knownIds.includes(id) && ids.indexOf(id) === index;
+        });
+        return uniqueIds.concat(knownIds.filter((id) => !uniqueIds.includes(id)));
+    }
+
+    function createSidebarOrderButton(action, label) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-secondary btn-xs';
+        button.dataset.orderAction = action;
+        button.textContent = label;
+        return button;
+    }
+
+    function createSidebarOrderItem(item) {
+        const listItem = document.createElement('li');
+        listItem.className = 'sidebar-order-item';
+        listItem.draggable = true;
+        listItem.dataset.menuId = item.id;
+
+        const handle = document.createElement('span');
+        handle.className = 'sidebar-order-handle';
+        handle.setAttribute('aria-hidden', 'true');
+        handle.textContent = '⋮⋮';
+
+        const icon = document.createElement('span');
+        icon.className = 'sidebar-order-icon';
+        icon.dataset.lucide = item.icon;
+
+        const label = document.createElement('span');
+        label.className = 'sidebar-order-label';
+        label.textContent = item.label;
+
+        const actions = document.createElement('span');
+        actions.className = 'sidebar-order-actions';
+        actions.append(
+            createSidebarOrderButton('up', '上移'),
+            createSidebarOrderButton('down', '下移')
+        );
+
+        listItem.append(handle, icon, label, actions);
+        return listItem;
+    }
+
+    function renderSidebarOrderList() {
+        if (!sidebarOrderList) return;
+
+        sidebarOrderList.replaceChildren(
+            ...sidebarOrderState
+                .map((id) => sidebarOrderItemMap.get(id))
+                .filter(Boolean)
+                .map(createSidebarOrderItem)
+        );
+
+        if (window.lucide) {
+            window.lucide.createIcons();
+        }
+    }
+
+    function moveSidebarOrderItem(menuId, direction) {
+        const currentIndex = sidebarOrderState.indexOf(menuId);
+        const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+
+        if (currentIndex < 0 || targetIndex < 0 || targetIndex >= sidebarOrderState.length) {
+            return;
+        }
+
+        const nextOrder = [...sidebarOrderState];
+        [nextOrder[currentIndex], nextOrder[targetIndex]] = [nextOrder[targetIndex], nextOrder[currentIndex]];
+        sidebarOrderState = nextOrder;
+        renderSidebarOrderList();
+    }
+
+    function moveDraggedSidebarItem(targetMenuId, placeAfter) {
+        if (!draggedSidebarMenuId || draggedSidebarMenuId === targetMenuId) {
+            return;
+        }
+
+        const nextOrderWithoutDragged = sidebarOrderState.filter((id) => id !== draggedSidebarMenuId);
+        const targetIndex = nextOrderWithoutDragged.indexOf(targetMenuId);
+        if (targetIndex < 0) {
+            return;
+        }
+
+        const insertIndex = placeAfter ? targetIndex + 1 : targetIndex;
+        sidebarOrderState = [
+            ...nextOrderWithoutDragged.slice(0, insertIndex),
+            draggedSidebarMenuId,
+            ...nextOrderWithoutDragged.slice(insertIndex),
+        ];
+        renderSidebarOrderList();
+    }
+
+    sidebarOrderList?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-order-action]');
+        const item = event.target.closest('[data-menu-id]');
+        if (!button || !item) return;
+
+        moveSidebarOrderItem(item.dataset.menuId, button.dataset.orderAction);
+    });
+
+    sidebarOrderList?.addEventListener('dragstart', (event) => {
+        const item = event.target.closest('[data-menu-id]');
+        if (!item) return;
+
+        draggedSidebarMenuId = item.dataset.menuId;
+        item.classList.add('dragging');
+        event.dataTransfer.effectAllowed = 'move';
+    });
+
+    sidebarOrderList?.addEventListener('dragend', (event) => {
+        event.target.closest('[data-menu-id]')?.classList.remove('dragging');
+        draggedSidebarMenuId = null;
+    });
+
+    sidebarOrderList?.addEventListener('dragover', (event) => {
+        const item = event.target.closest('[data-menu-id]');
+        if (!item || !draggedSidebarMenuId) return;
+
+        event.preventDefault();
+        const rect = item.getBoundingClientRect();
+        moveDraggedSidebarItem(item.dataset.menuId, event.clientY > rect.top + rect.height / 2);
+    });
+
+    document.getElementById('resetSidebarOrderBtn')?.addEventListener('click', () => {
+        sidebarOrderState = normalizeSidebarOrder(defaultSidebarOrder);
+        renderSidebarOrderList();
+    });
+
+    document.getElementById('sidebarOrderForm')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        try {
+            const response = await fetch('/admin/settings/sidebar-order', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ order: sidebarOrderState })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                showToast('侧边栏排序已保存，正在刷新页面', 'success');
+                sidebarOrderState = normalizeSidebarOrder(data.order || sidebarOrderState);
+                setTimeout(() => window.location.reload(), 700);
+            } else {
+                showToast(data.error || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    });
+
     // 代理配置表单
     document.getElementById('proxyForm').addEventListener('submit', async (e) => {
         e.preventDefault();
