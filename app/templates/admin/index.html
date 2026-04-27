@@ -41,205 +41,213 @@
 </div>
 
 <!-- Team 列表 -->
-<div class="content-section sticky-toolbar-section">
-    <div class="section-header">
-        <h3>{{ '我的导入' if is_import_only_mode else ('子管理员导入记录' if is_review_mode else 'Team 列表') }}</h3>
-        <div class="header-group">
-            <!-- 批量操作 -->
-            <div id="batchActions" class="batch-actions-group" style="display: none;">
-                {% if is_review_mode and not is_import_only_mode %}
-                <button onclick="openConsoleClassifyModalForSelected()" class="btn btn-success btn-sm">
-                    <i data-lucide="layout-dashboard" style="width: 14px; height: 14px;"></i> 批量进入控制台
-                </button>
-                {% endif %}
-                {% if not is_import_only_mode %}
-                <button onclick="handleBatchRefresh()" class="btn btn-secondary btn-sm">
-                    <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i> 批量刷新
-                </button>
-                <button onclick="handleBatchEnableDeviceAuth()" class="btn btn-success btn-sm">
-                    <i data-lucide="shield-check" style="width: 14px; height: 14px;"></i> 批量开启验证
-                </button>
-                <button onclick="handleBatchDelete()" class="btn btn-danger btn-sm">
-                    <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> 批量删除
-                </button>
-                {% endif %}
-                <span class="selected-count text-muted small" style="margin-left: 8px;">已选 0 项</span>
+<div class="content-section sticky-toolbar-section team-list-section">
+    <div class="team-list-toolbar">
+        <div class="team-toolbar-primary">
+            <div class="team-list-heading">
+                <h3>{{ '我的导入' if is_import_only_mode else ('子管理员导入记录' if is_review_mode else 'Team 列表') }}</h3>
+                <p>{{ '查看并筛选导入记录，批量审核或维护 Team。' if is_review_mode else '筛选、搜索并批量维护 Team 账号。' }}</p>
             </div>
 
-            <!-- 状态筛选 -->
-            {% if is_review_mode %}
-            <form action="{{ request.url.path }}" method="get" class="review-filter-form">
-                {% if search %}
-                <input type="hidden" name="search" value="{{ search }}">
-                {% endif %}
-                {% if status_filter %}
-                <input type="hidden" name="status" value="{{ status_filter }}">
-                {% endif %}
-                {% if pagination and pagination.per_page != 20 %}
-                <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
-                {% endif %}
-                <select name="review_status" class="form-control" aria-label="审核状态筛选">
-                    <option value="" {% if not review_status_filter %}selected{% endif %}>全部审核状态</option>
-                    <option value="pending" {% if review_status_filter == 'pending' %}selected{% endif %}>待审核</option>
-                    <option value="classified" {% if review_status_filter == 'classified' %}selected{% endif %}>已审核</option>
-                </select>
-                <select name="import_tag" class="form-control" aria-label="导入标签筛选">
-                    <option value="" {% if not import_tag_filter %}selected{% endif %}>全部标签</option>
-                    {% for option in import_tag_options %}
-                    <option value="{{ option.value }}" {% if import_tag_filter == option.value %}selected{% endif %}>
-                        {{ option.label }}
-                    </option>
-                    {% endfor %}
-                </select>
-                <select name="imported_by_user_id" class="form-control" aria-label="导入人筛选">
-                    <option value="" {% if not imported_by_user_id_filter %}selected{% endif %}>全部导入人</option>
-                    {% for importer in importer_options %}
-                    <option value="{{ importer.id }}" {% if imported_by_user_id_filter == importer.id %}selected{% endif %}>
-                        {{ importer.username }}
-                    </option>
-                    {% endfor %}
-                </select>
-                <input type="date" name="imported_from" value="{{ imported_from_filter or '' }}" class="form-control"
-                    aria-label="导入开始日期">
-                <input type="date" name="imported_to" value="{{ imported_to_filter or '' }}" class="form-control"
-                    aria-label="导入结束日期">
-                <button type="submit" class="btn btn-secondary btn-sm">筛选</button>
-                {% if review_status_filter or import_tag_filter or imported_by_user_id_filter or imported_from_filter or imported_to_filter %}
-                <a href="{{ request.url.path }}" class="btn btn-minimal btn-sm">清空</a>
-                {% endif %}
-            </form>
-            {% else %}
-            <form action="{{ request.url.path }}" method="get" class="team-filter-form" aria-label="Team 多重筛选">
-                {% if search %}
-                <input type="hidden" name="search" value="{{ search }}">
-                {% endif %}
-                {% if pagination and pagination.per_page != 20 %}
-                <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
-                {% endif %}
-                <label class="team-filter-field">
-                    <span>导入时间</span>
-                    <div class="filter-range-inputs">
-                        <input type="date" name="imported_from" value="{{ imported_from_filter or '' }}" class="form-control"
-                            aria-label="导入开始日期">
-                        <span>至</span>
-                        <input type="date" name="imported_to" value="{{ imported_to_filter or '' }}" class="form-control"
-                            aria-label="导入结束日期">
+            <div class="team-toolbar-actions">
+                <!-- 搜索框 -->
+                <form action="{{ request.url.path }}" method="get" class="team-search-form">
+                    <div class="input-group-clean team-search-input">
+                        <i data-lucide="search" style="width: 14px; height: 14px;"></i>
+                        <input type="text" name="search" value="{{ search or '' }}" placeholder="搜索邮箱 / Account ID / Team ID">
+                        {% if search %}
+                        <a href="{{ request.url.path }}" title="清除搜索">
+                            <i data-lucide="x-circle" style="width: 14px; height: 14px;"></i>
+                        </a>
+                        {% endif %}
+                        {% if status_filter %}
+                        <input type="hidden" name="status" value="{{ status_filter }}">
+                        {% endif %}
+                        {% if review_status_filter %}
+                        <input type="hidden" name="review_status" value="{{ review_status_filter }}">
+                        {% endif %}
+                        {% if import_tag_filter %}
+                        <input type="hidden" name="import_tag" value="{{ import_tag_filter }}">
+                        {% endif %}
+                        {% if imported_by_user_id_filter %}
+                        <input type="hidden" name="imported_by_user_id" value="{{ imported_by_user_id_filter }}">
+                        {% endif %}
+                        {% if imported_from_filter %}
+                        <input type="hidden" name="imported_from" value="{{ imported_from_filter }}">
+                        {% endif %}
+                        {% if imported_to_filter %}
+                        <input type="hidden" name="imported_to" value="{{ imported_to_filter }}">
+                        {% endif %}
+                        {% if expires_from_filter %}
+                        <input type="hidden" name="expires_from" value="{{ expires_from_filter }}">
+                        {% endif %}
+                        {% if expires_to_filter %}
+                        <input type="hidden" name="expires_to" value="{{ expires_to_filter }}">
+                        {% endif %}
+                        {% if device_auth_filter %}
+                        <input type="hidden" name="device_auth" value="{{ device_auth_filter }}">
+                        {% endif %}
+                        {% if members_min_filter != '' %}
+                        <input type="hidden" name="members_min" value="{{ members_min_filter }}">
+                        {% endif %}
+                        {% if members_max_filter != '' %}
+                        <input type="hidden" name="members_max" value="{{ members_max_filter }}">
+                        {% endif %}
+                        {% if pagination and pagination.per_page != 20 %}
+                        <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+                        {% endif %}
                     </div>
-                </label>
-                <label class="team-filter-field">
-                    <span>到期时间</span>
-                    <div class="filter-range-inputs">
-                        <input type="date" name="expires_from" value="{{ expires_from_filter or '' }}" class="form-control"
-                            aria-label="到期开始日期">
-                        <span>至</span>
-                        <input type="date" name="expires_to" value="{{ expires_to_filter or '' }}" class="form-control"
-                            aria-label="到期结束日期">
+                </form>
+
+                <!-- 列设置 -->
+                <div class="dropdown-wrapper">
+                    <button class="btn btn-secondary dropdown-toggle" onclick="toggleDropdown('columnToggleDropdown')">
+                        <i data-lucide="columns" style="width: 16px; height: 16px;"></i> 列设置
+                    </button>
+                    <div id="columnToggleDropdown" class="dropdown-menu">
+                        <!-- Column checkboxes will be generated here -->
                     </div>
-                </label>
-                <label class="team-filter-field">
-                    <span>设备验证</span>
-                    <select name="device_auth" class="form-control" aria-label="设备验证筛选">
-                        <option value="" {% if not device_auth_filter %}selected{% endif %}>全部</option>
-                        <option value="enabled" {% if device_auth_filter == 'enabled' %}selected{% endif %}>已开启</option>
-                        <option value="disabled" {% if device_auth_filter == 'disabled' %}selected{% endif %}>未开启</option>
-                    </select>
-                </label>
-                <label class="team-filter-field">
-                    <span>状态</span>
-                    <select name="status" class="form-control" aria-label="Team 状态筛选">
-                        <option value="" {% if not status_filter %}selected{% endif %}>全部</option>
-                        <option value="active" {% if status_filter == 'active' %}selected{% endif %}>可用</option>
-                        <option value="full" {% if status_filter == 'full' %}selected{% endif %}>已满</option>
-                        <option value="expired" {% if status_filter == 'expired' %}selected{% endif %}>已过期</option>
-                        <option value="error" {% if status_filter == 'error' %}selected{% endif %}>异常</option>
-                        <option value="banned" {% if status_filter == 'banned' %}selected{% endif %}>已封禁</option>
-                    </select>
-                </label>
-                <label class="team-filter-field">
-                    <span>成员数</span>
-                    <div class="filter-range-inputs">
-                        <input type="number" name="members_min" value="{{ members_min_filter }}" min="0" class="form-control"
-                            placeholder="最小" aria-label="成员数最小值">
-                        <span>至</span>
-                        <input type="number" name="members_max" value="{{ members_max_filter }}" min="0" class="form-control"
-                            placeholder="最大" aria-label="成员数最大值">
-                    </div>
-                </label>
-                <div class="team-filter-actions">
-                    <button type="submit" class="btn btn-secondary btn-sm">筛选</button>
-                    {% if status_filter or imported_from_filter or imported_to_filter or expires_from_filter or expires_to_filter or device_auth_filter or members_min_filter != '' or members_max_filter != '' %}
-                    <a href="{{ request.url.path }}" class="btn btn-minimal btn-sm">清空</a>
-                    {% endif %}
                 </div>
-            </form>
+
+                {% if not is_review_mode or is_import_only_mode %}
+                <button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">
+                    <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 导入 Team
+                </button>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 批量操作 -->
+        <div id="batchActions" class="batch-actions-group team-batch-actions" style="display: none;">
+            <span class="selected-count text-muted small">已选 0 项</span>
+            {% if is_review_mode and not is_import_only_mode %}
+            <button onclick="openConsoleClassifyModalForSelected()" class="btn btn-success btn-sm">
+                <i data-lucide="layout-dashboard" style="width: 14px; height: 14px;"></i> 批量进入控制台
+            </button>
             {% endif %}
-
-            <!-- 搜索框 -->
-            <form action="{{ request.url.path }}" method="get" class="search-form">
-                <div class="input-group-clean">
-                    <i data-lucide="search" style="width: 14px; height: 14px;"></i>
-                    <input type="text" name="search" value="{{ search or '' }}" placeholder="搜索邮箱/Account ID..."
-                        style="width: 200px;">
-                    {% if search %}
-                    <a href="{{ request.url.path }}" title="清除搜索">
-                        <i data-lucide="x-circle" style="width: 14px; height: 14px;"></i>
-                    </a>
-                    {% endif %}
-                    {% if status_filter %}
-                    <input type="hidden" name="status" value="{{ status_filter }}">
-                    {% endif %}
-                    {% if review_status_filter %}
-                    <input type="hidden" name="review_status" value="{{ review_status_filter }}">
-                    {% endif %}
-                    {% if import_tag_filter %}
-                    <input type="hidden" name="import_tag" value="{{ import_tag_filter }}">
-                    {% endif %}
-                    {% if imported_by_user_id_filter %}
-                    <input type="hidden" name="imported_by_user_id" value="{{ imported_by_user_id_filter }}">
-                    {% endif %}
-                    {% if imported_from_filter %}
-                    <input type="hidden" name="imported_from" value="{{ imported_from_filter }}">
-                    {% endif %}
-                    {% if imported_to_filter %}
-                    <input type="hidden" name="imported_to" value="{{ imported_to_filter }}">
-                    {% endif %}
-                    {% if expires_from_filter %}
-                    <input type="hidden" name="expires_from" value="{{ expires_from_filter }}">
-                    {% endif %}
-                    {% if expires_to_filter %}
-                    <input type="hidden" name="expires_to" value="{{ expires_to_filter }}">
-                    {% endif %}
-                    {% if device_auth_filter %}
-                    <input type="hidden" name="device_auth" value="{{ device_auth_filter }}">
-                    {% endif %}
-                    {% if members_min_filter != '' %}
-                    <input type="hidden" name="members_min" value="{{ members_min_filter }}">
-                    {% endif %}
-                    {% if members_max_filter != '' %}
-                    <input type="hidden" name="members_max" value="{{ members_max_filter }}">
-                    {% endif %}
-                    {% if pagination and pagination.per_page != 20 %}
-                    <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
-                    {% endif %}
-                </div>
-            </form>
-
-            <!-- 列设置 -->
-            <div class="dropdown-wrapper">
-                <button class="btn btn-secondary dropdown-toggle" onclick="toggleDropdown('columnToggleDropdown')">
-                    <i data-lucide="columns" style="width: 16px; height: 16px;"></i> 列设置
-                </button>
-                <div id="columnToggleDropdown" class="dropdown-menu">
-                    <!-- Column checkboxes will be generated here -->
-                </div>
-            </div>
-
-            {% if not is_review_mode or is_import_only_mode %}
-            <button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">
-                <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 导入 Team
+            {% if not is_import_only_mode %}
+            <button onclick="showBatchMaxMembersModal()" class="btn btn-secondary btn-sm">
+                <i data-lucide="users-round" style="width: 14px; height: 14px;"></i> 批量改成员数
+            </button>
+            <button onclick="handleBatchRefresh()" class="btn btn-secondary btn-sm">
+                <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i> 批量刷新
+            </button>
+            <button onclick="handleBatchEnableDeviceAuth()" class="btn btn-success btn-sm">
+                <i data-lucide="shield-check" style="width: 14px; height: 14px;"></i> 批量开启验证
+            </button>
+            <button onclick="handleBatchDelete()" class="btn btn-danger btn-sm">
+                <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> 批量删除
             </button>
             {% endif %}
         </div>
+
+        <!-- 状态筛选 -->
+        {% if is_review_mode %}
+        <form action="{{ request.url.path }}" method="get" class="team-filter-card review-filter-form">
+            {% if search %}
+            <input type="hidden" name="search" value="{{ search }}">
+            {% endif %}
+            {% if status_filter %}
+            <input type="hidden" name="status" value="{{ status_filter }}">
+            {% endif %}
+            {% if pagination and pagination.per_page != 20 %}
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            {% endif %}
+            <select name="review_status" class="form-control" aria-label="审核状态筛选">
+                <option value="" {% if not review_status_filter %}selected{% endif %}>全部审核状态</option>
+                <option value="pending" {% if review_status_filter == 'pending' %}selected{% endif %}>待审核</option>
+                <option value="classified" {% if review_status_filter == 'classified' %}selected{% endif %}>已审核</option>
+            </select>
+            <select name="import_tag" class="form-control" aria-label="导入标签筛选">
+                <option value="" {% if not import_tag_filter %}selected{% endif %}>全部标签</option>
+                {% for option in import_tag_options %}
+                <option value="{{ option.value }}" {% if import_tag_filter == option.value %}selected{% endif %}>
+                    {{ option.label }}
+                </option>
+                {% endfor %}
+            </select>
+            <select name="imported_by_user_id" class="form-control" aria-label="导入人筛选">
+                <option value="" {% if not imported_by_user_id_filter %}selected{% endif %}>全部导入人</option>
+                {% for importer in importer_options %}
+                <option value="{{ importer.id }}" {% if imported_by_user_id_filter == importer.id %}selected{% endif %}>
+                    {{ importer.username }}
+                </option>
+                {% endfor %}
+            </select>
+            <input type="date" name="imported_from" value="{{ imported_from_filter or '' }}" class="form-control"
+                aria-label="导入开始日期">
+            <input type="date" name="imported_to" value="{{ imported_to_filter or '' }}" class="form-control"
+                aria-label="导入结束日期">
+            <button type="submit" class="btn btn-secondary btn-sm">筛选</button>
+            {% if review_status_filter or import_tag_filter or imported_by_user_id_filter or imported_from_filter or imported_to_filter %}
+            <a href="{{ request.url.path }}" class="btn btn-minimal btn-sm">清空</a>
+            {% endif %}
+        </form>
+        {% else %}
+        <form action="{{ request.url.path }}" method="get" class="team-filter-card team-filter-form" aria-label="Team 多重筛选">
+            {% if search %}
+            <input type="hidden" name="search" value="{{ search }}">
+            {% endif %}
+            {% if pagination and pagination.per_page != 20 %}
+            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+            {% endif %}
+            <label class="team-filter-field team-filter-field-range">
+                <span>导入时间</span>
+                <div class="filter-range-inputs">
+                    <input type="date" name="imported_from" value="{{ imported_from_filter or '' }}" class="form-control"
+                        aria-label="导入开始日期">
+                    <span>至</span>
+                    <input type="date" name="imported_to" value="{{ imported_to_filter or '' }}" class="form-control"
+                        aria-label="导入结束日期">
+                </div>
+            </label>
+            <label class="team-filter-field team-filter-field-range">
+                <span>到期时间</span>
+                <div class="filter-range-inputs">
+                    <input type="date" name="expires_from" value="{{ expires_from_filter or '' }}" class="form-control"
+                        aria-label="到期开始日期">
+                    <span>至</span>
+                    <input type="date" name="expires_to" value="{{ expires_to_filter or '' }}" class="form-control"
+                        aria-label="到期结束日期">
+                </div>
+            </label>
+            <label class="team-filter-field">
+                <span>设备验证</span>
+                <select name="device_auth" class="form-control" aria-label="设备验证筛选">
+                    <option value="" {% if not device_auth_filter %}selected{% endif %}>全部</option>
+                    <option value="enabled" {% if device_auth_filter == 'enabled' %}selected{% endif %}>已开启</option>
+                    <option value="disabled" {% if device_auth_filter == 'disabled' %}selected{% endif %}>未开启</option>
+                </select>
+            </label>
+            <label class="team-filter-field">
+                <span>状态</span>
+                <select name="status" class="form-control" aria-label="Team 状态筛选">
+                    <option value="" {% if not status_filter %}selected{% endif %}>全部</option>
+                    <option value="active" {% if status_filter == 'active' %}selected{% endif %}>可用</option>
+                    <option value="full" {% if status_filter == 'full' %}selected{% endif %}>已满</option>
+                    <option value="expired" {% if status_filter == 'expired' %}selected{% endif %}>已过期</option>
+                    <option value="error" {% if status_filter == 'error' %}selected{% endif %}>异常</option>
+                    <option value="banned" {% if status_filter == 'banned' %}selected{% endif %}>已封禁</option>
+                </select>
+            </label>
+            <label class="team-filter-field team-filter-field-range team-filter-field-members">
+                <span>成员数</span>
+                <div class="filter-range-inputs">
+                    <input type="number" name="members_min" value="{{ members_min_filter }}" min="0" class="form-control"
+                        placeholder="最小" aria-label="成员数最小值">
+                    <span>至</span>
+                    <input type="number" name="members_max" value="{{ members_max_filter }}" min="0" class="form-control"
+                        placeholder="最大" aria-label="成员数最大值">
+                </div>
+            </label>
+            <div class="team-filter-actions">
+                <button type="submit" class="btn btn-secondary btn-sm">筛选</button>
+                {% if status_filter or imported_from_filter or imported_to_filter or expires_from_filter or expires_to_filter or device_auth_filter or members_min_filter != '' or members_max_filter != '' %}
+                <a href="{{ request.url.path }}" class="btn btn-minimal btn-sm">清空</a>
+                {% endif %}
+            </div>
+        </form>
+        {% endif %}
     </div>
 </div>
 
@@ -615,6 +623,29 @@
                     </select>
                 </div>
                 <button type="submit" class="btn btn-primary">保存修改</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div id="batchMaxMembersModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>批量修改最大成员数</h3>
+            <button class="modal-close" onclick="hideModal('batchMaxMembersModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="alert alert-info" style="margin-bottom: 1rem;">
+                将修改已勾选的 <strong id="batchMaxMembersSelectedCount">0</strong> 个 Team。
+            </div>
+            <form id="batchMaxMembersForm" onsubmit="handleBatchMaxMembersSubmit(event)">
+                <div class="form-group">
+                    <label>最大成员数 <span class="required">*</span></label>
+                    <input type="number" id="batch-max-members-value" class="form-control" value="9" min="1" max="100"
+                        required>
+                    <small class="form-text">如果当前成员数已经达到或超过新上限，Team 状态会自动变为“已满”。</small>
+                </div>
+                <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">确认修改</button>
             </form>
         </div>
     </div>
@@ -1830,6 +1861,75 @@
         return Array.from(document.querySelectorAll('.team-checkbox:checked'))
             .map(cb => parseInt(cb.value, 10))
             .filter(Number.isInteger);
+    }
+
+    function showBatchMaxMembersModal() {
+        const selectedIds = getSelectedTeamIds();
+        if (selectedIds.length === 0) {
+            showToast('请先选择要修改的 Team', 'warning');
+            return;
+        }
+
+        const countEl = document.getElementById('batchMaxMembersSelectedCount');
+        if (countEl) {
+            countEl.innerText = selectedIds.length;
+        }
+        showModal('batchMaxMembersModal');
+    }
+
+    async function handleBatchMaxMembersSubmit(event) {
+        event.preventDefault();
+        const selectedIds = getSelectedTeamIds();
+        const maxMembers = Number(document.getElementById('batch-max-members-value')?.value);
+
+        if (selectedIds.length === 0) {
+            showToast('请先选择要修改的 Team', 'warning');
+            return;
+        }
+        if (!Number.isInteger(maxMembers) || maxMembers < 1 || maxMembers > 100) {
+            showToast('最大成员数必须是 1-100 之间的整数', 'error');
+            return;
+        }
+
+        const confirmed = await showSystemConfirm({
+            title: '确认批量修改最大成员数',
+            message: `确定要将选中的 ${selectedIds.length} 个 Team 最大成员数修改为 ${maxMembers} 吗？`,
+            confirmText: '确认修改',
+        });
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/teams/batch-max-members', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    ids: selectedIds,
+                    max_members: maxMembers,
+                })
+            });
+            const result = await response.json();
+            const failedItems = Array.isArray(result.failed_items) ? result.failed_items : [];
+
+            if (response.ok && result.success) {
+                hideModal('batchMaxMembersModal');
+                if (failedItems.length > 0) {
+                    showToast(result.message || '批量修改完成，但有失败项', 'error');
+                    showBatchActionResultModal('批量改成员数', result.message || '批量修改完成', failedItems);
+                } else {
+                    showToast(result.message || '批量修改成功', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                }
+            } else {
+                showToast(result.error || '批量修改失败', 'error');
+            }
+        } catch (error) {
+            console.error(error);
+            showToast('网络错误', 'error');
+        }
     }
 
 

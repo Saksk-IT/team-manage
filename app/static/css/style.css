@@ -484,6 +484,60 @@ body.admin-shell {
     flex-wrap: wrap;
 }
 
+.team-list-toolbar {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.team-toolbar-primary {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.team-list-heading h3 {
+    margin: 0;
+}
+
+.team-list-heading p {
+    margin: 0.35rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.team-toolbar-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+}
+
+.team-search-form {
+    flex: 1 1 320px;
+    max-width: 420px;
+}
+
+.team-search-input {
+    width: 100%;
+}
+
+.team-search-input input {
+    width: 100%;
+}
+
+.team-filter-card {
+    width: 100%;
+    padding: 0.875rem;
+    border: 1px solid var(--border-base);
+    border-radius: var(--radius-lg);
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0.9), rgba(255, 255, 255, 0.95));
+}
+
 .review-filter-form {
     display: flex;
     align-items: center;
@@ -500,14 +554,14 @@ body.admin-shell {
 }
 
 .team-filter-form {
-    flex: 1 1 760px;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: 0.75rem;
     align-items: end;
 }
 
 .team-filter-field {
+    grid-column: span 2;
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
@@ -516,6 +570,14 @@ body.admin-shell {
     color: var(--text-muted);
     font-size: 0.75rem;
     font-weight: 600;
+}
+
+.team-filter-field-range {
+    grid-column: span 3;
+}
+
+.team-filter-field-members {
+    grid-column: span 2;
 }
 
 .team-filter-field .form-control {
@@ -539,10 +601,23 @@ body.admin-shell {
 }
 
 .team-filter-actions {
+    grid-column: span 2;
     display: flex;
     gap: 0.5rem;
     align-items: center;
     flex-wrap: wrap;
+}
+
+.team-filter-card.review-filter-form {
+    display: flex;
+    align-items: end;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.team-batch-actions {
+    width: 100%;
+    justify-content: flex-start;
 }
 
 /* Filter Tabs */
@@ -1652,6 +1727,18 @@ body.admin-shell {
         justify-content: space-between;
     }
 
+    .team-toolbar-primary,
+    .team-toolbar-actions {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .team-search-form {
+        max-width: none;
+        width: 100%;
+    }
+
     .review-filter-form,
     .review-filter-form .form-control {
         width: 100%;
@@ -1660,6 +1747,13 @@ body.admin-shell {
     .team-filter-form {
         width: 100%;
         grid-template-columns: 1fr;
+    }
+
+    .team-filter-field,
+    .team-filter-field-range,
+    .team-filter-field-members,
+    .team-filter-actions {
+        grid-column: span 1;
     }
 
     .filter-range-inputs {

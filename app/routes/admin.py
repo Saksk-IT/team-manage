@@ -552,6 +552,11 @@ class BulkActionRequest(BaseModel):
     ids: List[int] = Field(..., description="Team ID 列表")
 
 
+class BulkTeamMaxMembersRequest(BulkActionRequest):
+    """批量修改 Team 最大成员数请求"""
+    max_members: int = Field(..., ge=1, le=100, description="最大成员数")
+
+
 class BulkTeamClassifyRequest(BulkActionRequest):
     """批量待分类 Team 归类请求"""
     target: str = Field(..., description="兼容旧字段；归类后统一进入控制台 Team 池")
@@ -1969,6 +1974,80 @@ async def batch_delete_teams(
         })
     except Exception as e:
         logger.error(f"批量删除 Team 失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": str(e)}
+        )
+
+
+@router.post("/teams/batch-max-members")
+async def batch_update_team_max_members(
+    action_data: BulkTeamMaxMembersRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """批量修改 Team 最大成员数。"""
+    try:
+        team_ids = [team_id for team_id in action_data.ids if team_id]
+        if not team_ids:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "请选择要修改的 Team"}
+            )
+
+        logger.info(
+            "管理员批量修改 %s 个 Team 的最大成员数为 %s",
+            len(team_ids),
+            action_data.max_members,
+        )
+
+        success_count = 0
+        failed_items = []
+        now = get_now()
+
+        for team_id in team_ids:
+            try:
+                team = await db.scalar(select(Team).where(Team.id == team_id))
+                if not team:
+                    failed_items.append({
+                        "team_id": team_id,
+                        "error": "Team 不存在",
+                    })
+                    continue
+
+                team.max_members = action_data.max_members
+                if team.status in ["active", "full", "expired"]:
+                    if (team.current_members or 0) >= team.max_members:
+                        team.status = "full"
+                    elif team.expires_at and team.expires_at < now:
+                        team.status = "expired"
+                    else:
+                        team.status = "active"
+
+                success_count += 1
+            except Exception as ex:
+                logger.error("批量修改 Team %s 最大成员数时出错: %s", team_id, ex)
+                failed_items.append({
+                    "team_id": team_id,
+                    "error": str(ex),
+                })
+
+        if success_count > 0:
+            await db.commit()
+        else:
+            await db.rollback()
+
+        failed_count = len(failed_items)
+        return JSONResponse(content={
+            "success": True,
+            "message": f"批量修改完成: 成功 {success_count}, 失败 {failed_count}",
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "failed_items": failed_items,
+        })
+    except Exception as e:
+        await db.rollback()
+        logger.error("批量修改最大成员数失败: %s", e)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": str(e)}

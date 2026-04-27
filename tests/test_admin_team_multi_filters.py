@@ -167,6 +167,11 @@ class TeamMultiFilterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('name="expires_from" value="2026-06-01"', html)
         self.assertIn('name="device_auth"', html)
         self.assertIn('name="members_min" value="2"', html)
+        self.assertIn('class="team-list-toolbar"', html)
+        self.assertIn('class="team-toolbar-primary"', html)
+        self.assertIn('class="team-filter-card team-filter-form"', html)
+        self.assertIn("批量改成员数", html)
+        self.assertIn('id="batchMaxMembersModal"', html)
 
     async def test_admin_dashboard_stats_show_seats_instead_of_codes(self):
         async with self.Session() as session:
