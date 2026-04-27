@@ -41,8 +41,6 @@ class AdminCodeExportTests(unittest.IsolatedAsyncioTestCase):
             search=None,
             status=None,
             selected_codes=["CODE-001", "CODE-002"],
-            bound_team_id=None,
-            bound_team_ids=None,
         )
 
     async def test_excel_export_returns_excel_media_type(self):
@@ -78,7 +76,7 @@ class AdminCodeExportTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(response.body.startswith(b"PK"))
 
-    async def test_team_export_scope_passes_bound_team_id(self):
+    async def test_legacy_team_export_scope_ignores_bound_team_id(self):
         db_session = object()
         mocked_result = {
             "success": True,
@@ -104,11 +102,9 @@ class AdminCodeExportTests(unittest.IsolatedAsyncioTestCase):
             search=None,
             status=None,
             selected_codes=None,
-            bound_team_id=7,
-            bound_team_ids=None,
         )
 
-    async def test_multi_team_export_scope_passes_bound_team_ids(self):
+    async def test_legacy_multi_team_export_scope_ignores_bound_team_ids(self):
         db_session = object()
         mocked_result = {
             "success": True,
@@ -135,8 +131,6 @@ class AdminCodeExportTests(unittest.IsolatedAsyncioTestCase):
             search=None,
             status=None,
             selected_codes=None,
-            bound_team_id=None,
-            bound_team_ids=[7, 9],
         )
 
     async def test_current_filter_export_passes_multi_condition_filters(self):
@@ -178,8 +172,6 @@ class AdminCodeExportTests(unittest.IsolatedAsyncioTestCase):
             search="buyer@example.com",
             status="used",
             selected_codes=None,
-            bound_team_id=7,
-            bound_team_ids=None,
             code_type="warranty",
             created_from=datetime(2026, 4, 1, 0, 0),
             created_to=datetime.combine(datetime(2026, 4, 20).date(), time.max),

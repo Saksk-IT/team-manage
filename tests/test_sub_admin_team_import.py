@@ -121,7 +121,7 @@ class PendingTeamClassificationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(own_result["teams"][0]["id"], team1.id)
         self.assertEqual(all_result["total"], 2)
 
-    async def test_classify_pending_team_as_standard_generates_standard_codes(self):
+    async def test_classify_pending_team_as_standard_generates_no_codes(self):
         async with self.Session() as session:
             _, team = await self._create_pending_team(session)
             result = await self.service.classify_pending_team(
@@ -136,10 +136,9 @@ class PendingTeamClassificationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(refreshed.import_status, IMPORT_STATUS_CLASSIFIED)
         self.assertEqual(refreshed.team_type, TEAM_TYPE_STANDARD)
         self.assertEqual(refreshed.bound_code_type, TEAM_TYPE_STANDARD)
-        self.assertEqual(len(codes), 4)
-        self.assertTrue(all(not code.has_warranty for code in codes))
+        self.assertEqual(len(codes), 0)
 
-    async def test_classify_pending_team_as_warranty_code_generates_warranty_codes(self):
+    async def test_classify_pending_team_as_warranty_code_compat_goes_to_standard_without_codes(self):
         async with self.Session() as session:
             _, team = await self._create_pending_team(session)
             result = await self.service.classify_pending_team(
@@ -154,13 +153,11 @@ class PendingTeamClassificationTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["success"])
         self.assertEqual(refreshed.import_status, IMPORT_STATUS_CLASSIFIED)
         self.assertEqual(refreshed.team_type, TEAM_TYPE_STANDARD)
-        self.assertEqual(refreshed.bound_code_type, TEAM_TYPE_WARRANTY)
-        self.assertEqual(refreshed.bound_code_warranty_days, 45)
-        self.assertEqual(len(codes), 4)
-        self.assertTrue(all(code.has_warranty for code in codes))
-        self.assertTrue(all(code.warranty_days == 45 for code in codes))
+        self.assertEqual(refreshed.bound_code_type, TEAM_TYPE_STANDARD)
+        self.assertIsNone(refreshed.bound_code_warranty_days)
+        self.assertEqual(len(codes), 0)
 
-    async def test_classify_pending_team_as_warranty_team_does_not_generate_codes(self):
+    async def test_classify_pending_team_as_warranty_team_compat_goes_to_standard(self):
         async with self.Session() as session:
             _, team = await self._create_pending_team(session)
             result = await self.service.classify_pending_team(
@@ -173,7 +170,7 @@ class PendingTeamClassificationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual(refreshed.import_status, IMPORT_STATUS_CLASSIFIED)
-        self.assertEqual(refreshed.team_type, TEAM_TYPE_WARRANTY)
+        self.assertEqual(refreshed.team_type, TEAM_TYPE_STANDARD)
         self.assertEqual(code_count, 0)
 
     async def test_reviewed_import_record_remains_visible_for_sub_admin_history(self):
@@ -197,7 +194,7 @@ class PendingTeamClassificationTests(unittest.IsolatedAsyncioTestCase):
         status_by_id = {team["id"]: team for team in result["teams"]}
         self.assertEqual(status_by_id[pending_team.id]["import_status_label"], "待审核")
         self.assertEqual(status_by_id[reviewed_team.id]["import_status_label"], "已审核")
-        self.assertEqual(status_by_id[reviewed_team.id]["import_decision_label"], "控制台 / 质保兑换码")
+        self.assertEqual(status_by_id[reviewed_team.id]["import_decision_label"], "控制台 Team")
 
     async def test_import_history_supports_review_tag_and_date_filters(self):
         async with self.Session() as session:

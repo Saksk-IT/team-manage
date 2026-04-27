@@ -649,6 +649,8 @@ class SettingsService:
 
         try:
             parsed_order = json.loads(raw_order)
+            if isinstance(parsed_order, list):
+                parsed_order = [item for item in parsed_order if item != "warranty_teams"]
             return normalize_admin_sidebar_order(parsed_order)
         except (TypeError, ValueError, json.JSONDecodeError) as e:
             logger.warning("管理后台侧边栏排序配置无效，已使用默认排序: %s", e)

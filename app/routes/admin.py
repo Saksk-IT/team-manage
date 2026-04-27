@@ -109,9 +109,9 @@ async def _build_admin_template_context(
 class TeamImportRequest(BaseModel):
     """Team 导入请求"""
     import_type: str = Field(..., description="导入类型: single 或 batch")
-    team_type: str = Field(TEAM_TYPE_STANDARD, description="Team 类型: standard 或 warranty")
-    generate_warranty_codes: bool = Field(False, description="是否自动生成质保兑换码")
-    warranty_days: int = Field(30, ge=1, description="自动生成质保兑换码时的质保天数")
+    team_type: str = Field(TEAM_TYPE_STANDARD, description="兼容旧字段；导入统一进入控制台 Team 池")
+    generate_warranty_codes: bool = Field(False, description="兼容旧字段；导入不再自动生成兑换码")
+    warranty_days: int = Field(30, ge=1, description="兼容旧字段；质保码请在兑换码管理页面生成")
     access_token: Optional[str] = Field(None, description="AT Token (单个导入)")
     refresh_token: Optional[str] = Field(None, description="Refresh Token (单个导入)")
     session_token: Optional[str] = Field(None, description="Session Token (单个导入)")
@@ -152,12 +152,12 @@ class TeamUpdateRequest(BaseModel):
 
 class TeamTransferRequest(BaseModel):
     """Team 类型转移请求"""
-    target_team_type: str = Field(..., description="目标 Team 类型: standard 或 warranty")
+    target_team_type: str = Field(..., description="兼容旧字段；仅支持 standard")
 
 
 class TeamClassifyRequest(BaseModel):
     """待分类 Team 归类请求"""
-    target: str = Field(..., description="归类目标: standard / warranty_code / warranty_team")
+    target: str = Field(..., description="兼容旧字段；归类后统一进入控制台 Team 池")
     warranty_days: int = Field(30, ge=1, description="质保兑换码天数")
 
 
@@ -194,7 +194,7 @@ class BulkWarrantyCodeQuotaUpdateRequest(BaseModel):
     codes: List[str] = Field(default_factory=list, description="勾选的兑换码列表")
     search: Optional[str] = Field(None, description="搜索关键词")
     status_filter: Optional[str] = Field(None, description="状态筛选")
-    team_id: Optional[int] = Field(None, description="绑定的 Team ID")
+    team_id: Optional[int] = Field(None, description="兼容旧字段；兑换码不再绑定 Team")
     code_type: Optional[str] = Field(None, description="兑换码类型筛选: standard/warranty")
     created_from: Optional[str] = Field(None, description="创建时间起始")
     created_to: Optional[str] = Field(None, description="创建时间结束")
@@ -217,8 +217,8 @@ class CodeExportRequest(BaseModel):
     codes: List[str] = Field(default_factory=list, description="勾选的兑换码列表")
     search: Optional[str] = Field(None, description="搜索关键词")
     status_filter: Optional[str] = Field(None, description="状态筛选")
-    team_id: Optional[int] = Field(None, description="绑定的 Team ID")
-    team_ids: List[int] = Field(default_factory=list, description="批量勾选的 Team ID 列表")
+    team_id: Optional[int] = Field(None, description="兼容旧字段；兑换码不再绑定 Team")
+    team_ids: List[int] = Field(default_factory=list, description="兼容旧字段；兑换码不再绑定 Team")
     code_type: Optional[str] = Field(None, description="兑换码类型筛选: standard/warranty")
     created_from: Optional[str] = Field(None, description="创建时间起始")
     created_to: Optional[str] = Field(None, description="创建时间结束")
@@ -448,7 +448,7 @@ class BulkActionRequest(BaseModel):
 
 class BulkTeamClassifyRequest(BulkActionRequest):
     """批量待分类 Team 归类请求"""
-    target: str = Field(..., description="归类目标: standard / warranty_code / warranty_team")
+    target: str = Field(..., description="兼容旧字段；归类后统一进入控制台 Team 池")
     warranty_days: int = Field(30, ge=1, description="质保兑换码天数")
 
 
@@ -972,36 +972,13 @@ async def admin_dashboard(
         )
 
 
-@router.get("/warranty-teams", response_class=HTMLResponse)
+@router.get("/warranty-teams")
 async def warranty_teams_dashboard(
     request: Request,
-    page: int = 1,
-    per_page: int = 20,
-    search: Optional[str] = None,
-    status: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
-    try:
-        logger.info(f"管理员访问质保 Team 页面, search={search}, page={page}, per_page={per_page}")
-        return await _render_team_dashboard_page(
-            request=request,
-            db=db,
-            current_user=current_user,
-            page=page,
-            per_page=per_page,
-            search=search,
-            status=status,
-            team_type=TEAM_TYPE_WARRANTY,
-            active_page="warranty_teams",
-            page_title="质保 Team 管理"
-        )
-    except Exception as e:
-        logger.error(f"加载质保 Team 页面失败: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"加载质保 Team 页面失败: {str(e)}"
-        )
+    """旧质保 Team 入口兼容重定向；Team 已统一进入控制台池。"""
+    return RedirectResponse(url="/admin", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 @router.get("/pending-teams", response_class=HTMLResponse)
@@ -1248,10 +1225,10 @@ async def transfer_team_type(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
-    """在普通 Team 与质保 Team 之间转移账号"""
+    """兼容旧转移接口：仅允许归一到控制台 Team 池。"""
     try:
         target_team_type = (transfer_data.target_team_type or "").strip().lower()
-        if target_team_type not in {TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY}:
+        if target_team_type != TEAM_TYPE_STANDARD:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"success": False, "error": "目标 Team 类型无效"}
@@ -1287,7 +1264,7 @@ async def classify_pending_team(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
-    """总管理员将待分类 Team 归类到普通账号、质保账号或质保 Team。"""
+    """总管理员将待分类 Team 归类到统一控制台池。"""
     try:
         target = _normalize_classify_target(classify_data.target)
         if target not in CLASSIFY_TARGETS:
@@ -1336,14 +1313,14 @@ async def batch_classify_pending_teams_stream(
         )
 
     action_labels = {
-        CLASSIFY_TARGET_STANDARD: "批量进入控制台（普通兑换码）",
-        CLASSIFY_TARGET_WARRANTY_CODE: "批量进入控制台（质保兑换码）",
-        CLASSIFY_TARGET_WARRANTY_TEAM: "批量进入质保 Team",
+        CLASSIFY_TARGET_STANDARD: "批量进入控制台",
+        CLASSIFY_TARGET_WARRANTY_CODE: "批量进入控制台",
+        CLASSIFY_TARGET_WARRANTY_TEAM: "批量进入控制台",
     }
     stage_labels = {
-        CLASSIFY_TARGET_STANDARD: "归类为控制台普通账号",
-        CLASSIFY_TARGET_WARRANTY_CODE: "归类为控制台质保账号",
-        CLASSIFY_TARGET_WARRANTY_TEAM: "归类到质保 Team 页面",
+        CLASSIFY_TARGET_STANDARD: "归类到控制台 Team 池",
+        CLASSIFY_TARGET_WARRANTY_CODE: "归类到控制台 Team 池",
+        CLASSIFY_TARGET_WARRANTY_TEAM: "归类到控制台 Team 池",
     }
     action_label = action_labels[target]
     logger.info("管理员%s %s 个 Team", action_label, len(action_data.ids))
@@ -1397,9 +1374,9 @@ async def team_import(
     """
     try:
         is_import_admin = is_import_admin_user(current_user)
-        team_type = _normalize_team_type(import_data.team_type)
-        generate_warranty_codes = import_data.generate_warranty_codes
-        generate_codes_on_import = True
+        team_type = TEAM_TYPE_STANDARD
+        generate_warranty_codes = False
+        generate_codes_on_import = False
         import_status = IMPORT_STATUS_CLASSIFIED
         imported_by_user_id = None
         imported_by_username = current_user.get("username")
@@ -1432,14 +1409,11 @@ async def team_import(
 
         import_context_kwargs = {
             "import_tag": import_tag,
+            "generate_codes_on_import": generate_codes_on_import,
+            "import_status": import_status,
+            "imported_by_user_id": imported_by_user_id,
+            "imported_by_username": imported_by_username,
         }
-        if is_import_admin:
-            import_context_kwargs.update({
-                "generate_codes_on_import": generate_codes_on_import,
-                "import_status": import_status,
-                "imported_by_user_id": imported_by_user_id,
-                "imported_by_username": imported_by_username,
-            })
 
         if import_data.import_type == "single":
             # 单个导入 - 允许通过 AT, RT 或 ST 导入
@@ -1981,11 +1955,7 @@ async def codes_list_page(
     try:
         from app.main import templates
 
-        selected_team_id = _parse_optional_int_filter(
-            team_id,
-            label="Team ID",
-            min_value=1
-        )
+        selected_team_id = None  # 兼容旧查询参数；兑换码不再绑定 Team。
         code_filter_kwargs = _build_code_filter_kwargs(
             code_type=code_type,
             created_from=created_from,
@@ -1999,7 +1969,6 @@ async def codes_list_page(
         filter_query = _build_query_string({
             "search": search,
             "status_filter": status_filter,
-            "team_id": selected_team_id,
             "code_type": code_type,
             "created_from": created_from,
             "created_to": created_to,
@@ -2015,36 +1984,14 @@ async def codes_list_page(
         })
 
         logger.info(
-            "管理员访问兑换码列表页面, search=%s, status=%s, team_id=%s, per_page=%s, filters=%s",
+            "管理员访问兑换码列表页面, search=%s, status=%s, per_page=%s, filters=%s",
             search,
             status_filter,
-            selected_team_id,
             per_page,
             code_filter_kwargs,
         )
 
-        team_options_stmt = (
-            select(
-                Team.id,
-                Team.email,
-                Team.team_name,
-                func.count(RedemptionCode.id).label("code_count")
-            )
-            .join(RedemptionCode, RedemptionCode.bound_team_id == Team.id)
-            .where(Team.team_type == TEAM_TYPE_STANDARD)
-            .group_by(Team.id, Team.email, Team.team_name)
-            .order_by(Team.created_at.desc())
-        )
-        team_options_result = await db.execute(team_options_stmt)
-        team_options = [
-            {
-                "id": row.id,
-                "email": row.email,
-                "team_name": row.team_name,
-                "code_count": row.code_count
-            }
-            for row in team_options_result
-        ]
+        team_options = []
 
         # 获取兑换码 (分页)
         # per_page = 50 (Removed hardcoded value)
@@ -2054,7 +2001,6 @@ async def codes_list_page(
             per_page=per_page,
             search=search,
             status=status_filter,
-            bound_team_id=selected_team_id,
             **code_filter_kwargs,
         )
         codes = codes_result.get("codes", [])
@@ -2092,8 +2038,6 @@ async def codes_list_page(
                 stats=stats,
                 search=search,
                 status_filter=status_filter,
-                team_options=team_options,
-                selected_team_id=selected_team_id,
                 code_filters={
                     "code_type": code_filter_kwargs["code_type"] or "",
                     "created_from": created_from or "",
@@ -2394,8 +2338,8 @@ async def _build_codes_export_response(
 
     search = export_data.search
     status_filter = export_data.status_filter
-    team_id = export_data.team_id
-    team_ids = list(dict.fromkeys(export_data.team_ids or [])) or None
+    team_id = None
+    team_ids = None
     selected_codes = export_data.codes or None
     code_filter_kwargs = {}
     if selected_codes:
@@ -2403,10 +2347,6 @@ async def _build_codes_export_response(
         status_filter = None
         team_id = None
         team_ids = None
-    elif team_ids:
-        search = None
-        status_filter = None
-        team_id = None
     else:
         raw_code_filter_values = {
             "code_type": export_data.code_type,
@@ -2428,8 +2368,6 @@ async def _build_codes_export_response(
         search=search,
         status=status_filter,
         selected_codes=selected_codes,
-        bound_team_id=team_id,
-        bound_team_ids=team_ids,
         **code_filter_kwargs,
     )
 
@@ -2477,21 +2415,15 @@ async def _build_codes_export_response(
         "border": 1
     })
 
-    worksheet.set_column("A:A", 12)
-    worksheet.set_column("B:B", 30)
-    worksheet.set_column("C:C", 24)
-    worksheet.set_column("D:D", 25)
-    worksheet.set_column("E:E", 12)
+    worksheet.set_column("A:A", 30)
+    worksheet.set_column("B:B", 12)
+    worksheet.set_column("C:C", 18)
+    worksheet.set_column("D:D", 18)
+    worksheet.set_column("E:E", 30)
     worksheet.set_column("F:F", 18)
-    worksheet.set_column("G:G", 18)
-    worksheet.set_column("H:H", 30)
-    worksheet.set_column("I:I", 18)
-    worksheet.set_column("J:J", 12)
+    worksheet.set_column("G:G", 14)
 
     headers = [
-        "绑定 Team ID",
-        "绑定账号",
-        "Team 名称",
         "兑换码",
         "状态",
         "创建时间",
@@ -2511,16 +2443,13 @@ async def _build_codes_export_response(
     }
 
     for row, code in enumerate(all_codes, start=1):
-        worksheet.write(row, 0, code.get("bound_team_id", "-"), cell_format)
-        worksheet.write(row, 1, code.get("bound_team_email", "-"), cell_format)
-        worksheet.write(row, 2, code.get("bound_team_name", "-"), cell_format)
-        worksheet.write(row, 3, code["code"], cell_format)
-        worksheet.write(row, 4, status_text_map.get(code["status"], code["status"]), cell_format)
-        worksheet.write(row, 5, code.get("created_at", "-"), cell_format)
-        worksheet.write(row, 6, code.get("expires_at", "永久有效"), cell_format)
-        worksheet.write(row, 7, code.get("used_by_email", "-"), cell_format)
-        worksheet.write(row, 8, code.get("used_at", "-"), cell_format)
-        worksheet.write(row, 9, code.get("warranty_days", "-") if code.get("has_warranty") else "-", cell_format)
+        worksheet.write(row, 0, code["code"], cell_format)
+        worksheet.write(row, 1, status_text_map.get(code["status"], code["status"]), cell_format)
+        worksheet.write(row, 2, code.get("created_at", "-"), cell_format)
+        worksheet.write(row, 3, code.get("expires_at", "永久有效"), cell_format)
+        worksheet.write(row, 4, code.get("used_by_email", "-"), cell_format)
+        worksheet.write(row, 5, code.get("used_at", "-"), cell_format)
+        worksheet.write(row, 6, code.get("warranty_days", "-") if code.get("has_warranty") else "-", cell_format)
 
     workbook.close()
     excel_data = output.getvalue()
@@ -2622,7 +2551,6 @@ async def bulk_update_warranty_code_quota(
                 per_page=100000,
                 search=update_data.search,
                 status=update_data.status_filter,
-                bound_team_id=update_data.team_id,
                 **code_filter_kwargs,
             )
             if not codes_result.get("success"):

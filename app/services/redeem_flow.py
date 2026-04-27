@@ -8,13 +8,14 @@ import traceback
 from collections import defaultdict
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
-from sqlalchemy import select, update, delete, func, text
+from sqlalchemy import select, update, delete, func, text, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import AsyncSessionLocal
 
 from app.models import RedemptionCode, RedemptionRecord, Team
 from app.services.redemption import RedemptionService
-from app.services.team import TeamService, TEAM_TYPE_STANDARD
+from app.services.email_whitelist import email_whitelist_service
+from app.services.team import IMPORT_STATUS_CLASSIFIED, TeamService
 from app.services.warranty import warranty_service
 from app.services.notification import notification_service
 from app.utils.time_utils import get_now
@@ -59,7 +60,7 @@ class RedeemFlowService:
         await db_session.commit()
         if not sync_result.get("success"):
             logger.warning(
-                "绑定 Team 刷新失败: team_id=%s, error=%s",
+                "历史 Team 刷新失败: team_id=%s, error=%s",
                 bound_team_id,
                 sync_result.get("error")
             )
@@ -122,56 +123,7 @@ class RedeemFlowService:
                     "error": None
                 }
 
-            # 2. 获取可用 Team 列表
-            redemption_code = validate_result.get("redemption_code") or {}
-            bound_team_id = redemption_code.get("bound_team_id")
-            is_unused_bound_code = redemption_code.get("status") == "unused" and bound_team_id
-
-            if is_unused_bound_code:
-                refresh_result = await self._refresh_bound_team(bound_team_id, db_session)
-                if not refresh_result["success"]:
-                    return {
-                        "success": True,
-                        "valid": False,
-                        "reason": refresh_result["error"],
-                        "teams": [],
-                        "error": None
-                    }
-
-                bound_team = refresh_result["team"]
-                if bound_team.current_members >= bound_team.max_members:
-                    return {
-                        "success": True,
-                        "valid": False,
-                        "reason": "该兑换码绑定的 Team 已满，请联系管理员处理",
-                        "teams": [],
-                        "error": None
-                    }
-
-                if bound_team.status != "active":
-                    return {
-                        "success": True,
-                        "valid": False,
-                        "reason": "该兑换码绑定的 Team 当前不可用，请联系管理员处理",
-                        "teams": [],
-                        "error": None
-                    }
-
-                return {
-                    "success": True,
-                    "valid": True,
-                    "reason": "兑换码有效",
-                    "teams": [{
-                        "id": bound_team.id,
-                        "team_name": bound_team.team_name,
-                        "current_members": bound_team.current_members,
-                        "max_members": bound_team.max_members,
-                        "expires_at": bound_team.expires_at.isoformat() if bound_team.expires_at else None,
-                        "subscription_plan": bound_team.subscription_plan
-                    }],
-                    "error": None
-                }
-
+            # 2. 获取统一池可用 Team 列表；兑换码不再决定 Team 归属
             teams_result = await self.team_service.get_available_teams(db_session)
 
             if not teams_result["success"]:
@@ -185,10 +137,11 @@ class RedeemFlowService:
 
             logger.info(f"验证兑换码成功: {code}, 可用 Team 数量: {len(teams_result['teams'])}")
 
+            has_available_team = len(teams_result["teams"]) > 0
             return {
                 "success": True,
-                "valid": True,
-                "reason": "兑换码有效",
+                "valid": has_available_team,
+                "reason": "兑换码有效" if has_available_team else "当前没有可用 Team，请稍后再试",
                 "teams": teams_result["teams"],
                 "error": None
             }
@@ -215,16 +168,17 @@ class RedeemFlowService:
         try:
             # 查找所有 active 且未满的 Team
             stmt = select(Team).where(
-                Team.team_type == TEAM_TYPE_STANDARD,
                 Team.status == "active",
-                Team.current_members < Team.max_members
+                Team.current_members < Team.max_members,
+                Team.import_status == IMPORT_STATUS_CLASSIFIED,
+                or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
             )
             
             if exclude_team_ids:
                 stmt = stmt.where(Team.id.not_in(exclude_team_ids))
             
-            # 优先选择人数最少的 Team (负载均衡)
-            stmt = stmt.order_by(Team.current_members.asc(), Team.created_at.desc())
+            # 统一池按最小 Team ID 分配
+            stmt = stmt.order_by(Team.id.asc())
             
             result = await db_session.execute(stmt)
             team = result.scalars().first()
@@ -266,12 +220,12 @@ class RedeemFlowService:
         完整的兑换流程 (带事务和并发控制)
         """
         last_error = "未知错误"
-        max_retries = 3
-        current_target_team_id = team_id
+        max_retries = 5
+        current_target_team_id = None
         core_success = False
         success_result = None
         team_id_final = None
-        bound_team_locked = False
+        excluded_team_ids: List[int] = []
 
         # 针对 code 加锁，防止同一个码并发进入兑换
         async with _code_locks[code]:
@@ -286,17 +240,10 @@ class RedeemFlowService:
                     if not redemption_code:
                         return {"success": False, "error": "兑换码不存在"}
 
-                    bound_team_id = redemption_code.bound_team_id if redemption_code.status == "unused" else None
-                    bound_team_locked = bool(bound_team_id)
-                    if bound_team_locked:
-                        if team_id and team_id != bound_team_id:
-                            return {"success": False, "error": "该兑换码已绑定固定 Team，不支持切换其他 Team"}
-                        current_target_team_id = bound_team_id
-
-                    # 确定目标 Team (初选)
+                    # 兑换码不再绑定固定 Team，客户端传入 team_id 仅作旧版兼容忽略
                     team_id_final = current_target_team_id
                     if not team_id_final:
-                        select_res = await self.select_team_auto(db_session)
+                        select_res = await self.select_team_auto(db_session, exclude_team_ids=excluded_team_ids)
                         if not select_res["success"]:
                             return {"success": False, "error": select_res["error"]}
                         team_id_final = select_res["team_id"]
@@ -315,8 +262,8 @@ class RedeemFlowService:
                         # 1. 前置同步：拉人前确保人数状态绝对实时 (耗时操作)
                         sync_result = await self.team_service.refresh_team_state(team_id_final, db_session)
                         await db_session.commit()
-                        if bound_team_locked and not sync_result.get("success"):
-                            raise Exception("该兑换码绑定的 Team 刷新失败，请稍后重试")
+                        if not sync_result.get("success"):
+                            raise Exception("Team 刷新失败，请稍后重试")
                         
                         # 2. 核心校验 (开启短事务)
                         if not db_session.in_transaction():
@@ -346,19 +293,13 @@ class RedeemFlowService:
                             target_team = res.scalar_one_or_none()
                             
                             if not target_team:
-                                if bound_team_locked:
-                                    raise Exception("该兑换码绑定的 Team 不存在，请联系管理员处理")
                                 raise Exception(f"目标 Team {team_id_final} 不存在")
                             
                             if target_team.status != "active":
-                                if bound_team_locked:
-                                    raise Exception("该兑换码绑定的 Team 当前不可用，请联系管理员处理")
                                 raise Exception(f"目标 Team {team_id_final} 不可用 ({target_team.status})")
                             
                             if target_team.current_members >= target_team.max_members:
                                 target_team.status = "full"
-                                if bound_team_locked:
-                                    raise Exception("该兑换码绑定的 Team 已满，请联系管理员处理")
                                 raise Exception("该 Team 已满, 请选择其他 Team 尝试")
 
                             # 提取必要信息后立即提交，释放 DB 锁以进行耗时的 API 调用
@@ -404,14 +345,15 @@ class RedeemFlowService:
                                     if any(kw in err_str for kw in ["maximum number of seats", "full", "no seats"]):
                                         target_team.status = "full"
                                         await db_session.commit()
-                                        if bound_team_locked:
-                                            raise Exception("该兑换码绑定的 Team 已满，请联系管理员处理")
                                         raise Exception(f"该 Team 席位已满 (API Error: {err})")
                                     await db_session.rollback()
                                     raise Exception(err)
 
                             invite_data = invite_res.get("data", {})
                             if "account_invites" in invite_data and not invite_data.get("account_invites"):
+                                target_team.warranty_unavailable = True
+                                target_team.warranty_unavailable_reason = "官方拦截下发(响应空列表)"
+                                target_team.warranty_unavailable_at = get_now()
                                 await db_session.rollback()
                                 raise Exception("Team账号受限: 官方拦截下发(响应空列表)，请检查账单/风控状态")
 
@@ -438,6 +380,8 @@ class RedeemFlowService:
                                 redeem_code=code,
                                 has_warranty_code=bool(rc.has_warranty),
                             )
+                            await db_session.flush()
+                            await email_whitelist_service.sync_from_dependency_sources(db_session, commit=False)
                             await db_session.commit()
 
                             post_sync_result = await self.team_service.refresh_team_state(
@@ -484,7 +428,7 @@ class RedeemFlowService:
                         pass
                     
                     # 判读是否中断重试
-                    if any(kw in last_error for kw in ["不存在", "已使用", "已有正在使用", "质保已过期", "绑定的 Team"]):
+                    if any(kw in last_error for kw in ["不存在", "已使用", "已有正在使用", "质保已过期"]):
                         return {"success": False, "error": last_error}
 
                     # 判定是否需要永久标记为“满员”
@@ -497,10 +441,33 @@ class RedeemFlowService:
                             await db_session.commit()
                         except:
                             pass
-                        if bound_team_locked:
-                            return {"success": False, "error": last_error}
-                        if not team_id:
-                            current_target_team_id = None
+                        if team_id_final:
+                            excluded_team_ids.append(team_id_final)
+                        current_target_team_id = None
+
+                    if any(kw in last_error for kw in ["官方拦截下发", "响应空列表", "Team账号受限"]):
+                        try:
+                            from sqlalchemy import update as sqlalchemy_update
+                            await db_session.execute(
+                                sqlalchemy_update(Team)
+                                .where(Team.id == team_id_final)
+                                .values(
+                                    warranty_unavailable=True,
+                                    warranty_unavailable_reason=last_error,
+                                    warranty_unavailable_at=get_now(),
+                                )
+                            )
+                            await db_session.commit()
+                        except:
+                            pass
+                        if team_id_final:
+                            excluded_team_ids.append(team_id_final)
+                        current_target_team_id = None
+
+                    if "刷新失败" in last_error:
+                        if team_id_final:
+                            excluded_team_ids.append(team_id_final)
+                        current_target_team_id = None
                     
                     if attempt < max_retries - 1:
                         await asyncio.sleep(1.5 * (attempt + 1))

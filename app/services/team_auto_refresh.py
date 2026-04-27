@@ -12,8 +12,7 @@ from app.database import AsyncSessionLocal
 from app.models import Team
 from app.services.settings import settings_service
 from app.services.team import (
-    TEAM_TYPE_STANDARD,
-    TEAM_TYPE_WARRANTY,
+    IMPORT_STATUS_CLASSIFIED,
     team_service,
 )
 
@@ -92,7 +91,7 @@ class TeamAutoRefreshService:
             stmt = (
                 select(Team.id)
                 .where(Team.status != "banned")
-                .where(Team.team_type.in_([TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY]))
+                .where(Team.import_status == IMPORT_STATUS_CLASSIFIED)
                 .order_by(Team.id.asc())
             )
             result = await session.execute(stmt)

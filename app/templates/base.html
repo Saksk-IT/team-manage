@@ -73,12 +73,6 @@
                         <span class="menu-text">子管理员</span>
                     </a>
                 </li>
-                <li class="menu-item {% if active_page == 'warranty_teams' %}active{% endif %}">
-                    <a href="/admin/warranty-teams">
-                        <span class="menu-icon" data-lucide="shield"></span>
-                        <span class="menu-text">质保 Team</span>
-                    </a>
-                </li>
                 <li class="menu-item {% if active_page == 'email_whitelist' %}active{% endif %}">
                     <a href="/admin/email-whitelist">
                         <span class="menu-icon" data-lucide="shield-check"></span>
@@ -221,37 +215,16 @@
                                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
                             <small class="form-text">可选，如果不填写将从 API 自动获取</small>
                         </div>
-                        <div class="form-group" id="singleImportWarrantyOptions">
-                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                <input type="checkbox" name="generateWarrantyCodesCheckbox" value="true" style="width: auto; margin: 0;"
-                                    onchange="handleImportWarrantyToggle(this, 'singleImportGenerateWarrantyCodes', 'single-import-warranty-days-group', 'singleImportTeamType')">
-                                <span>自动生成质保兑换码</span>
-                            </label>
-                            <small class="form-text">勾选后，按剩余席位自动生成质保绑定兑换码；用户首次使用后会自动加入质保邮箱列表（默认 30 天 / 10 次）。</small>
-                        </div>
-                        <div class="form-group" id="single-import-warranty-days-group" style="display: none;">
-                            <label>兑换码质保时长 (天) *</label>
-                            <input type="number" name="warrantyDays" class="form-control" value="30" min="1" max="3650">
-                            <div class="quick-value-row" aria-label="兑换码质保时长快捷值">
-                                <button type="button" class="quick-value-btn" onclick="setWarrantyDaysQuickValue(this, 30)">30 天</button>
-                                <button type="button" class="quick-value-btn" onclick="setWarrantyDaysQuickValue(this, 15)">15 天</button>
-                                <button type="button" class="quick-value-btn" onclick="setWarrantyDaysQuickValue(this, 7)">7 天</button>
-                            </div>
-                        </div>
                         <div class="form-group">
                             <small id="singleImportHelperText" class="form-text">
-                                导入后会按系统设置中的每个 Team 默认最大人数，自动根据实际剩余席位生成同数量的绑定兑换码。
+                                导入只会加入统一控制台 Team 池；普通/质保兑换码请在“兑换码管理”页面生成。
                             </small>
                         </div>
                         <button type="submit" class="btn btn-primary">导入</button>
                     </form>
                     <div id="singleImportResult" style="display: none; margin-top: 1rem; padding: 1rem; border: 1px solid var(--border-base); border-radius: 12px; background: rgba(255,255,255,0.03);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem;">
-                            <h4 id="singleImportResultTitle" style="margin: 0;">自动生成的绑定兑换码</h4>
-                            <button id="singleImportCopyBtn" type="button" class="btn btn-secondary btn-sm" onclick="copySingleImportCodes()">复制全部</button>
-                        </div>
-                        <div id="singleImportSummary" style="margin-bottom: 0.75rem;"></div>
-                        <textarea id="singleImportCodes" class="form-control" rows="8" readonly placeholder="导入成功后会显示自动生成的兑换码"></textarea>
+                        <h4 id="singleImportResultTitle" style="margin: 0 0 0.75rem;">导入结果</h4>
+                        <div id="singleImportSummary"></div>
                     </div>
                 </div>
                 {% endif %}
@@ -277,23 +250,6 @@
                             </div>
                             <small class="form-text">可选；再次点击已选标签可取消。本次批量导入成功的 Team 会统一打上该标签。</small>
                         </div>
-                        <div class="form-group" id="batchImportWarrantyOptions">
-                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                <input type="checkbox" name="generateWarrantyCodesCheckbox" value="true" style="width: auto; margin: 0;"
-                                    onchange="handleImportWarrantyToggle(this, 'batchImportGenerateWarrantyCodes', 'batch-import-warranty-days-group', 'batchImportTeamType')">
-                                <span>自动生成质保兑换码</span>
-                            </label>
-                            <small class="form-text">勾选后，导入的普通 Team 会按剩余席位自动生成质保绑定兑换码；用户首次使用后会自动加入质保邮箱列表（默认 30 天 / 10 次）。</small>
-                        </div>
-                        <div class="form-group" id="batch-import-warranty-days-group" style="display: none;">
-                            <label>兑换码质保时长 (天) *</label>
-                            <input type="number" name="warrantyDays" class="form-control" value="30" min="1" max="3650">
-                            <div class="quick-value-row" aria-label="兑换码质保时长快捷值">
-                                <button type="button" class="quick-value-btn" onclick="setWarrantyDaysQuickValue(this, 30)">30 天</button>
-                                <button type="button" class="quick-value-btn" onclick="setWarrantyDaysQuickValue(this, 15)">15 天</button>
-                                <button type="button" class="quick-value-btn" onclick="setWarrantyDaysQuickValue(this, 7)">7 天</button>
-                            </div>
-                        </div>
                         <div id="batchProgressContainer" style="display: none; margin-bottom: 1.5rem;">
                             <div class="progress-info"
                                 style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.875rem;">
@@ -317,20 +273,6 @@
                                 style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                                 <h4 style="margin: 0;">导入详情</h4>
                                 <small id="batchFinalSummary" class="text-muted"></small>
-                            </div>
-                            <div id="batchImportCodesSection"
-                                style="display: none; margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border-base); border-radius: 12px; background: rgba(255,255,255,0.03);">
-                                <div
-                                    style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
-                                    <div>
-                                        <h5 id="batchImportCodesTitle" style="margin: 0;">自动生成的绑定兑换码</h5>
-                                        <small id="batchImportCodesSummary" class="text-muted">导入成功后会自动汇总</small>
-                                    </div>
-                                    <button id="batchImportCodesCopyBtn" type="button" class="btn btn-secondary btn-sm"
-                                        onclick="copyBatchImportCodes()">复制全部</button>
-                                </div>
-                                <textarea id="batchImportCodes" class="form-control" rows="6" readonly
-                                    placeholder="批量导入成功后会汇总显示自动生成的兑换码"></textarea>
                             </div>
                             <div id="batchResults"></div>
                         </div>

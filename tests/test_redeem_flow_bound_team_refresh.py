@@ -27,7 +27,7 @@ class RedeemFlowBoundTeamRefreshTests(unittest.IsolatedAsyncioTestCase):
         if os.path.exists(self.db_path):
             os.remove(self.db_path)
 
-    async def test_verify_code_refreshes_bound_team_before_returning(self):
+    async def test_verify_code_ignores_bound_team_and_returns_unified_pool(self):
         service = RedeemFlowService()
 
         async with self.Session() as session:
@@ -36,7 +36,7 @@ class RedeemFlowBoundTeamRefreshTests(unittest.IsolatedAsyncioTestCase):
                 access_token_encrypted="enc",
                 account_id="acc-1",
                 team_type=TEAM_TYPE_STANDARD,
-                team_name="Bound Team",
+                team_name="Unified Team",
                 status="active",
                 current_members=1,
                 max_members=2,
@@ -52,23 +52,17 @@ class RedeemFlowBoundTeamRefreshTests(unittest.IsolatedAsyncioTestCase):
             )
             await session.commit()
 
-            async def mock_sync(team_id, db_session, force_refresh=False, progress_callback=None):
-                refreshed_team = await db_session.get(Team, team_id)
-                refreshed_team.current_members = refreshed_team.max_members
-                refreshed_team.status = "full"
-                await db_session.commit()
-                return {"success": True, "message": "同步成功", "error": None}
-
-            service.team_service.refresh_team_state = AsyncMock(side_effect=mock_sync)
+            service.team_service.refresh_team_state = AsyncMock()
 
             result = await service.verify_code_and_get_teams("BOUND-CODE-001", session)
 
         self.assertTrue(result["success"])
-        self.assertFalse(result["valid"])
-        self.assertEqual(result["reason"], "该兑换码绑定的 Team 已满，请联系管理员处理")
-        service.team_service.refresh_team_state.assert_awaited_once()
+        self.assertTrue(result["valid"])
+        self.assertEqual(result["reason"], "兑换码有效")
+        self.assertEqual([team["id"] for team in result["teams"]], [team.id])
+        service.team_service.refresh_team_state.assert_not_awaited()
 
-    async def test_redeem_aborts_when_bound_team_refresh_fails(self):
+    async def test_redeem_skips_team_when_refresh_fails(self):
         service = RedeemFlowService()
 
         async with self.Session() as session:
@@ -77,7 +71,7 @@ class RedeemFlowBoundTeamRefreshTests(unittest.IsolatedAsyncioTestCase):
                 access_token_encrypted="enc",
                 account_id="acc-1",
                 team_type=TEAM_TYPE_STANDARD,
-                team_name="Bound Team",
+                team_name="Unified Team",
                 status="active",
                 current_members=1,
                 max_members=5,
@@ -117,7 +111,7 @@ class RedeemFlowBoundTeamRefreshTests(unittest.IsolatedAsyncioTestCase):
                 )
 
         self.assertFalse(result["success"])
-        self.assertEqual(result["error"], "该兑换码绑定的 Team 刷新失败，请稍后重试")
+        self.assertEqual(result["error"], "您已加入所有可用 Team")
         service.chatgpt_service.send_invite.assert_not_called()
 
 

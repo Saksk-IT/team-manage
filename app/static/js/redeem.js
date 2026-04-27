@@ -120,7 +120,7 @@ const WARRANTY_CLAIM_LOADING_FLOW = Object.freeze({
             message: '正在确认邮箱、质保次数与最近 Team 状态。'
         }),
         Object.freeze({
-            label: '匹配质保 Team',
+            label: '匹配可用 Team',
             message: '正在为您查找可用的质保席位。'
         }),
         Object.freeze({
@@ -131,7 +131,7 @@ const WARRANTY_CLAIM_LOADING_FLOW = Object.freeze({
     hints: Object.freeze([
         '您无需离开当前页面，完成后会自动显示结果。',
         '请勿重复点击提交，系统只会保留当前这次申请。',
-        '如果稍有等待，通常是系统正在匹配可用质保 Team。'
+        '如果稍有等待，通常是系统正在匹配可用质保席位。'
     ]),
     countdownHintPrefix: '我们已记录您的申请进度，结果出来后会自动展示。',
     autoStageDelayMs: 2400
@@ -1206,7 +1206,7 @@ async function submitWarrantyClaim(email) {
         }
 
         advanceTransitionOverlay(1, {
-            message: '资格复核完成，正在为您匹配可用的质保 Team。'
+            message: '资格复核完成，正在为您匹配可用的质保席位。'
         });
         const response = await fetch('/warranty/claim', {
             method: 'POST',
@@ -1531,7 +1531,7 @@ function showWarrantyClaimSuccessResult(data, email) {
         <div class="result-success">
             <div class="result-icon result-icon--success"><i data-lucide="shield-check"></i></div>
             <div class="result-title">${escapeHtml(data.title || '质保邀请已发送')}</div>
-            <div class="result-message">${escapeHtml(data.message || '系统已为您发送质保 Team 邀请，请查收邮箱。')}</div>
+            <div class="result-message">${escapeHtml(data.message || '系统已为您发送质保席位邀请，请查收邮箱。')}</div>
 
             <div class="result-details">
                 <div class="result-detail-item">
@@ -1539,7 +1539,7 @@ function showWarrantyClaimSuccessResult(data, email) {
                     <span class="result-detail-value">${escapeHtml(email)}</span>
                 </div>
                 <div class="result-detail-item">
-                    <span class="result-detail-label">质保 Team</span>
+                    <span class="result-detail-label">质保席位</span>
                     <span class="result-detail-value">${escapeHtml(teamInfo.team_name || '-')}</span>
                 </div>
                 ${teamInfo.email ? `
@@ -1559,7 +1559,7 @@ function showWarrantyClaimSuccessResult(data, email) {
 
             <div class="result-notice">
                 <i data-lucide="mail"></i>
-                <span>质保 Team 邀请已发送到您的邮箱，请查收并按照邮件提示完成加入。</span>
+                <span>质保席位邀请已发送到您的邮箱，请查收并按照邮件提示完成加入。</span>
             </div>
 
             <div class="result-actions result-actions--single">

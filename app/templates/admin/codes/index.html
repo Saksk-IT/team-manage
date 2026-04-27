@@ -67,17 +67,6 @@
                 </select>
             </label>
 
-            <label class="code-filter-field code-filter-field-wide">
-                <span>绑定 Team</span>
-                <select id="teamFilter" name="team_id" class="form-control team-filter-select">
-                    <option value="">全部 Team</option>
-                    {% for team in team_options %}
-                    <option value="{{ team.id }}" {% if selected_team_id == team.id %}selected{% endif %}>
-                        {{ team.team_name or '未命名 Team' }}（{{ team.email }}，{{ team.code_count }} 个兑换码）
-                    </option>
-                    {% endfor %}
-                </select>
-            </label>
 
             <label class="code-filter-field">
                 <span>搜索</span>
@@ -158,7 +147,6 @@
                             style="width: auto; margin: 0;">
                     </th>
                     <th>兑换码</th>
-                    <th>绑定账号</th>
                     <th>状态</th>
                     <th>创建时间</th>
                     <th>过期时间</th>
@@ -183,13 +171,6 @@
                             <i data-lucide="ticket" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
                             <code>{{ code.code }}</code>
                         </div>
-                    </td>
-                    <td>
-                        {% if code.bound_team_id %}
-                        <span>{{ code.bound_team_email or '-' }}</span>
-                        {% else %}
-                        <span class="text-muted">未绑定</span>
-                        {% endif %}
                     </td>
                     <td>
                         {% if code.status == 'unused' %}
@@ -728,31 +709,11 @@
         window.location.href = url.toString();
     }
 
-    function filterByTeam(teamId) {
-        const url = new URL(window.location.href);
-        if (teamId) {
-            url.searchParams.set('team_id', teamId);
-        } else {
-            url.searchParams.delete('team_id');
-        }
-        url.searchParams.set('page', 1);
-        window.location.href = url.toString();
-    }
 
     function getSelectedCodes() {
         return Array.from(document.querySelectorAll('.code-checkbox:checked')).map(cb => cb.value);
     }
 
-    function getSelectedTeamId() {
-        const teamFilter = document.getElementById('teamFilter');
-        return teamFilter && teamFilter.value ? Number(teamFilter.value) : null;
-    }
-
-    function getSelectedTeamLabel() {
-        const teamFilter = document.getElementById('teamFilter');
-        if (!teamFilter || !teamFilter.value) return '';
-        return teamFilter.options[teamFilter.selectedIndex]?.text?.trim() || '';
-    }
 
     function getNullableQueryParam(urlParams, key) {
         const value = urlParams.get(key);
@@ -768,7 +729,6 @@
         return {
             search: getNullableQueryParam(urlParams, 'search'),
             status_filter: getNullableQueryParam(urlParams, 'status_filter'),
-            team_id: getSelectedTeamId(),
             code_type: getNullableQueryParam(urlParams, 'code_type'),
             created_from: getNullableQueryParam(urlParams, 'created_from'),
             created_to: getNullableQueryParam(urlParams, 'created_to'),
@@ -784,7 +744,6 @@
         return {
             search: null,
             status_filter: null,
-            team_id: null,
             code_type: null,
             created_from: null,
             created_to: null,
@@ -908,14 +867,8 @@
             return;
         }
 
-        const selectedTeamLabel = getSelectedTeamLabel();
-        if (selectedTeamLabel) {
-            scopeText.innerText = `将导出当前筛选结果（包含 ${selectedTeamLabel}）。`;
-            scopeSubtext.innerText = '无需逐个勾选，会同时保留当前多重筛选条件。';
-        } else {
-            scopeText.innerText = '将导出当前筛选结果。';
-            scopeSubtext.innerText = '如果未勾选兑换码，则按当前搜索、状态和多重条件筛选导出。';
-        }
+        scopeText.innerText = '将导出当前筛选结果。';
+        scopeSubtext.innerText = '如果未勾选兑换码，则按当前搜索、状态和多重条件筛选导出。';
         showModal('exportCodesModal');
     }
 

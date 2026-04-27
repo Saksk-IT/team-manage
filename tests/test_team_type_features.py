@@ -63,7 +63,7 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
             "data": {"beta_settings": {}}
         })
 
-    async def test_standard_import_generates_codes_but_warranty_import_does_not(self):
+    async def test_import_never_generates_codes_and_forces_standard_team(self):
         async with self.Session() as session:
             with patch(
                 "app.services.team.settings_service.get_default_team_max_members",
@@ -91,14 +91,16 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
             code_count = code_count_result.scalar() or 0
 
         self.assertTrue(standard_result["success"])
-        self.assertEqual(standard_result["generated_code_count"], 7)
+        self.assertEqual(standard_result["generated_code_count"], 0)
+        self.assertEqual(standard_result["imported_teams"][0]["team_type"], TEAM_TYPE_STANDARD)
         self.assertEqual(standard_result["imported_teams"][0]["max_members"], 8)
         self.assertTrue(warranty_result["success"])
         self.assertEqual(warranty_result["generated_code_count"], 0)
+        self.assertEqual(warranty_result["imported_teams"][0]["team_type"], TEAM_TYPE_STANDARD)
         self.assertEqual(warranty_result["imported_teams"][0]["max_members"], 8)
-        self.assertEqual(code_count, 7)
+        self.assertEqual(code_count, 0)
 
-    async def test_standard_import_can_generate_warranty_bound_codes(self):
+    async def test_import_ignores_warranty_code_generation_options(self):
         async with self.Session() as session:
             with patch(
                 "app.services.team.settings_service.get_default_team_max_members",
@@ -125,14 +127,13 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
             list_result = await self.service.get_all_teams(session)
 
         self.assertTrue(result["success"])
-        self.assertEqual(result["generated_code_count"], 7)
-        self.assertEqual(result["imported_teams"][0]["bound_code_type"], TEAM_TYPE_WARRANTY)
-        self.assertEqual(result["imported_teams"][0]["generated_code_warranty_days"], 45)
-        self.assertEqual(team.bound_code_warranty_days, 45)
-        self.assertEqual(list_result["teams"][0]["bound_code_warranty_days"], 45)
-        self.assertEqual(list_result["teams"][0]["bound_code_warranty_days_label"], "45 天")
-        self.assertTrue(all(code.has_warranty for code in generated_codes))
-        self.assertTrue(all(code.warranty_days == 45 for code in generated_codes))
+        self.assertEqual(result["generated_code_count"], 0)
+        self.assertEqual(result["imported_teams"][0]["team_type"], TEAM_TYPE_STANDARD)
+        self.assertEqual(result["imported_teams"][0]["bound_code_type"], TEAM_TYPE_STANDARD)
+        self.assertIsNone(result["imported_teams"][0]["generated_code_warranty_days"])
+        self.assertIsNone(team.bound_code_warranty_days)
+        self.assertEqual(list_result["teams"][0]["bound_code_warranty_days"], None)
+        self.assertEqual(generated_codes, [])
 
     async def test_import_rejects_specified_account_when_account_info_fetch_fails(self):
         self.service.jwt_parser.is_token_expired = Mock(return_value=False)
@@ -375,7 +376,7 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.service.chatgpt_service.get_members.await_count, IMPORT_RETRY_ATTEMPTS)
         self.assertEqual(self.service.chatgpt_service.clear_session.await_count, IMPORT_RETRY_ATTEMPTS - 1)
 
-    async def test_standard_inventory_queries_exclude_warranty_teams(self):
+    async def test_inventory_queries_use_unified_team_pool(self):
         async with self.Session() as session:
             session.add_all([
                 Team(
@@ -403,15 +404,15 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
 
             available_standard = await self.service.get_available_teams(session)
             total_standard_seats = await self.service.get_total_available_seats(session)
-            warranty_stats = await self.service.get_stats(session, team_type=TEAM_TYPE_WARRANTY)
+            unified_stats = await self.service.get_stats(session)
 
-        self.assertEqual(len(available_standard["teams"]), 1)
-        self.assertEqual(available_standard["teams"][0]["team_type"], TEAM_TYPE_STANDARD)
-        self.assertEqual(total_standard_seats, 3)
-        self.assertEqual(warranty_stats["total"], 1)
-        self.assertEqual(warranty_stats["remaining_seats"], 4)
+        self.assertEqual(len(available_standard["teams"]), 2)
+        self.assertEqual([team["id"] for team in available_standard["teams"]], [1, 2])
+        self.assertEqual(total_standard_seats, 7)
+        self.assertEqual(unified_stats["total"], 2)
+        self.assertEqual(unified_stats["remaining_seats"], 7)
 
-    async def test_transfer_standard_team_to_warranty_clears_bound_codes(self):
+    async def test_transfer_to_warranty_is_rejected_for_compatibility(self):
         async with self.Session() as session:
             team = Team(
                 email="owner@example.com",
@@ -457,16 +458,14 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
             unused_code_obj = unused_code.scalar_one_or_none()
             used_code_obj = used_code.scalar_one_or_none()
 
-        self.assertTrue(result["success"])
-        self.assertEqual(result["cleaned_code_count"], 2)
-        self.assertEqual(result["deleted_unused_code_count"], 1)
-        self.assertEqual(result["detached_history_code_count"], 1)
-        self.assertEqual(refreshed_team.team_type, TEAM_TYPE_WARRANTY)
-        self.assertIsNone(unused_code_obj)
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "目标 Team 类型无效")
+        self.assertEqual(refreshed_team.team_type, TEAM_TYPE_STANDARD)
+        self.assertIsNotNone(unused_code_obj)
         self.assertIsNotNone(used_code_obj)
-        self.assertIsNone(used_code_obj.bound_team_id)
+        self.assertEqual(used_code_obj.bound_team_id, team.id)
 
-    async def test_transfer_warranty_team_to_standard_generates_four_bound_codes(self):
+    async def test_transfer_legacy_warranty_team_to_standard_does_not_generate_codes(self):
         async with self.Session() as session:
             team = Team(
                 email="warranty-owner@example.com",
@@ -494,11 +493,10 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
             generated_codes = codes_result.scalars().all()
 
         self.assertTrue(result["success"])
-        self.assertEqual(result["generated_code_count"], 4)
-        self.assertEqual(len(result["generated_codes"]), 4)
+        self.assertEqual(result["generated_code_count"], 0)
+        self.assertEqual(result["generated_codes"], [])
         self.assertEqual(refreshed_team.team_type, TEAM_TYPE_STANDARD)
-        self.assertEqual(len(generated_codes), 4)
-        self.assertTrue(all(code.status == "unused" for code in generated_codes))
+        self.assertEqual(len(generated_codes), 0)
 
 
 if __name__ == "__main__":

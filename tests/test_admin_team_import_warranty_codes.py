@@ -6,7 +6,7 @@ from app.routes.admin import TeamImportRequest, team_import
 
 
 class AdminTeamImportWarrantyCodeTests(unittest.IsolatedAsyncioTestCase):
-    async def test_single_import_passes_warranty_code_options(self):
+    async def test_single_import_ignores_warranty_code_options(self):
         db_session = object()
         mocked_result = {
             "success": True,
@@ -47,12 +47,16 @@ class AdminTeamImportWarrantyCodeTests(unittest.IsolatedAsyncioTestCase):
             session_token=None,
             client_id=None,
             team_type="standard",
-            generate_warranty_codes=True,
+            generate_warranty_codes=False,
             warranty_days=45,
             import_tag=None,
+            generate_codes_on_import=False,
+            import_status="classified",
+            imported_by_user_id=None,
+            imported_by_username="admin",
         )
 
-    async def test_batch_import_passes_warranty_code_options(self):
+    async def test_batch_import_ignores_warranty_code_options(self):
         async def fake_import_team_batch(**kwargs):
             yield {"type": "finish", "total": 1, "success_count": 1, "failed_count": 0}
 
@@ -81,9 +85,13 @@ class AdminTeamImportWarrantyCodeTests(unittest.IsolatedAsyncioTestCase):
             text="eyJ.payload",
             db_session="db-session",
             team_type="standard",
-            generate_warranty_codes=True,
+            generate_warranty_codes=False,
             warranty_days=45,
             import_tag=None,
+            generate_codes_on_import=False,
+            import_status="classified",
+            imported_by_user_id=None,
+            imported_by_username="admin",
         )
 
 

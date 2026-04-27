@@ -3,7 +3,6 @@
 {% block title %}{{ page_title or '控制台' }} - GPT Team 管理系统{% endblock %}
 
 {% block content %}
-{% set is_warranty_mode = team_mode == 'warranty' %}
 {% set is_import_only_mode = active_page == 'import_only' %}
 <div class="page-header">
     <h2>{{ page_title or '控制台' }}</h2>
@@ -15,17 +14,17 @@
         <div class="stat-icon"><i data-lucide="users"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.total_teams }}</div>
-            <div class="stat-label">{{ '导入记录总数' if is_review_mode else ('质保 Team 总数' if is_warranty_mode else 'Team 总数') }}</div>
+            <div class="stat-label">{{ '导入记录总数' if is_review_mode else 'Team 总数' }}</div>
         </div>
     </div>
     <div class="stat-card stat-success">
         <div class="stat-icon"><i data-lucide="check-circle"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.available_teams }}</div>
-            <div class="stat-label">{{ '待审核' if is_review_mode else ('可用质保 Team' if is_warranty_mode else '可用 Team') }}</div>
+            <div class="stat-label">{{ '待审核' if is_review_mode else '可用 Team' }}</div>
         </div>
     </div>
-    {% if is_warranty_mode or is_review_mode %}
+    {% if is_review_mode %}
     <div class="stat-card stat-info">
         <div class="stat-icon"><i data-lucide="users-round"></i></div>
         <div class="stat-info-group">
@@ -61,21 +60,13 @@
 <!-- Team 列表 -->
 <div class="content-section sticky-toolbar-section">
     <div class="section-header">
-        <h3>{{ '我的导入' if is_import_only_mode else ('子管理员导入记录' if is_review_mode else ('质保 Team 列表' if is_warranty_mode else 'Team 列表')) }}</h3>
+        <h3>{{ '我的导入' if is_import_only_mode else ('子管理员导入记录' if is_review_mode else 'Team 列表') }}</h3>
         <div class="header-group">
             <!-- 批量操作 -->
             <div id="batchActions" class="batch-actions-group" style="display: none;">
                 {% if is_review_mode and not is_import_only_mode %}
                 <button onclick="openConsoleClassifyModalForSelected()" class="btn btn-success btn-sm">
                     <i data-lucide="layout-dashboard" style="width: 14px; height: 14px;"></i> 批量进入控制台
-                </button>
-                <button onclick="handleBatchClassifyWarrantyTeam()" class="btn btn-warning btn-sm">
-                    <i data-lucide="shield" style="width: 14px; height: 14px;"></i> 批量进入质保 Team
-                </button>
-                {% endif %}
-                {% if not is_warranty_mode and not is_review_mode %}
-                <button onclick="showTeamCodesExportModal()" class="btn btn-secondary btn-sm">
-                    <i data-lucide="download" style="width: 14px; height: 14px;"></i> 批量导出兑换码
                 </button>
                 {% endif %}
                 {% if not is_import_only_mode %}
@@ -219,7 +210,7 @@
 
             {% if not is_review_mode or is_import_only_mode %}
             <button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">
-                <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> {{ '导入质保 Team' if is_warranty_mode else '导入 Team' }}
+                <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 导入 Team
             </button>
             {% endif %}
         </div>
@@ -242,8 +233,6 @@
                 <th>标签</th>
                 <th>导入时间</th>
                 <th>审核状态</th>
-                {% elif not is_warranty_mode %}
-                <th>账号类型</th>
                 {% endif %}
                 <th>成员数</th>
                 <th>订阅计划</th>
@@ -257,7 +246,6 @@
             {% for team in teams %}
             <tr>
                 <td><input type="checkbox" class="team-checkbox" value="{{ team.id }}" data-email="{{ team.email }}"
-                        data-bound-code-count="{{ team.bound_code_count or 0 }}"
                         data-import-status="{{ team.import_status or '' }}"
                         onchange="updateSelectedCount()">
                 </td>
@@ -266,7 +254,7 @@
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-width: 260px;">
                         <div style="min-width: 0;">
                             <div>{{ team.email }}</div>
-                            {% if is_warranty_mode and team.warranty_unavailable %}
+                            {% if not is_review_mode and team.warranty_unavailable %}
                             <span
                                 class="role-hint"
                                 title="不可用原因：{{ team.warranty_unavailable_reason or '系统自动标记' }}{% if team.warranty_unavailable_at %}；标记时间：{{ team.warranty_unavailable_at|format_datetime }}{% endif %}">
@@ -277,14 +265,6 @@
                             <span class="role-hint" title="账号角色: {{ team.account_role }}">已降级</span>
                             {% endif %}
                         </div>
-                        {% if not is_warranty_mode and not is_review_mode and team.bound_codes %}
-                        <button type="button"
-                            class="btn btn-sm btn-secondary btn-show-bound-codes"
-                            data-email="{{ team.email }}"
-                            data-codes='{{ team.bound_codes | tojson | e }}'>
-                            兑换码 {{ team.bound_code_count }}
-                        </button>
-                        {% endif %}
                     </div>
                 </td>
                 <td><span class="text-muted small">{{ team.account_id or '-' }}</span></td>
@@ -313,20 +293,6 @@
                     <div class="text-muted small" style="margin-top: 0.25rem;">{{ team.import_decision_label }}</div>
                     {% endif %}
                 </td>
-                {% elif not is_warranty_mode %}
-                <td>
-                    <span
-                        class="status-badge team-bound-code-type-badge {{ 'status-info' if team.bound_code_type == 'warranty' else 'status-banned' }}"
-                        data-bound-code-type="{{ team.bound_code_type }}"
-                        title="绑定兑换码类型">
-                        {{ team.bound_code_type_label }}
-                    </span>
-                    {% if team.bound_code_type == 'warranty' %}
-                    <div class="text-muted small" style="margin-top: 0.25rem;">
-                        质保 {{ team.bound_code_warranty_days_label or '时长未记录' }}
-                    </div>
-                    {% endif %}
-                </td>
                 {% endif %}
                 <td>
                     <span class="member-count">
@@ -349,7 +315,7 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if is_warranty_mode and team.warranty_unavailable %}
+                    {% if not is_review_mode and team.warranty_unavailable %}
                     <span
                         class="status-badge status-error"
                         title="不可用原因：{{ team.warranty_unavailable_reason or '系统自动标记' }}{% if team.warranty_unavailable_at %}；标记时间：{{ team.warranty_unavailable_at|format_datetime }}{% endif %}">
@@ -383,8 +349,7 @@
                         {% endif %}
                         {% elif is_review_mode %}
                         {% if team.import_status == 'pending' %}
-                        <button class="btn btn-sm btn-minimal btn-success btn-open-console-classify" data-id="{{ team.id }}" title="进入控制台并选择兑换码类型">进入控制台</button>
-                        <button class="btn btn-sm btn-minimal btn-warning btn-classify-warranty-team" data-id="{{ team.id }}" title="归类到质保 Team 页面">进入质保 Team</button>
+                        <button class="btn btn-sm btn-minimal btn-success btn-open-console-classify" data-id="{{ team.id }}" title="进入统一控制台池">进入控制台</button>
                         <button class="btn btn-sm btn-icon btn-minimal btn-secondary btn-refresh-team" data-id="{{ team.id }}" title="刷新">
                             <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
                         </button>
@@ -410,14 +375,6 @@
                         <button class="btn btn-sm btn-icon btn-minimal btn-success btn-enable-device-auth"
                             data-id="{{ team.id }}" title="一键开启设备代码验证">
                             <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i>
-                        </button>
-                        <button class="btn btn-sm btn-icon btn-minimal btn-warning btn-transfer-team"
-                            data-id="{{ team.id }}"
-                            data-email="{{ team.email }}"
-                            data-target-team-type="{{ 'standard' if is_warranty_mode else 'warranty' }}"
-                            data-target-team-label="{{ '控制台 Team' if is_warranty_mode else '质保 Team' }}"
-                            title="{{ '转移到控制台 Team' if is_warranty_mode else '转移到质保 Team' }}">
-                            <i data-lucide="arrow-right-left" style="width: 16px; height: 16px;"></i>
                         </button>
                         <button class="btn btn-sm btn-icon btn-minimal btn-danger btn-delete-team"
                             data-id="{{ team.id }}" data-email="{{ team.email }}" title="删除">
@@ -526,14 +483,14 @@
 {% endif %}
 {% else %}
 <div class="empty-state">
-    <p>{{ '暂无导入记录' if is_review_mode else ('暂无质保 Team 数据' if is_warranty_mode else '暂无 Team 数据') }}</p>
-    {% if not is_review_mode or is_import_only_mode %}<button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">{{ '立即导入质保 Team' if is_warranty_mode else '立即导入' }}</button>{% endif %}
+    <p>{{ '暂无导入记录' if is_review_mode else '暂无 Team 数据' }}</p>
+    {% if not is_review_mode or is_import_only_mode %}<button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">立即导入</button>{% endif %}
 </div>
 {% endif %}
 </div>
 
 {% if is_review_mode and not is_import_only_mode %}
-<!-- 待分类 Team：进入控制台后选择兑换码类型 -->
+<!-- 待分类 Team：统一进入控制台 -->
 <div id="classifyConsoleModal" class="modal-overlay">
     <div class="modal">
         <div class="modal-header">
@@ -542,117 +499,16 @@
         </div>
         <div class="modal-body">
             <p id="classifyConsoleScopeText" class="form-text" style="margin-top: 0;">
-                该 Team 将进入控制台页面。进入控制台前，请选择本次自动生成的兑换码类型。
+                该 Team 将进入统一控制台 Team 池；兑换码请在“兑换码管理”页面生成。
             </p>
             <form id="classifyConsoleForm" onsubmit="handleClassifyConsoleSubmit(event)">
                 <input type="hidden" id="classify-console-team-id" name="teamId">
                 <input type="hidden" id="classify-console-team-ids" name="teamIds">
-                <div class="form-group">
-                    <label>兑换码类型</label>
-                    <label class="export-option">
-                        <input type="radio" name="target" value="standard" checked style="width: auto; margin: 0;">
-                        <div>
-                            <strong>生成普通兑换码</strong>
-                            <div class="text-muted">按剩余席位生成普通绑定兑换码。</div>
-                        </div>
-                    </label>
-                    <label class="export-option">
-                        <input type="radio" name="target" value="warranty_code" style="width: auto; margin: 0;" onchange="toggleClassifyWarrantyDays()">
-                        <div>
-                            <strong>生成质保兑换码</strong>
-                            <div class="text-muted">按剩余席位自动生成质保绑定兑换码；用户首次使用后会自动加入质保邮箱列表。</div>
-                        </div>
-                    </label>
-                </div>
-                <div class="form-group" id="classifyWarrantyDaysGroup" style="display: none;">
-                    <label>兑换码质保时长 (天)</label>
-                    <input type="number" name="warrantyDays" class="form-control" value="30" min="1" max="3650">
-                    <div class="quick-value-row" aria-label="兑换码质保时长快捷值">
-                        <button type="button" class="quick-value-btn" onclick="setWarrantyDaysQuickValue(this, 30)">30 天</button>
-                        <button type="button" class="quick-value-btn" onclick="setWarrantyDaysQuickValue(this, 15)">15 天</button>
-                        <button type="button" class="quick-value-btn" onclick="setWarrantyDaysQuickValue(this, 7)">7 天</button>
-                    </div>
-                    <small class="form-text">默认 30 天 / 10 次，和导入弹窗中的“自动生成质保兑换码”语义一致。</small>
+                <input type="hidden" name="target" value="standard">
+                <div class="alert alert-info" style="margin-bottom: 1rem;">
+                    归类只会把账号放入统一控制台 Team 池；兑换码请在“兑换码管理”页面生成。
                 </div>
                 <button type="submit" id="classifyConsoleSubmitBtn" class="btn btn-primary">确认进入控制台</button>
-            </form>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-{% if not is_warranty_mode %}
-<!-- 查看绑定兑换码模态框 -->
-<div id="boundCodesModal" class="modal-overlay">
-    <div class="modal">
-        <div class="modal-header">
-            <h3>绑定兑换码</h3>
-            <button class="modal-close" onclick="hideModal('boundCodesModal')">&times;</button>
-        </div>
-        <div class="modal-body">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
-                <div id="boundCodesTargetEmail" class="text-muted"></div>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="copyBoundCodes()">
-                    复制全部兑换码
-                </button>
-            </div>
-            <div id="boundCodesUsageSummary" class="text-muted small" style="margin-bottom: 0.75rem;"></div>
-            <div class="table-container" style="max-height: 420px; overflow-y: auto; margin: 0;">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>兑换码</th>
-                            <th style="width: 110px;">状态</th>
-                            <th style="min-width: 240px;">最近使用</th>
-                            <th style="min-width: 240px;">使用历史</th>
-                            <th style="width: 100px; text-align: right;">操作</th>
-                        </tr>
-                    </thead>
-                    <tbody id="boundCodesTableBody">
-                        <tr>
-                            <td colspan="5" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">
-                                暂无兑换码数据
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <textarea id="boundCodesContent" class="form-control" rows="10" readonly style="display: none;"></textarea>
-        </div>
-    </div>
-</div>
-
-<div id="teamCodesExportModal" class="modal-overlay">
-    <div class="modal">
-        <div class="modal-header">
-            <h3>批量导出绑定兑换码</h3>
-            <button class="modal-close" onclick="hideModal('teamCodesExportModal')">&times;</button>
-        </div>
-        <div class="modal-body">
-            <div class="alert alert-info export-hint">
-                <div id="teamCodesExportScopeText">将导出已勾选 Team 绑定的兑换码。</div>
-                <small id="teamCodesExportScopeSubtext" class="text-muted">可选择 Excel 下载，或直接复制兑换码文本。</small>
-            </div>
-            <form id="teamCodesExportForm" onsubmit="handleExportSelectedTeamCodes(event)">
-                <div class="form-group">
-                    <label>导出格式</label>
-                    <label class="export-option">
-                        <input type="radio" name="teamCodesExportFormat" value="excel" checked
-                            style="width: auto; margin: 0;">
-                        <div>
-                            <strong>Excel 下载</strong>
-                            <div class="text-muted">导出完整表格信息，并带上 Team 账号归属</div>
-                        </div>
-                    </label>
-                    <label class="export-option">
-                        <input type="radio" name="teamCodesExportFormat" value="text" style="width: auto; margin: 0;">
-                        <div>
-                            <strong>复制兑换码</strong>
-                            <div class="text-muted">仅复制兑换码，一行一个</div>
-                        </div>
-                    </label>
-                </div>
-                <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">确认导出</button>
             </form>
         </div>
     </div>
@@ -882,18 +738,12 @@
             });
         });
 
-        // 绑定待分类归类按钮：先决定去控制台或质保 Team；去控制台后再选择兑换码类型
+        // 绑定待分类归类按钮：统一进入控制台
         document.querySelectorAll('.btn-open-console-classify').forEach(btn => {
             btn.addEventListener('click', () => {
                 openConsoleClassifyModal(btn.getAttribute('data-id'));
             });
         });
-        document.querySelectorAll('.btn-classify-warranty-team').forEach(btn => {
-            btn.addEventListener('click', () => {
-                classifyTeam(btn.getAttribute('data-id'), 'warranty_team');
-            });
-        });
-
         // 绑定编辑按钮
         document.querySelectorAll('.btn-edit-team').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -907,25 +757,6 @@
             btn.addEventListener('click', () => {
                 const id = btn.getAttribute('data-id');
                 enableDeviceAuth(id);
-            });
-        });
-
-        document.querySelectorAll('.btn-transfer-team').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const id = btn.getAttribute('data-id');
-                const email = btn.getAttribute('data-email');
-                const targetTeamType = btn.getAttribute('data-target-team-type');
-                const targetTeamLabel = btn.getAttribute('data-target-team-label');
-                transferTeamType(id, targetTeamType, targetTeamLabel, email);
-            });
-        });
-
-        // 绑定查看兑换码按钮
-        document.querySelectorAll('.btn-show-bound-codes').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const email = btn.getAttribute('data-email') || '';
-                const codes = JSON.parse(btn.getAttribute('data-codes') || '[]');
-                showBoundCodes(email, codes);
             });
         });
 
@@ -1506,138 +1337,6 @@
         }
     }
 
-    function showBoundCodes(email, codes) {
-        const emailEl = document.getElementById('boundCodesTargetEmail');
-        const summaryEl = document.getElementById('boundCodesUsageSummary');
-        const tableBodyEl = document.getElementById('boundCodesTableBody');
-        const contentEl = document.getElementById('boundCodesContent');
-        if (!emailEl || !summaryEl || !tableBodyEl || !contentEl) return;
-
-        const lines = (codes || []).map(item => item.code);
-        const usedCount = (codes || []).filter(item => item.redemption_count > 0 || item.used_by_email).length;
-
-        emailEl.textContent = `${email} · 共 ${lines.length} 个兑换码`;
-        summaryEl.textContent = usedCount > 0
-            ? `其中 ${usedCount} 个已有使用记录，可直接查看最近使用人与历史使用记录。`
-            : '当前这些兑换码都还没有使用记录。';
-        contentEl.value = lines.join('\n');
-        tableBodyEl.innerHTML = renderBoundCodesRows(codes || []);
-        showModal('boundCodesModal');
-
-        if (window.lucide) {
-            lucide.createIcons();
-        }
-    }
-
-    function copyBoundCodes() {
-        const contentEl = document.getElementById('boundCodesContent');
-        if (!contentEl || !contentEl.value.trim()) {
-            showToast('暂无可复制的兑换码', 'error');
-            return;
-        }
-
-        copyToClipboard(contentEl.value.trim());
-    }
-
-    function renderBoundCodesRows(codes) {
-        if (!codes.length) {
-            return `
-                <tr>
-                    <td colspan="5" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">
-                        暂无兑换码数据
-                    </td>
-                </tr>
-            `;
-        }
-
-        return codes.map(item => {
-            const history = Array.isArray(item.redemption_records) ? item.redemption_records : [];
-            const latest = item.latest_redemption || history[0] || null;
-            const latestUsageHtml = renderLatestUsage(latest, item);
-            const historyHtml = renderUsageHistory(history);
-
-            return `
-                <tr>
-                    <td>
-                        <div style="font-weight: 600; margin-bottom: 0.25rem;">${escapeHtml(item.code)}</div>
-                        <div class="text-muted small">
-                            ${item.redemption_count > 0 ? `累计使用 ${item.redemption_count} 次` : '尚未使用'}
-                        </div>
-                    </td>
-                    <td>${renderCodeStatusBadge(item.status)}</td>
-                    <td>${latestUsageHtml}</td>
-                    <td>${historyHtml}</td>
-                    <td style="text-align: right;">
-                        <a class="btn btn-sm btn-secondary" href="/admin/records?code=${encodeURIComponent(item.code)}" target="_blank" rel="noopener">
-                            记录
-                        </a>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-    }
-
-    function renderCodeStatusBadge(status) {
-        const statusConfig = {
-            unused: { className: 'status-active', label: '未使用' },
-            used: { className: 'status-full', label: '已使用' },
-            warranty_active: { className: 'status-info', label: '质保中' },
-            expired: { className: 'status-error', label: '已过期' }
-        };
-
-        const config = statusConfig[status] || { className: '', label: status || '未知' };
-        return `<span class="status-badge ${config.className}">${escapeHtml(config.label)}</span>`;
-    }
-
-    function renderLatestUsage(latest, item) {
-        if (!latest && !item.used_by_email) {
-            return '<span class="text-muted">未使用</span>';
-        }
-
-        const email = latest?.email || item.used_by_email || '-';
-        const redeemedAt = latest?.redeemed_at || item.used_at;
-        const teamName = latest?.team_name;
-        const teamId = latest?.team_id || item.used_team_id;
-        const teamText = teamName
-            ? `加入 ${teamName}`
-            : (teamId ? `加入 Team #${teamId}` : '未记录使用 Team');
-
-        return `
-            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                <strong>${escapeHtml(email)}</strong>
-                <span class="text-muted small">${escapeHtml(teamText)}</span>
-                <span class="text-muted small">${formatDateTime(redeemedAt)}</span>
-            </div>
-        `;
-    }
-
-    function renderUsageHistory(history) {
-        if (!history.length) {
-            return '<span class="text-muted">暂无</span>';
-        }
-
-        const historyItems = history.map(record => {
-            const teamText = record.team_name
-                ? escapeHtml(record.team_name)
-                : (record.team_id ? `Team #${record.team_id}` : '未知 Team');
-
-            return `
-                <div style="padding: 0.5rem 0; border-top: 1px solid rgba(255,255,255,0.06);">
-                    <div style="font-weight: 500;">${escapeHtml(record.email || '-')}</div>
-                    <div class="text-muted small">${teamText} · ${formatDateTime(record.redeemed_at)}</div>
-                </div>
-            `;
-        }).join('');
-
-        return `
-            <details>
-                <summary style="cursor: pointer; color: var(--primary);">查看 ${history.length} 条记录</summary>
-                <div style="margin-top: 0.5rem;">
-                    ${historyItems}
-                </div>
-            </details>
-        `;
-    }
 
     async function enableDeviceAuth(teamId) {
         const confirmed = await showSystemConfirm({
@@ -1767,13 +1466,12 @@
         teamIdsInput.value = normalizedTeamIds.join(',');
         if (scopeText) {
             scopeText.textContent = normalizedTeamIds.length > 1
-                ? `已选择 ${normalizedTeamIds.length} 个待审核 Team。它们将进入控制台页面；进入前请选择本次自动生成的兑换码类型。`
-                : '该 Team 将进入控制台页面。进入控制台前，请选择本次自动生成的兑换码类型。';
+                ? `已选择 ${normalizedTeamIds.length} 个待审核 Team。它们将进入统一控制台 Team 池，不会生成兑换码。`
+                : '该 Team 将进入统一控制台 Team 池，不会生成兑换码。';
         }
         if (submitBtn) {
             submitBtn.textContent = normalizedTeamIds.length > 1 ? '确认批量进入控制台' : '确认进入控制台';
         }
-        toggleClassifyWarrantyDays();
         showModal('classifyConsoleModal');
     }
 
@@ -1793,8 +1491,7 @@
 
     document.addEventListener('change', (event) => {
         if (event.target?.matches?.('#classifyConsoleForm input[name="target"]')) {
-            toggleClassifyWarrantyDays();
-        }
+            }
     });
 
     async function handleClassifyConsoleSubmit(event) {
@@ -1819,9 +1516,9 @@
 
     async function classifyTeam(teamId, target, warrantyDays = 30, options = {}) {
         const labels = {
-            standard: '进入控制台并生成普通兑换码',
-            warranty_code: '进入控制台并生成质保兑换码',
-            warranty_team: '进入质保 Team 页面',
+            standard: '进入统一控制台池',
+            warranty_code: '进入统一控制台池',
+            warranty_team: '进入统一控制台池',
         };
 
         if (!options.skipConfirm) {
@@ -1863,9 +1560,9 @@
         }
 
         const labels = {
-            standard: '批量进入控制台（普通兑换码）',
-            warranty_code: '批量进入控制台（质保兑换码）',
-            warranty_team: '批量进入质保 Team',
+            standard: '批量进入统一控制台池',
+            warranty_code: '批量进入统一控制台池',
+            warranty_team: '批量进入统一控制台池',
         };
         const selectedTargets = options.selectedTargets || getBatchTargetsByIds(normalizedTeamIds);
         hideModal('classifyConsoleModal');
@@ -1886,17 +1583,6 @@
                     warranty_days: warrantyDays,
                 },
             }
-        );
-    }
-
-    async function handleBatchClassifyWarrantyTeam() {
-        const targets = requireSelectedPendingReviewTargets();
-        if (!targets) return;
-        await classifyTeamBatch(
-            targets.map(item => item.teamId),
-            'warranty_team',
-            30,
-            { selectedTargets: targets }
         );
     }
 
@@ -2108,146 +1794,12 @@
         }
     }
 
-    async function transferTeamType(teamId, targetTeamType, targetTeamLabel, email = '') {
-        const normalizedTargetType = (targetTeamType || '').trim().toLowerCase();
-        const movingToWarranty = normalizedTargetType === 'warranty';
-        const accountLabel = email || `Team #${teamId}`;
-
-        const confirmMessage = movingToWarranty
-            ? `确定要将账号「${accountLabel}」转移到${targetTeamLabel}吗？\n\n系统会自动清理该账号当前绑定的兑换码。`
-            : `确定要将账号「${accountLabel}」转移到${targetTeamLabel}吗？\n\n系统会自动补充 4 个绑定兑换码；若当前剩余席位不足，则按剩余席位生成。`;
-
-        const confirmed = await showSystemConfirm({
-            title: '确认转移账号',
-            message: confirmMessage,
-            confirmText: '确认转移',
-            danger: movingToWarranty,
-        });
-        if (!confirmed) {
-            return;
-        }
-
-        try {
-            showToast('正在转移账号...', 'info');
-            const response = await fetch(`/admin/teams/${teamId}/transfer`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    target_team_type: normalizedTargetType
-                })
-            });
-
-            const result = await response.json();
-
-            if (response.ok && result.success) {
-                showToast(result.message || '账号转移成功', 'success');
-                setTimeout(() => window.location.reload(), 1200);
-            } else {
-                showToast(result.error || '账号转移失败', 'error');
-            }
-        } catch (error) {
-            console.error('Transfer team type failed:', error);
-            showToast('网络错误', 'error');
-        }
-    }
-
     function getSelectedTeamIds() {
         return Array.from(document.querySelectorAll('.team-checkbox:checked'))
             .map(cb => parseInt(cb.value, 10))
             .filter(Number.isInteger);
     }
 
-    function getSelectedTeamBoundCodeTotal() {
-        return Array.from(document.querySelectorAll('.team-checkbox:checked'))
-            .reduce((total, checkbox) => total + (parseInt(checkbox.dataset.boundCodeCount || '0', 10) || 0), 0);
-    }
-
-    function showTeamCodesExportModal() {
-        const selectedTeamIds = getSelectedTeamIds();
-        if (selectedTeamIds.length === 0) {
-            showToast('请先勾选要导出的 Team', 'warning');
-            return;
-        }
-
-        const selectedCodeTotal = getSelectedTeamBoundCodeTotal();
-        if (selectedCodeTotal <= 0) {
-            showToast('所选 Team 暂无绑定兑换码可导出', 'warning');
-            return;
-        }
-
-        const scopeText = document.getElementById('teamCodesExportScopeText');
-        const scopeSubtext = document.getElementById('teamCodesExportScopeSubtext');
-
-        if (scopeText) {
-            scopeText.textContent = `将导出已勾选的 ${selectedTeamIds.length} 个 Team，共 ${selectedCodeTotal} 个绑定兑换码。`;
-        }
-
-        if (scopeSubtext) {
-            scopeSubtext.textContent = 'Excel 会保留 Team 归属信息；文本模式会直接复制兑换码。';
-        }
-
-        showModal('teamCodesExportModal');
-    }
-
-    async function handleExportSelectedTeamCodes(event) {
-        event.preventDefault();
-
-        const selectedTeamIds = getSelectedTeamIds();
-        if (selectedTeamIds.length === 0) {
-            showToast('请先勾选要导出的 Team', 'warning');
-            return;
-        }
-
-        try {
-            const exportFormat = document.querySelector('input[name="teamCodesExportFormat"]:checked')?.value || 'excel';
-            const response = await fetch('/admin/codes/export', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    team_ids: selectedTeamIds,
-                    export_format: exportFormat
-                })
-            });
-
-            if (!response.ok) {
-                showToast('导出失败', 'error');
-                return;
-            }
-
-            if (exportFormat === 'text') {
-                const text = await response.text();
-                if (!text.trim()) {
-                    showToast('所选 Team 没有可复制的兑换码', 'error');
-                    return;
-                }
-
-                const copied = await copyToClipboard(text);
-                if (copied) {
-                    hideModal('teamCodesExportModal');
-                }
-                return;
-            }
-
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `team_bound_codes_${new Date().getTime()}.xlsx`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            hideModal('teamCodesExportModal');
-            showToast('导出成功', 'success');
-        } catch (error) {
-            console.error('Export selected team codes failed:', error);
-            showToast('网络错误', 'error');
-        }
-    }
 
     function buildBatchFailedItemsText(actionName, failedItems = []) {
         const lines = [`${actionName}失败详情（共 ${failedItems.length} 项）`, ''];

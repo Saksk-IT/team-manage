@@ -33,7 +33,7 @@ class SubAdminImportModalTests(unittest.TestCase):
         template = Path("app/templates/admin/index.html").read_text(encoding="utf-8")
 
         self.assertIn("批量进入控制台", template)
-        self.assertIn("批量进入质保 Team", template)
+        self.assertNotIn("批量进入质保 Team", template)
         self.assertIn("data-import-status", template)
         self.assertIn('name="review_status"', template)
         self.assertIn('name="import_tag"', template)
@@ -41,9 +41,7 @@ class SubAdminImportModalTests(unittest.TestCase):
         self.assertIn('name="imported_to"', template)
         self.assertIn("/admin/teams/batch-classify/stream", template)
         self.assertIn("requireSelectedPendingReviewTargets", template)
-        self.assertIn("setWarrantyDaysQuickValue(this, 30)", template)
-        self.assertIn("setWarrantyDaysQuickValue(this, 15)", template)
-        self.assertIn("setWarrantyDaysQuickValue(this, 7)", template)
+        self.assertNotIn("setWarrantyDaysQuickValue(this, 30)", template)
 
 
 if __name__ == "__main__":

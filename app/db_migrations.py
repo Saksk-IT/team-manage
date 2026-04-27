@@ -101,6 +101,45 @@ def migrate_customer_service_upload_assets(cursor) -> list[str]:
     return migration_names
 
 
+def migrate_unified_team_pool(cursor) -> list[str]:
+    """统一 Team 池：历史质保 Team 迁入控制台，兑换码解除 Team 绑定。"""
+    migration_names: list[str] = []
+
+    if table_exists(cursor, "teams"):
+        cursor.execute("""
+            UPDATE teams
+            SET team_type = 'standard'
+            WHERE team_type IS NULL
+               OR TRIM(team_type) = ''
+               OR team_type != 'standard'
+        """)
+        if cursor.rowcount:
+            migration_names.append(f"teams.team_type_unified:{cursor.rowcount}")
+
+        cursor.execute("""
+            UPDATE teams
+            SET bound_code_type = 'standard',
+                bound_code_warranty_days = NULL
+            WHERE bound_code_type IS NULL
+               OR TRIM(bound_code_type) = ''
+               OR bound_code_type != 'standard'
+               OR bound_code_warranty_days IS NOT NULL
+        """)
+        if cursor.rowcount:
+            migration_names.append(f"teams.bound_code_metadata_cleared:{cursor.rowcount}")
+
+    if table_exists(cursor, "redemption_codes") and column_exists(cursor, "redemption_codes", "bound_team_id"):
+        cursor.execute("""
+            UPDATE redemption_codes
+            SET bound_team_id = NULL
+            WHERE bound_team_id IS NOT NULL
+        """)
+        if cursor.rowcount:
+            migration_names.append(f"redemption_codes.bound_team_id_cleared:{cursor.rowcount}")
+
+    return migration_names
+
+
 def run_auto_migration():
     """
     自动运行数据库迁移
@@ -488,6 +527,8 @@ def run_auto_migration():
                   AND expires_at IS NULL
                   AND last_warranty_team_id IS NOT NULL
             """)
+
+        migrations_applied.extend(migrate_unified_team_pool(cursor))
 
         if not table_exists(cursor, "warranty_claim_records"):
             logger.info("创建 warranty_claim_records 表")

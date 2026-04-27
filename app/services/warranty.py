@@ -20,7 +20,7 @@ from app.models import (
     WarrantyEmailEntry,
 )
 from app.services.settings import settings_service
-from app.services.team import TEAM_TYPE_WARRANTY
+from app.services.team import IMPORT_STATUS_CLASSIFIED
 from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
@@ -1130,10 +1130,10 @@ class WarrantyService:
         stmt = (
             select(Team)
             .where(
-                Team.team_type == TEAM_TYPE_WARRANTY,
                 Team.status == "active",
                 or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
-                Team.current_members < Team.max_members
+                Team.current_members < Team.max_members,
+                Team.import_status == IMPORT_STATUS_CLASSIFIED,
             )
             .order_by(Team.id.asc())
         )
@@ -1154,7 +1154,6 @@ class WarrantyService:
                 RedemptionRecord.code == ordinary_code,
                 func.lower(RedemptionRecord.email) == normalized_email,
                 RedemptionRecord.is_warranty_redemption.is_(True),
-                Team.team_type == TEAM_TYPE_WARRANTY,
                 Team.status == "full"
             )
             .order_by(RedemptionRecord.redeemed_at.desc(), Team.created_at.asc())
@@ -1175,7 +1174,7 @@ class WarrantyService:
             await db_session.commit()
             if not refresh_result.get("success"):
                 logger.warning(
-                    "检查质保 Team 现有成员失败，跳过 team_id=%s error=%s",
+                    "检查 Team 现有成员失败，跳过 team_id=%s error=%s",
                     team.id,
                     refresh_result.get("error")
                 )
@@ -1203,7 +1202,6 @@ class WarrantyService:
             .where(
                 func.lower(RedemptionRecord.email) == normalized_email,
                 RedemptionRecord.is_warranty_redemption.is_(True),
-                Team.team_type == TEAM_TYPE_WARRANTY,
                 Team.status == "full"
             )
             .order_by(RedemptionRecord.redeemed_at.desc(), Team.created_at.asc())
@@ -1220,10 +1218,7 @@ class WarrantyService:
             return None
 
         result = await db_session.execute(
-            select(Team).where(
-                Team.id == entry.last_warranty_team_id,
-                Team.team_type == TEAM_TYPE_WARRANTY
-            )
+            select(Team).where(Team.id == entry.last_warranty_team_id)
         )
         team = result.scalar_one_or_none()
         if not team or team.status not in {"active", "full"}:
@@ -1317,16 +1312,16 @@ class WarrantyService:
 
             warranty_teams = await self._get_available_warranty_teams(db_session)
             if not warranty_teams:
-                logger.warning("质保申请失败: 没有可用的质保 Team")
+                logger.warning("质保申请失败: 没有可用的 Team")
                 await self._record_warranty_claim_result(
                     db_session=db_session,
                     email=normalized_email,
                     submitted_at=submitted_at,
                     claim_status="failed",
                     before_team_info=before_team_info,
-                    failure_reason="当前没有可用的质保 Team，请稍后再试",
+                    failure_reason="当前没有可用的 Team，请稍后再试",
                 )
-                return {"success": False, "error": "当前没有可用的质保 Team，请稍后再试"}
+                return {"success": False, "error": "当前没有可用的 Team，请稍后再试"}
 
             last_error = None
             for team in warranty_teams:
@@ -1361,14 +1356,14 @@ class WarrantyService:
                 last_error = add_result.get("error")
                 if self._should_try_next_warranty_team(add_result):
                     logger.warning(
-                        "质保 Team 邀请失败，命中可重试错误，尝试下一个 team_id=%s error=%s",
+                        "质保邀请失败，命中可重试错误，尝试下一个 Team: team_id=%s error=%s",
                         team.id,
                         last_error
                     )
                     continue
 
                 logger.warning(
-                    "质保 Team 邀请失败: team_id=%s error=%s",
+                    "质保邀请失败: team_id=%s error=%s",
                     team.id,
                     last_error
                 )
@@ -1378,9 +1373,9 @@ class WarrantyService:
                     submitted_at=submitted_at,
                     claim_status="failed",
                     before_team_info=before_team_info,
-                    failure_reason=last_error or "当前质保 Team 邀请失败，请稍后再试",
+                    failure_reason=last_error or "当前 Team 邀请失败，请稍后再试",
                 )
-                return {"success": False, "error": last_error or "当前质保 Team 邀请失败，请稍后再试"}
+                return {"success": False, "error": last_error or "当前 Team 邀请失败，请稍后再试"}
 
             await self._record_warranty_claim_result(
                 db_session=db_session,
@@ -1388,9 +1383,9 @@ class WarrantyService:
                 submitted_at=submitted_at,
                 claim_status="failed",
                 before_team_info=before_team_info,
-                failure_reason=last_error or "当前质保 Team 邀请失败，请稍后再试",
+                failure_reason=last_error or "当前 Team 邀请失败，请稍后再试",
             )
-            return {"success": False, "error": last_error or "当前质保 Team 邀请失败，请稍后再试"}
+            return {"success": False, "error": last_error or "当前 Team 邀请失败，请稍后再试"}
 
         except Exception as e:
             logger.error(f"质保邀请申请失败: {e}")

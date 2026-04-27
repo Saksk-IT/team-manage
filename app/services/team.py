@@ -169,7 +169,7 @@ class TeamService:
 
     def _get_standard_transfer_code_count(self, team: Team) -> int:
         """
-        转移到普通 Team 池时，补充绑定兑换码数量。
+        兼容旧逻辑字段，统一池不再使用导入自动生码。
 
         默认补 4 个；若当前剩余席位不足，则按剩余席位生成，避免超卖。
         """
@@ -217,7 +217,7 @@ class TeamService:
         return error_code == "ghost_success" and "官方拦截下发" in error_msg
 
     def _should_mark_warranty_team_unavailable(self, team: Team, result: Dict[str, Any]) -> bool:
-        if not team or team.team_type != TEAM_TYPE_WARRANTY:
+        if not team:
             return False
 
         error_msg = result.get("error")
@@ -228,7 +228,7 @@ class TeamService:
         team: Team,
         reason: Optional[str]
     ) -> None:
-        if not team or team.team_type != TEAM_TYPE_WARRANTY:
+        if not team:
             return
 
         team.warranty_unavailable = True
@@ -236,7 +236,7 @@ class TeamService:
         team.warranty_unavailable_at = get_now()
 
     def _clear_warranty_team_unavailable(self, team: Team) -> None:
-        if not team or team.team_type != TEAM_TYPE_WARRANTY:
+        if not team:
             return
 
         team.warranty_unavailable = False
@@ -364,8 +364,8 @@ class TeamService:
         team: Team,
         db_session: AsyncSession
     ) -> int:
-        """从历史成员快照补写质保 Team 手动白名单。"""
-        if not team or team.team_type != TEAM_TYPE_WARRANTY:
+        """从历史成员快照补写手动邮箱白名单。"""
+        if not team:
             return 0
 
         from app.services.email_whitelist import email_whitelist_service
@@ -970,6 +970,8 @@ class TeamService:
         """
         try:
             normalized_import_tag = normalize_import_tag(import_tag)
+            normalized_team_type = TEAM_TYPE_STANDARD
+            should_generate_codes = False
 
             # 1. 检查并尝试刷新 Token (如果 AT 缺失或过期)
             is_at_valid = False
@@ -1251,13 +1253,9 @@ class TeamService:
                     client_id=client_id,
                     encryption_key_id="default",
                     account_id=selected_account["account_id"],
-                    team_type=team_type,
-                    bound_code_type=TEAM_TYPE_WARRANTY if team_type == TEAM_TYPE_STANDARD and generate_warranty_codes else TEAM_TYPE_STANDARD,
-                    bound_code_warranty_days=(
-                        normalized_warranty_days
-                        if team_type == TEAM_TYPE_STANDARD and generate_warranty_codes
-                        else None
-                    ),
+                    team_type=normalized_team_type,
+                    bound_code_type=TEAM_TYPE_STANDARD,
+                    bound_code_warranty_days=None,
                     team_name=selected_account["name"],
                     plan_type=selected_account["plan_type"],
                     subscription_plan=selected_account["subscription_plan"],
@@ -1289,12 +1287,12 @@ class TeamService:
 
                 remaining_seats = max(max_members - current_members, 0)
                 generated_codes = []
-                if generate_codes_on_import and team_type == TEAM_TYPE_STANDARD and remaining_seats > 0:
+                if should_generate_codes and generate_codes_on_import and remaining_seats > 0:
                     generate_result = await self.redemption_service.generate_code_batch(
                         db_session=db_session,
                         count=remaining_seats,
                         bound_team_id=team.id,
-                        has_warranty=generate_warranty_codes,
+                        has_warranty=False,
                         warranty_days=normalized_warranty_days,
                         commit=False
                     )
@@ -1318,8 +1316,8 @@ class TeamService:
                     "remaining_seats": remaining_seats,
                     "generated_codes": generated_codes,
                     "generated_code_count": len(generated_codes),
-                    "generated_code_has_warranty": bool(generate_warranty_codes and generated_codes),
-                    "generated_code_warranty_days": normalized_warranty_days if generate_warranty_codes and generated_codes else None,
+                    "generated_code_has_warranty": False,
+                    "generated_code_warranty_days": None,
                 })
 
             # 5. 返回结果总结
@@ -1345,11 +1343,7 @@ class TeamService:
 
             total_generated_codes = sum(item["generated_code_count"] for item in imported_team_details)
 
-            if team_type == TEAM_TYPE_WARRANTY:
-                message = f"成功导入 {len(imported_ids)} 个质保 Team 账号"
-            else:
-                code_label = "质保绑定兑换码" if generate_warranty_codes else "绑定兑换码"
-                message = f"成功导入 {len(imported_ids)} 个 Team 账号，并自动生成 {total_generated_codes} 个{code_label}"
+            message = f"成功导入 {len(imported_ids)} 个 Team 账号；兑换码请在兑换码管理页面生成"
             if skipped_ids:
                 message += f" (另有 {len(skipped_ids)} 个已存在)"
 
@@ -1521,9 +1515,7 @@ class TeamService:
         target_team_type: str,
         db_session: AsyncSession
     ) -> Dict[str, Any]:
-        """
-        在普通 Team / 质保 Team 之间转移账号，并联动处理绑定兑换码。
-        """
+        """兼容旧接口：统一 Team 池后只允许归一到控制台 Team。"""
         try:
             stmt = select(Team).where(Team.id == team_id)
             result = await db_session.execute(stmt)
@@ -1535,51 +1527,26 @@ class TeamService:
             current_team_type = (team.team_type or TEAM_TYPE_STANDARD).strip().lower()
             normalized_target_type = (target_team_type or "").strip().lower()
 
-            if normalized_target_type not in {TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY}:
+            if normalized_target_type != TEAM_TYPE_STANDARD:
                 return {"success": False, "error": "目标 Team 类型无效"}
 
-            if current_team_type == normalized_target_type:
-                return {"success": False, "error": "该账号已经在目标列表中，无需转移"}
-
             cleanup_result = await self._clear_bound_codes_for_team(team.id, db_session)
-            team.team_type = normalized_target_type
+            team.team_type = TEAM_TYPE_STANDARD
             team.bound_code_type = TEAM_TYPE_STANDARD
             team.bound_code_warranty_days = None
 
             generated_codes: List[str] = []
             generated_code_count = 0
 
-            if normalized_target_type == TEAM_TYPE_STANDARD:
-                generate_count = self._get_standard_transfer_code_count(team)
-                if generate_count > 0:
-                    generate_result = await self.redemption_service.generate_code_batch(
-                        db_session=db_session,
-                        count=generate_count,
-                        bound_team_id=team.id,
-                        commit=False
-                    )
-                    if not generate_result["success"]:
-                        raise Exception(generate_result.get("error") or "自动生成绑定兑换码失败")
-
-                    generated_codes = generate_result.get("codes", [])
-                    generated_code_count = len(generated_codes)
-
             await db_session.commit()
 
-            if normalized_target_type == TEAM_TYPE_WARRANTY:
-                message = (
-                    f"账号已转移到质保 Team，已清理 {cleanup_result['total_cleared']} 个原绑定兑换码"
-                )
-            else:
-                message = (
-                    f"账号已转移到控制台 Team，已生成 {generated_code_count} 个绑定兑换码"
-                )
+            message = f"账号已归一到控制台 Team，已清理 {cleanup_result['total_cleared']} 个历史 Team 绑定"
 
             logger.info(
                 "Team 类型转移成功: team_id=%s, from=%s, to=%s, cleaned=%s, generated=%s",
                 team.id,
                 current_team_type,
-                normalized_target_type,
+                TEAM_TYPE_STANDARD,
                 cleanup_result["total_cleared"],
                 generated_code_count
             )
@@ -1587,7 +1554,7 @@ class TeamService:
             return {
                 "success": True,
                 "team_id": team.id,
-                "team_type": normalized_target_type,
+                "team_type": TEAM_TYPE_STANDARD,
                 "cleaned_code_count": cleanup_result["total_cleared"],
                 "deleted_unused_code_count": cleanup_result["deleted_unused_count"],
                 "detached_history_code_count": cleanup_result["detached_history_count"],
@@ -1608,7 +1575,7 @@ class TeamService:
         db_session: AsyncSession,
         warranty_days: int = 30,
     ) -> Dict[str, Any]:
-        """将待分类 Team 归档为普通、质保兑换码账号或质保 Team。"""
+        """将待分类 Team 归档到统一控制台池；兑换码统一在兑换码管理页生成。"""
         normalized_target = (target or "").strip().lower()
         if normalized_target not in {
             CLASSIFY_TARGET_STANDARD,
@@ -1626,41 +1593,13 @@ class TeamService:
                 return {"success": False, "error": "该 Team 不在待分类列表中"}
 
             cleanup_result = await self._clear_bound_codes_for_team(team.id, db_session)
-            normalized_warranty_days = max(int(warranty_days or 30), 1)
             generated_codes: List[str] = []
 
             team.import_status = IMPORT_STATUS_CLASSIFIED
             team.bound_code_type = TEAM_TYPE_STANDARD
             team.bound_code_warranty_days = None
-
-            if normalized_target == CLASSIFY_TARGET_WARRANTY_TEAM:
-                team.team_type = TEAM_TYPE_WARRANTY
-                message = "已归类为质保 Team"
-            else:
-                team.team_type = TEAM_TYPE_STANDARD
-                has_warranty = normalized_target == CLASSIFY_TARGET_WARRANTY_CODE
-                team.bound_code_type = TEAM_TYPE_WARRANTY if has_warranty else TEAM_TYPE_STANDARD
-                team.bound_code_warranty_days = normalized_warranty_days if has_warranty else None
-                remaining_seats = max((team.max_members or DEFAULT_TEAM_MAX_MEMBERS) - (team.current_members or 0), 0)
-
-                if remaining_seats > 0:
-                    generate_result = await self.redemption_service.generate_code_batch(
-                        db_session=db_session,
-                        count=remaining_seats,
-                        bound_team_id=team.id,
-                        has_warranty=has_warranty,
-                        warranty_days=normalized_warranty_days,
-                        commit=False,
-                    )
-                    if not generate_result.get("success"):
-                        raise Exception(generate_result.get("error") or "自动生成绑定兑换码失败")
-                    generated_codes = generate_result.get("codes", [])
-
-                message = (
-                    f"已归类为质保账号，并生成 {len(generated_codes)} 个质保绑定兑换码"
-                    if has_warranty
-                    else f"已归类为普通账号，并生成 {len(generated_codes)} 个绑定兑换码"
-                )
+            team.team_type = TEAM_TYPE_STANDARD
+            message = "已归类到控制台 Team；兑换码请在兑换码管理页面生成"
 
             await db_session.commit()
             return {
@@ -1826,7 +1765,7 @@ class TeamService:
             team_id: Team ID
             db_session: 数据库会话
             force_refresh: 是否强制刷新 Token
-            enforce_bound_email_cleanup: 是否在刷新时自动清理非绑定码邮箱
+            enforce_bound_email_cleanup: 是否在刷新时按邮箱白名单自动清理非保护邮箱
 
         Returns:
             结果字典,包含 success, message, error
@@ -2073,22 +2012,13 @@ class TeamService:
             current_members = member_state["current_members"]
 
             cleanup_allowed_emails = None
-            cleanup_scope_label = ""
-            should_cleanup_standard_team = (
-                enforce_bound_email_cleanup
-                and team.team_type == TEAM_TYPE_STANDARD
-            )
-            should_cleanup_warranty_team = team.team_type == TEAM_TYPE_WARRANTY
+            cleanup_scope_label = "Team"
+            should_cleanup_team = enforce_bound_email_cleanup or (team.team_type == TEAM_TYPE_WARRANTY)
 
-            if should_cleanup_standard_team:
-                cleanup_allowed_emails = await self._get_email_cleanup_allowed_emails(db_session)
-                cleanup_scope_label = "标准 Team"
-            elif should_cleanup_warranty_team:
+            if should_cleanup_team:
                 await self._backfill_manual_warranty_whitelist_from_snapshots(team, db_session)
-                cleanup_allowed_emails = await self._get_email_cleanup_allowed_emails(db_session)
-                cleanup_scope_label = "质保 Team"
 
-            if should_cleanup_standard_team or should_cleanup_warranty_team:
+                cleanup_allowed_emails = await self._get_email_cleanup_allowed_emails(db_session)
                 cleanup_summary = await self._cleanup_non_bound_team_emails(
                     team=team,
                     access_token=access_token,
@@ -2193,7 +2123,7 @@ class TeamService:
             team.current_members = current_members
             team.status = status
             team.device_code_auth_enabled = device_code_auth_enabled
-            if team.team_type == TEAM_TYPE_WARRANTY and status == "active":
+            if status == "active":
                 self._clear_warranty_team_unavailable(team)
             team.error_count = 0  # 同步成功，重置错误次数
             team.last_sync = get_now()
@@ -2719,7 +2649,7 @@ class TeamService:
             logger.info(f"添加成员成功: {email} -> Team {team_id}")
 
             # 6. 请求成功，重置错误状态
-            if team.team_type == TEAM_TYPE_WARRANTY:
+            if team.status == "active":
                 self._clear_warranty_team_unavailable(team)
             await self._reset_error_status(team, db_session)
 
@@ -2912,7 +2842,7 @@ class TeamService:
     async def get_available_teams(
         self,
         db_session: AsyncSession,
-        team_type: str = TEAM_TYPE_STANDARD
+        team_type: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         获取可用的 Team 列表 (用于用户兑换页面)
@@ -2926,11 +2856,14 @@ class TeamService:
         try:
             # 查询 status='active' 且 current_members < max_members 的 Team
             stmt = select(Team).where(
-                Team.team_type == team_type,
                 Team.status == "active",
                 Team.current_members < Team.max_members,
                 Team.import_status == IMPORT_STATUS_CLASSIFIED,
+                or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
             )
+            if team_type:
+                stmt = stmt.where(Team.team_type == team_type)
+            stmt = stmt.order_by(Team.id.asc())
             result = await db_session.execute(stmt)
             teams = result.scalars().all()
 
@@ -3109,7 +3042,7 @@ class TeamService:
             # 3. 如果有状态过滤,添加过滤条件
             if status:
                 stmt = stmt.where(Team.status == status)
-                if team_type == TEAM_TYPE_WARRANTY and status == "active":
+                if status == "active":
                     stmt = stmt.where(
                         or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None))
                     )
@@ -3237,15 +3170,9 @@ class TeamService:
                 if review_status == IMPORT_STATUS_PENDING:
                     review_status_label = "待审核"
                     review_decision_label = "未审核"
-                elif team.team_type == TEAM_TYPE_WARRANTY:
-                    review_status_label = "已审核"
-                    review_decision_label = "质保 Team"
-                elif (team.bound_code_type or TEAM_TYPE_STANDARD) == TEAM_TYPE_WARRANTY:
-                    review_status_label = "已审核"
-                    review_decision_label = "控制台 / 质保兑换码"
                 else:
                     review_status_label = "已审核"
-                    review_decision_label = "控制台 / 普通兑换码"
+                    review_decision_label = "控制台 Team"
 
                 team_list.append({
                     "id": team.id,
@@ -3419,7 +3346,7 @@ class TeamService:
     async def get_total_available_seats(
         self,
         db_session: AsyncSession,
-        team_type: str = TEAM_TYPE_STANDARD
+        team_type: Optional[str] = None
     ) -> int:
         """
         获取所有活跃 Team 的总剩余车位数
@@ -3427,15 +3354,13 @@ class TeamService:
         try:
             # 统计所有状态为 active 的 Team 的剩余位置
             stmt = select(func.sum(Team.max_members - Team.current_members)).where(
-                Team.team_type == team_type,
                 Team.status == "active",
                 Team.current_members < Team.max_members,
                 Team.import_status == IMPORT_STATUS_CLASSIFIED,
+                or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
             )
-            if team_type == TEAM_TYPE_WARRANTY:
-                stmt = stmt.where(
-                    or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None))
-                )
+            if team_type:
+                stmt = stmt.where(Team.team_type == team_type)
             result = await db_session.execute(stmt)
             return result.scalar() or 0
         except Exception as e:
@@ -3468,10 +3393,9 @@ class TeamService:
                 available_stmt = available_stmt.where(Team.team_type == team_type)
             if import_status:
                 available_stmt = available_stmt.where(Team.import_status == import_status)
-            if team_type == TEAM_TYPE_WARRANTY:
-                available_stmt = available_stmt.where(
-                    or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None))
-                )
+            available_stmt = available_stmt.where(
+                or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None))
+            )
             available_result = await db_session.execute(available_stmt)
             available = available_result.scalar() or 0
 
@@ -3491,10 +3415,9 @@ class TeamService:
                 remaining_seats_stmt = remaining_seats_stmt.where(Team.team_type == team_type)
             if import_status:
                 remaining_seats_stmt = remaining_seats_stmt.where(Team.import_status == import_status)
-            if team_type == TEAM_TYPE_WARRANTY:
-                remaining_seats_stmt = remaining_seats_stmt.where(
-                    or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None))
-                )
+            remaining_seats_stmt = remaining_seats_stmt.where(
+                or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None))
+            )
             remaining_seats_result = await db_session.execute(remaining_seats_stmt)
             remaining_seats = remaining_seats_result.scalar() or 0
             
