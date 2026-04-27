@@ -2680,6 +2680,7 @@ async def _build_codes_export_response(
     status_text_map = {
         "unused": "未使用",
         "used": "已使用",
+        "processing": "处理中",
         "warranty_active": "质保中",
         "expired": "已过期"
     }

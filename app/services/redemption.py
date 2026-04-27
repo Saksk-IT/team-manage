@@ -345,6 +345,8 @@ class RedemptionService:
             if redemption_code.status != "unused":
                 if redemption_code.status in ["used", "warranty_active"]:
                     reason = "兑换码已被使用，不可用"
+                elif redemption_code.status == "processing":
+                    reason = "兑换码正在处理中，请稍后查看结果"
                 elif redemption_code.status == "expired":
                     reason = "兑换码已过期"
                 else:

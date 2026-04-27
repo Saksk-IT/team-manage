@@ -13,10 +13,11 @@ from datetime import datetime
 
 from contextlib import asynccontextmanager
 # 导入路由
-from app.routes import redeem, auth, admin, api, local_tools, user, warranty
+from app.routes import redeem, auth, admin, api, local_tools, user, warranty, invite_jobs
 from app.config import settings
 from app.database import init_db, close_db, AsyncSessionLocal
 from app.services.auth import auth_service
+from app.services.invite_queue import invite_queue_service
 from app.services.team_auto_refresh import team_auto_refresh_service
 from app.utils.storage import get_uploads_root_dir
 
@@ -49,6 +50,7 @@ async def lifespan(app: FastAPI):
         async with AsyncSessionLocal() as session:
             await auth_service.initialize_admin_password(session)
         await team_auto_refresh_service.start()
+        await invite_queue_service.start()
         logger.info("数据库初始化完成")
     except Exception as e:
         logger.error(f"数据库初始化失败: {e}")
@@ -56,6 +58,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # 关闭连接
+    await invite_queue_service.stop()
     await team_auto_refresh_service.stop()
     await close_db()
     logger.info("系统正在关闭，已释放数据库连接")
@@ -150,6 +153,7 @@ logger = logging.getLogger(__name__)
 app.include_router(user.router)  # 用户路由(根路径)
 app.include_router(redeem.router)
 app.include_router(warranty.router)
+app.include_router(invite_jobs.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(api.router)

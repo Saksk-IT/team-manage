@@ -1132,15 +1132,20 @@ class WarrantyService:
         return result.scalar() or 0
 
     async def _get_available_warranty_teams(self, db_session: AsyncSession) -> List[Team]:
+        capacity_expr = func.coalesce(Team.current_members, 0) + func.coalesce(Team.reserved_members, 0)
         stmt = (
             select(Team)
             .where(
                 Team.status == "active",
                 or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
-                Team.current_members < Team.max_members,
+                capacity_expr < Team.max_members,
                 Team.import_status == IMPORT_STATUS_CLASSIFIED,
             )
-            .order_by(Team.id.asc())
+            .order_by(
+                func.coalesce(Team.reserved_members, 0).asc(),
+                func.coalesce(Team.current_members, 0).asc(),
+                Team.id.asc(),
+            )
         )
         result = await db_session.execute(stmt)
         return result.scalars().all()

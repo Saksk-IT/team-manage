@@ -1,0 +1,738 @@
+"""
+前台拉人队列服务
+
+将兑换/质保请求先写入数据库并预占 Team 席位，再由后台 worker 串行处理单个 Team 的拉人请求，
+避免高并发下多个请求同时命中同一个 Team 导致超额邀请。
+"""
+import asyncio
+import json
+import logging
+from collections import defaultdict
+from datetime import timedelta
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy import func, or_, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import settings
+from app.database import AsyncSessionLocal
+from app.models import InviteJob, RedemptionCode, RedemptionRecord, Team, WarrantyEmailEntry
+from app.services.email_whitelist import email_whitelist_service
+from app.services.redemption import RedemptionService
+from app.services.team import IMPORT_STATUS_CLASSIFIED, TeamService
+from app.services.team_refresh_record import SOURCE_USER_REDEEM, SOURCE_USER_WARRANTY
+from app.services.warranty import warranty_service
+from app.utils.time_utils import get_now
+
+logger = logging.getLogger(__name__)
+
+JOB_TYPE_REDEEM = "redeem"
+JOB_TYPE_WARRANTY = "warranty"
+JOB_STATUS_QUEUED = "queued"
+JOB_STATUS_PROCESSING = "processing"
+JOB_STATUS_SUCCESS = "success"
+JOB_STATUS_FAILED = "failed"
+ACTIVE_JOB_STATUSES = (JOB_STATUS_QUEUED, JOB_STATUS_PROCESSING)
+TERMINAL_JOB_STATUSES = (JOB_STATUS_SUCCESS, JOB_STATUS_FAILED)
+DEFAULT_POLL_AFTER_MS = 1500
+
+
+class InviteQueueService:
+    """数据库预占 + 后台 worker 的前台拉人队列。"""
+
+    def __init__(self) -> None:
+        self.redemption_service = RedemptionService()
+        self.team_service = TeamService()
+        self.warranty_service = warranty_service
+        self._submit_lock = asyncio.Lock()
+        self._team_locks = defaultdict(asyncio.Lock)
+        self._stop_event: Optional[asyncio.Event] = None
+        self._tasks: List[asyncio.Task] = []
+
+    async def start(self) -> None:
+        if self._tasks:
+            return
+
+        worker_count = max(int(settings.invite_queue_worker_count or 3), 1)
+        self._stop_event = asyncio.Event()
+        await self.recover_stale_processing_jobs()
+        self._tasks = [
+            asyncio.create_task(self._worker_loop(index + 1), name=f"invite-queue-worker-{index + 1}")
+            for index in range(worker_count)
+        ]
+        logger.info("前台拉人队列已启动: worker_count=%s", worker_count)
+
+    async def stop(self) -> None:
+        if not self._tasks:
+            return
+
+        if self._stop_event:
+            self._stop_event.set()
+        for task in self._tasks:
+            task.cancel()
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+        self._tasks = []
+        self._stop_event = None
+        logger.info("前台拉人队列已停止")
+
+    def serialize_job(self, job: InviteJob) -> Dict[str, Any]:
+        payload = self._decode_payload(job.result_payload)
+        response: Dict[str, Any] = {
+            "success": job.status != JOB_STATUS_FAILED,
+            "queued": job.status in ACTIVE_JOB_STATUSES,
+            "job_id": job.id,
+            "job_type": job.job_type,
+            "job_status": job.status,
+            "status": job.status,
+            "attempt_count": int(job.attempt_count or 0),
+            "poll_after_ms": DEFAULT_POLL_AFTER_MS,
+            "message": self._get_job_message(job),
+            "error": job.error,
+            "result": payload,
+        }
+        if job.status == JOB_STATUS_SUCCESS and isinstance(payload, dict):
+            response.update(payload)
+            response["success"] = True
+            response["queued"] = False
+            response["job_status"] = JOB_STATUS_SUCCESS
+            response["status"] = JOB_STATUS_SUCCESS
+        elif job.status == JOB_STATUS_FAILED:
+            response["success"] = False
+            response["queued"] = False
+        return response
+
+    async def get_job(self, db_session: AsyncSession, job_id: int) -> Optional[InviteJob]:
+        result = await db_session.execute(select(InviteJob).where(InviteJob.id == job_id))
+        return result.scalar_one_or_none()
+
+    async def submit_redeem_job(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        code: str,
+    ) -> Dict[str, Any]:
+        normalized_email = self._normalize_email(email)
+        normalized_code = (code or "").strip()
+        if not normalized_email:
+            return {"success": False, "error": "邮箱不能为空"}
+        if not normalized_code:
+            return {"success": False, "error": "兑换码不能为空"}
+
+        async with self._submit_lock:
+            try:
+                existing_job = await self._find_active_redeem_job(db_session, normalized_code)
+                if existing_job:
+                    return self.serialize_job(existing_job)
+
+                validate_result = await self.redemption_service.validate_code(normalized_code, db_session)
+                if not validate_result.get("success"):
+                    await db_session.rollback()
+                    return {"success": False, "error": validate_result.get("error") or "兑换码校验失败"}
+                if not validate_result.get("valid"):
+                    if validate_result.get("reason") == "兑换码已过期 (超过首次兑换截止时间)":
+                        await db_session.commit()
+                    else:
+                        await db_session.rollback()
+                    return {"success": False, "error": validate_result.get("reason") or "兑换码不可用"}
+
+                team = await self._reserve_next_available_team(db_session)
+                if not team:
+                    await db_session.rollback()
+                    return {"success": False, "error": "当前没有可用 Team，请稍后再试"}
+
+                redemption_code = await self._get_redemption_code(db_session, normalized_code)
+                if not redemption_code or redemption_code.status != "unused":
+                    await db_session.rollback()
+                    return {"success": False, "error": "兑换码不可用或正在处理中"}
+
+                redemption_code.status = "processing"
+                job = InviteJob(
+                    job_type=JOB_TYPE_REDEEM,
+                    status=JOB_STATUS_QUEUED,
+                    email=normalized_email,
+                    code=normalized_code,
+                    team_id=team.id,
+                    idempotency_key=f"{JOB_TYPE_REDEEM}:{normalized_code}",
+                    reservation_released=False,
+                    created_at=get_now(),
+                    updated_at=get_now(),
+                )
+                db_session.add(job)
+                await db_session.commit()
+                await db_session.refresh(job)
+                return self.serialize_job(job)
+            except Exception as exc:
+                await db_session.rollback()
+                logger.exception("创建兑换队列任务失败: %s", exc)
+                return {"success": False, "error": f"创建兑换任务失败: {str(exc)}"}
+
+    async def submit_warranty_job(
+        self,
+        db_session: AsyncSession,
+        email: str,
+    ) -> Dict[str, Any]:
+        submitted_at = get_now()
+        normalized_email = self._normalize_email(email)
+        if not normalized_email:
+            return {"success": False, "error": "邮箱不能为空"}
+
+        async with self._submit_lock:
+            try:
+                existing_job = await self._find_active_warranty_job(db_session, normalized_email)
+                if existing_job:
+                    return self.serialize_job(existing_job)
+
+                validation_result = await self.warranty_service.validate_warranty_claim_input(
+                    db_session=db_session,
+                    email=normalized_email,
+                    require_latest_team_banned=True,
+                )
+                if not validation_result.get("success"):
+                    await self.warranty_service._record_warranty_claim_result(
+                        db_session=db_session,
+                        email=normalized_email,
+                        submitted_at=submitted_at,
+                        claim_status="failed",
+                        before_team_info=validation_result.get("latest_team_info"),
+                        failure_reason=validation_result.get("error"),
+                    )
+                    return validation_result
+
+                team = await self._reserve_next_available_team(db_session)
+                if not team:
+                    await db_session.rollback()
+                    await self.warranty_service._record_warranty_claim_result(
+                        db_session=db_session,
+                        email=normalized_email,
+                        submitted_at=submitted_at,
+                        claim_status="failed",
+                        before_team_info=validation_result.get("latest_team_info"),
+                        failure_reason="当前没有可用的 Team，请稍后再试",
+                    )
+                    return {"success": False, "error": "当前没有可用的 Team，请稍后再试"}
+
+                warranty_entry: WarrantyEmailEntry = validation_result["warranty_entry"]
+                job = InviteJob(
+                    job_type=JOB_TYPE_WARRANTY,
+                    status=JOB_STATUS_QUEUED,
+                    email=normalized_email,
+                    code=warranty_entry.last_redeem_code,
+                    team_id=team.id,
+                    idempotency_key=f"{JOB_TYPE_WARRANTY}:{normalized_email}",
+                    reservation_released=False,
+                    created_at=submitted_at,
+                    updated_at=get_now(),
+                )
+                db_session.add(job)
+                await db_session.commit()
+                await db_session.refresh(job)
+                return self.serialize_job(job)
+            except Exception as exc:
+                await db_session.rollback()
+                logger.exception("创建质保队列任务失败: %s", exc)
+                return {"success": False, "error": f"创建质保任务失败: {str(exc)}"}
+
+    async def process_job_now(self, job_id: int) -> None:
+        """测试/维护入口：立即处理指定任务。"""
+        await self._process_job(job_id)
+
+    async def recover_stale_processing_jobs(self) -> Dict[str, int]:
+        timeout_seconds = max(int(settings.invite_queue_processing_timeout_seconds or 600), 1)
+        cutoff = get_now() - timedelta(seconds=timeout_seconds)
+        recovered = 0
+        failed = 0
+
+        async with AsyncSessionLocal() as db_session:
+            result = await db_session.execute(
+                select(InviteJob).where(
+                    InviteJob.status == JOB_STATUS_PROCESSING,
+                    InviteJob.started_at.is_not(None),
+                    InviteJob.started_at <= cutoff,
+                )
+            )
+            jobs = result.scalars().all()
+            for job in jobs:
+                await self._release_job_reservation(db_session, job)
+                if int(job.attempt_count or 0) >= int(job.max_attempts or 5):
+                    await self._mark_job_failed(
+                        db_session,
+                        job,
+                        "任务处理超时次数过多，请稍后重试",
+                        commit=False,
+                    )
+                    failed += 1
+                else:
+                    job.status = JOB_STATUS_QUEUED
+                    job.team_id = None
+                    job.started_at = None
+                    job.error = "任务处理超时，已重新排队"
+                    job.updated_at = get_now()
+                    recovered += 1
+            await db_session.commit()
+        return {"recovered": recovered, "failed": failed}
+
+    async def _worker_loop(self, worker_index: int) -> None:
+        poll_interval = max(float(settings.invite_queue_poll_interval_seconds or 1), 0.2)
+        while self._stop_event and not self._stop_event.is_set():
+            try:
+                await self.recover_stale_processing_jobs()
+                job_id = await self._claim_next_job()
+                if not job_id:
+                    await asyncio.sleep(poll_interval)
+                    continue
+                logger.info("拉人队列 worker-%s 开始处理 job_id=%s", worker_index, job_id)
+                await self._process_job(job_id)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.exception("拉人队列 worker-%s 执行失败: %s", worker_index, exc)
+                await asyncio.sleep(poll_interval)
+
+    async def _claim_next_job(self) -> Optional[int]:
+        async with AsyncSessionLocal() as db_session:
+            result = await db_session.execute(
+                select(InviteJob)
+                .where(InviteJob.status == JOB_STATUS_QUEUED)
+                .order_by(InviteJob.created_at.asc(), InviteJob.id.asc())
+                .limit(20)
+            )
+            for job in result.scalars().all():
+                if job.team_id and self._team_locks[job.team_id].locked():
+                    continue
+                now = get_now()
+                update_result = await db_session.execute(
+                    update(InviteJob)
+                    .where(InviteJob.id == job.id, InviteJob.status == JOB_STATUS_QUEUED)
+                    .values(status=JOB_STATUS_PROCESSING, started_at=now, updated_at=now)
+                )
+                if update_result.rowcount == 1:
+                    await db_session.commit()
+                    return job.id
+            await db_session.rollback()
+            return None
+
+    async def _process_job(self, job_id: int) -> None:
+        excluded_team_ids: List[int] = []
+        while True:
+            async with AsyncSessionLocal() as db_session:
+                job = await self.get_job(db_session, job_id)
+                if not job or job.status in TERMINAL_JOB_STATUSES:
+                    return
+
+                if int(job.attempt_count or 0) >= int(job.max_attempts or 5):
+                    await self._mark_job_failed(db_session, job, "任务重试次数过多，请稍后重试")
+                    return
+
+                if not job.team_id or job.reservation_released:
+                    team = await self._reserve_next_available_team(db_session, excluded_team_ids)
+                    if not team:
+                        await self._mark_job_failed(db_session, job, "当前没有可用 Team，请稍后再试")
+                        return
+                    job.team_id = team.id
+                    job.reservation_released = False
+                    job.updated_at = get_now()
+                    await db_session.commit()
+
+                team_id = int(job.team_id)
+
+            async with self._team_locks[team_id]:
+                async with AsyncSessionLocal() as db_session:
+                    job = await self.get_job(db_session, job_id)
+                    if not job or job.status in TERMINAL_JOB_STATUSES:
+                        return
+                    if job.status != JOB_STATUS_PROCESSING:
+                        job.status = JOB_STATUS_PROCESSING
+                        job.started_at = get_now()
+                    job.attempt_count = int(job.attempt_count or 0) + 1
+                    job.updated_at = get_now()
+                    await db_session.commit()
+
+                    outcome = await self._send_invite_for_job(db_session, job)
+                    if outcome.get("success"):
+                        await self._mark_job_success(db_session, job, outcome["payload"])
+                        return
+
+                    error_message = outcome.get("error") or "邀请失败"
+                    if outcome.get("try_next_team") and int(job.attempt_count or 0) < int(job.max_attempts or 5):
+                        excluded_team_ids.append(team_id)
+                        await self._release_job_reservation(db_session, job)
+                        job.team_id = None
+                        job.status = JOB_STATUS_PROCESSING
+                        job.error = error_message
+                        job.updated_at = get_now()
+                        await db_session.commit()
+                        continue
+
+                    await self._mark_job_failed(db_session, job, error_message)
+                    return
+
+    async def _send_invite_for_job(self, db_session: AsyncSession, job: InviteJob) -> Dict[str, Any]:
+        team_id = int(job.team_id or 0)
+        if team_id <= 0:
+            return {"success": False, "try_next_team": True, "error": "未分配 Team"}
+
+        refresh_source = SOURCE_USER_REDEEM if job.job_type == JOB_TYPE_REDEEM else SOURCE_USER_WARRANTY
+        refresh_result = await self.team_service.refresh_team_state(team_id, db_session, source=refresh_source)
+        await db_session.commit()
+        if not refresh_result.get("success"):
+            return {
+                "success": False,
+                "try_next_team": bool(refresh_result.get("allow_try_next_team")),
+                "error": refresh_result.get("error") or "刷新 Team 状态失败",
+            }
+
+        team = await db_session.get(Team, team_id)
+        if not team:
+            return {"success": False, "try_next_team": True, "error": "目标 Team 不存在"}
+        if team.status != "active":
+            return {"success": False, "try_next_team": True, "error": f"目标 Team 不可用 ({team.status})"}
+        if int(team.current_members or 0) >= int(team.max_members or 0):
+            team.status = "full"
+            await db_session.commit()
+            return {"success": False, "try_next_team": True, "error": "该 Team 已满，请稍后再试"}
+
+        if job.job_type == JOB_TYPE_WARRANTY:
+            existing_payload = await self._build_existing_warranty_payload(db_session, job)
+            if existing_payload:
+                return {"success": True, "payload": existing_payload}
+
+        access_token = await self.team_service.ensure_access_token(team, db_session)
+        if not access_token:
+            return {"success": False, "try_next_team": True, "error": "获取 Team 访问权限失败，账户状态异常"}
+
+        invite_result = await self.team_service.chatgpt_service.send_invite(
+            access_token,
+            team.account_id,
+            job.email,
+            db_session,
+            identifier=team.email,
+        )
+        if not invite_result.get("success"):
+            error_msg = str(invite_result.get("error") or "发送邀请失败")
+            if self._is_already_member_error(error_msg):
+                return {"success": True, "payload": await self._build_success_payload(db_session, job, team)}
+
+            handled = await self.team_service._handle_api_error(invite_result, team, db_session)
+            await db_session.commit()
+            try_next = bool(
+                handled
+                and (
+                    team.status in {"full", "expired", "error", "banned"}
+                    or self.team_service._is_team_full_error_message(error_msg)
+                )
+            )
+            return {"success": False, "try_next_team": try_next, "error": error_msg}
+
+        invite_data = invite_result.get("data") or {}
+        if "account_invites" in invite_data and not invite_data.get("account_invites"):
+            await self.team_service._handle_api_error(
+                {"success": False, "error": "官方拦截下发(响应空列表)", "error_code": "ghost_success"},
+                team,
+                db_session,
+            )
+            await db_session.commit()
+            return {
+                "success": False,
+                "try_next_team": True,
+                "error": "Team账号受限: 官方拦截下发(响应空列表)，请检查账单/风控状态",
+            }
+
+        return {"success": True, "payload": await self._build_success_payload(db_session, job, team)}
+
+    async def _build_existing_warranty_payload(
+        self,
+        db_session: AsyncSession,
+        job: InviteJob,
+    ) -> Optional[Dict[str, Any]]:
+        warranty_entry = await self.warranty_service.get_warranty_email_entry(db_session, job.email)
+        if not warranty_entry:
+            return None
+
+        existing_team = await self.warranty_service._find_existing_warranty_team_from_entry(db_session, warranty_entry)
+        if not existing_team:
+            existing_team = await self.warranty_service._find_existing_full_warranty_team_for_email_from_records(
+                db_session,
+                job.email,
+            )
+        if not existing_team:
+            return None
+
+        if warranty_entry.last_warranty_team_id != existing_team.id:
+            warranty_entry.last_warranty_team_id = existing_team.id
+            await db_session.commit()
+            await db_session.refresh(warranty_entry)
+
+        await self.warranty_service._record_warranty_claim_result(
+            db_session=db_session,
+            email=job.email,
+            submitted_at=job.created_at or get_now(),
+            claim_status="success",
+            before_team_info=await self._load_before_team_info(db_session, job.email),
+            after_team=existing_team,
+        )
+        return {
+            "success": True,
+            "message": "质保邀请已存在，请直接查收邮箱中的邀请邮件。",
+            "team_info": self._serialize_team_info(existing_team),
+            "warranty_info": self.warranty_service.serialize_warranty_email_entry(warranty_entry),
+            "_skip_member_increment": True,
+        }
+
+    async def _build_success_payload(
+        self,
+        db_session: AsyncSession,
+        job: InviteJob,
+        team: Team,
+    ) -> Dict[str, Any]:
+        if job.job_type == JOB_TYPE_WARRANTY:
+            warranty_entry = await self.warranty_service.get_warranty_email_entry(db_session, job.email)
+            if not warranty_entry:
+                return {"success": False, "error": "质保邮箱记录不存在"}
+            await self.warranty_service._record_warranty_claim_success(
+                db_session=db_session,
+                entry=warranty_entry,
+                email=job.email,
+                team=team,
+            )
+            await self.warranty_service._record_warranty_claim_result(
+                db_session=db_session,
+                email=job.email,
+                submitted_at=job.created_at or get_now(),
+                claim_status="success",
+                before_team_info=await self._load_before_team_info(db_session, job.email),
+                after_team=team,
+            )
+            return {
+                "success": True,
+                "message": "质保邀请发送成功，请查收邮箱。",
+                "team_info": self._serialize_team_info(team),
+                "warranty_info": self.warranty_service.serialize_warranty_email_entry(warranty_entry),
+            }
+
+        redemption_code = await self._get_redemption_code(db_session, job.code or "")
+        if not redemption_code:
+            return {"success": False, "error": "兑换码不存在"}
+
+        redemption_code.status = "used"
+        redemption_code.used_by_email = job.email
+        redemption_code.used_team_id = team.id
+        redemption_code.used_at = get_now()
+        if redemption_code.has_warranty:
+            days = redemption_code.warranty_days if redemption_code.warranty_days is not None else 30
+            redemption_code.warranty_expires_at = get_now() + timedelta(days=days)
+
+        db_session.add(
+            RedemptionRecord(
+                email=job.email,
+                code=job.code or "",
+                team_id=team.id,
+                account_id=team.account_id,
+                is_warranty_redemption=bool(redemption_code.has_warranty),
+            )
+        )
+        await self.warranty_service.sync_warranty_email_entry_after_redeem(
+            db_session=db_session,
+            email=job.email,
+            redeem_code=job.code or "",
+            has_warranty_code=bool(redemption_code.has_warranty),
+        )
+        await db_session.flush()
+        await email_whitelist_service.sync_from_dependency_sources(db_session, commit=False)
+        await db_session.commit()
+
+        return {
+            "success": True,
+            "message": "兑换成功！邀请链接已发送至您的邮箱，请及时查收。",
+            "team_info": self._serialize_team_info(team),
+        }
+
+    async def _mark_job_success(self, db_session: AsyncSession, job: InviteJob, payload: Dict[str, Any]) -> None:
+        if payload.get("success") is False:
+            await self._mark_job_failed(db_session, job, payload.get("error") or "任务处理失败")
+            return
+
+        skip_member_increment = bool(payload.pop("_skip_member_increment", False))
+        source = SOURCE_USER_REDEEM if job.job_type == JOB_TYPE_REDEEM else SOURCE_USER_WARRANTY
+        post_sync = await self.team_service.refresh_team_state(int(job.team_id), db_session, source=source)
+        await db_session.commit()
+
+        job = await self.get_job(db_session, int(job.id))
+        if not job:
+            return
+        team = await db_session.get(Team, int(job.team_id)) if job.team_id else None
+        await self._release_job_reservation(db_session, job)
+        if team and not skip_member_increment:
+            member_emails = [self._normalize_email(email) for email in post_sync.get("member_emails", [])]
+            if self._normalize_email(job.email) not in member_emails and int(team.current_members or 0) < int(team.max_members or 0):
+                team.current_members = min(int(team.max_members or 0), int(team.current_members or 0) + 1)
+            if int(team.current_members or 0) >= int(team.max_members or 0):
+                team.status = "full"
+            elif team.status == "full":
+                team.status = "active"
+
+        job.status = JOB_STATUS_SUCCESS
+        job.error = None
+        job.result_payload = self._encode_payload(payload)
+        job.completed_at = get_now()
+        job.updated_at = get_now()
+        await db_session.commit()
+
+    async def _mark_job_failed(
+        self,
+        db_session: AsyncSession,
+        job: InviteJob,
+        error: str,
+        commit: bool = True,
+    ) -> None:
+        await self._release_job_reservation(db_session, job)
+        if job.job_type == JOB_TYPE_REDEEM and job.code:
+            redemption_code = await self._get_redemption_code(db_session, job.code)
+            if redemption_code and redemption_code.status == "processing":
+                redemption_code.status = "unused"
+        if job.job_type == JOB_TYPE_WARRANTY:
+            await self.warranty_service._record_warranty_claim_result(
+                db_session=db_session,
+                email=job.email,
+                submitted_at=job.created_at or get_now(),
+                claim_status="failed",
+                before_team_info=await self._load_before_team_info(db_session, job.email),
+                failure_reason=error,
+            )
+            job = await self.get_job(db_session, int(job.id)) or job
+
+        job.status = JOB_STATUS_FAILED
+        job.error = error
+        job.result_payload = self._encode_payload({"success": False, "error": error})
+        job.completed_at = get_now()
+        job.updated_at = get_now()
+        if commit:
+            await db_session.commit()
+
+    async def _reserve_next_available_team(
+        self,
+        db_session: AsyncSession,
+        exclude_team_ids: Optional[List[int]] = None,
+    ) -> Optional[Team]:
+        exclude_team_ids = list(dict.fromkeys([int(team_id) for team_id in exclude_team_ids or [] if team_id]))
+        capacity_expr = func.coalesce(Team.current_members, 0) + func.coalesce(Team.reserved_members, 0)
+        stmt = select(Team.id).where(
+            Team.status == "active",
+            capacity_expr < Team.max_members,
+            Team.import_status == IMPORT_STATUS_CLASSIFIED,
+            or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
+        )
+        if exclude_team_ids:
+            stmt = stmt.where(Team.id.not_in(exclude_team_ids))
+        stmt = stmt.order_by(
+            func.coalesce(Team.reserved_members, 0).asc(),
+            func.coalesce(Team.current_members, 0).asc(),
+            Team.id.asc(),
+        ).limit(20)
+
+        result = await db_session.execute(stmt)
+        for team_id in result.scalars().all():
+            update_stmt = update(Team).where(
+                Team.id == int(team_id),
+                Team.status == "active",
+                (func.coalesce(Team.current_members, 0) + func.coalesce(Team.reserved_members, 0)) < Team.max_members,
+                Team.import_status == IMPORT_STATUS_CLASSIFIED,
+                or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
+            )
+            if exclude_team_ids:
+                update_stmt = update_stmt.where(Team.id.not_in(exclude_team_ids))
+            update_result = await db_session.execute(
+                update_stmt.values(reserved_members=func.coalesce(Team.reserved_members, 0) + 1)
+            )
+            if update_result.rowcount == 1:
+                await db_session.flush()
+                team = await db_session.get(Team, int(team_id))
+                if team:
+                    await db_session.refresh(team)
+                    return team
+        return None
+
+    async def _release_job_reservation(self, db_session: AsyncSession, job: InviteJob) -> None:
+        if not job.team_id or job.reservation_released:
+            return
+        await db_session.execute(
+            update(Team)
+            .where(Team.id == int(job.team_id))
+            .values(
+                reserved_members=func.max(func.coalesce(Team.reserved_members, 0) - 1, 0)
+            )
+        )
+        job.reservation_released = True
+        job.updated_at = get_now()
+        await db_session.flush()
+
+    async def _find_active_redeem_job(self, db_session: AsyncSession, code: str) -> Optional[InviteJob]:
+        result = await db_session.execute(
+            select(InviteJob).where(
+                InviteJob.job_type == JOB_TYPE_REDEEM,
+                InviteJob.code == code,
+                InviteJob.status.in_(ACTIVE_JOB_STATUSES),
+            ).order_by(InviteJob.created_at.desc(), InviteJob.id.desc())
+        )
+        return result.scalars().first()
+
+    async def _find_active_warranty_job(self, db_session: AsyncSession, email: str) -> Optional[InviteJob]:
+        result = await db_session.execute(
+            select(InviteJob).where(
+                InviteJob.job_type == JOB_TYPE_WARRANTY,
+                InviteJob.email == email,
+                InviteJob.status.in_(ACTIVE_JOB_STATUSES),
+            ).order_by(InviteJob.created_at.desc(), InviteJob.id.desc())
+        )
+        return result.scalars().first()
+
+    async def _get_redemption_code(self, db_session: AsyncSession, code: str) -> Optional[RedemptionCode]:
+        result = await db_session.execute(select(RedemptionCode).where(RedemptionCode.code == code))
+        return result.scalar_one_or_none()
+
+    async def _load_before_team_info(self, db_session: AsyncSession, email: str) -> Optional[Dict[str, Any]]:
+        try:
+            latest_context = await self.warranty_service._load_latest_team_context_for_email(db_session, email)
+            if latest_context:
+                return latest_context.get("team_info")
+        except Exception as exc:
+            logger.warning("读取质保提交前 Team 信息失败: email=%s error=%s", email, exc)
+        return None
+
+    def _serialize_team_info(self, team: Team) -> Dict[str, Any]:
+        return {
+            "id": team.id,
+            "team_name": team.team_name,
+            "email": team.email,
+            "expires_at": team.expires_at.isoformat() if team.expires_at else None,
+        }
+
+    def _get_job_message(self, job: InviteJob) -> str:
+        if job.status == JOB_STATUS_QUEUED:
+            return "请求已进入队列，请保持页面开启等待处理。"
+        if job.status == JOB_STATUS_PROCESSING:
+            return "正在为您处理邀请，请勿重复提交。"
+        if job.status == JOB_STATUS_SUCCESS:
+            return "处理成功。"
+        return job.error or "处理失败，请稍后重试。"
+
+    def _normalize_email(self, email: str) -> str:
+        return (email or "").strip().lower()
+
+    def _is_already_member_error(self, error_msg: str) -> bool:
+        normalized_error = (error_msg or "").lower()
+        return any(keyword in normalized_error for keyword in ["already in workspace", "already in team", "already a member"])
+
+    def _encode_payload(self, payload: Dict[str, Any]) -> str:
+        return json.dumps(payload, ensure_ascii=False)
+
+    def _decode_payload(self, payload: Optional[str]) -> Optional[Dict[str, Any]]:
+        if not payload:
+            return None
+        try:
+            decoded = json.loads(payload)
+            return decoded if isinstance(decoded, dict) else None
+        except Exception:
+            return None
+
+
+invite_queue_service = InviteQueueService()

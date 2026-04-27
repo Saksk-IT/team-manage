@@ -356,6 +356,17 @@ def run_auto_migration():
             """)
             migrations_applied.append("teams.last_refresh_at")
 
+        if not column_exists(cursor, "teams", "reserved_members"):
+            logger.info("添加 teams.reserved_members 字段")
+            cursor.execute("ALTER TABLE teams ADD COLUMN reserved_members INTEGER DEFAULT 0 NOT NULL")
+            migrations_applied.append("teams.reserved_members")
+
+        cursor.execute("""
+            UPDATE teams
+            SET reserved_members = 0
+            WHERE reserved_members IS NULL OR reserved_members < 0
+        """)
+
         cursor.execute("""
             UPDATE teams
             SET import_status = 'classified'
@@ -417,6 +428,51 @@ def run_auto_migration():
                 ON team_member_snapshots (email)
             """)
             migrations_applied.append("team_member_snapshots")
+
+        if not table_exists(cursor, "invite_jobs"):
+            logger.info("创建 invite_jobs 表")
+            cursor.execute("""
+                CREATE TABLE invite_jobs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_type VARCHAR(20) NOT NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'queued',
+                    email VARCHAR(255) NOT NULL,
+                    code VARCHAR(32),
+                    team_id INTEGER,
+                    idempotency_key VARCHAR(255) NOT NULL,
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    max_attempts INTEGER NOT NULL DEFAULT 5,
+                    reservation_released BOOLEAN NOT NULL DEFAULT 0,
+                    error TEXT,
+                    result_payload TEXT,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    started_at DATETIME,
+                    completed_at DATETIME,
+                    FOREIGN KEY(team_id) REFERENCES teams(id)
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_invite_jobs_status_created_at
+                ON invite_jobs (status, created_at)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_invite_jobs_type_email
+                ON invite_jobs (job_type, email)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_invite_jobs_code
+                ON invite_jobs (code)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_invite_jobs_team_status
+                ON invite_jobs (team_id, status)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_invite_jobs_idempotency
+                ON invite_jobs (idempotency_key)
+            """)
+            migrations_applied.append("invite_jobs")
 
         if not table_exists(cursor, "warranty_team_whitelist_entries"):
             logger.info("创建邮箱白名单表 warranty_team_whitelist_entries")

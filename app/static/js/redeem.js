@@ -405,6 +405,82 @@ function delay(ms) {
     });
 }
 
+function isQueuedInviteJob(data) {
+    const status = data?.job_status || data?.status;
+    return Boolean(data?.job_id && (data?.queued || status === 'queued' || status === 'processing'));
+}
+
+function getInviteJobStatus(data) {
+    return data?.job_status || data?.status || '';
+}
+
+async function waitForInviteJob(initialData, options = {}) {
+    const jobId = initialData?.job_id;
+    if (!jobId) {
+        return initialData;
+    }
+
+    const flowType = options.flowType || 'redeem';
+    const maxPolls = Number.isFinite(options.maxPolls) ? options.maxPolls : 240;
+    let pollAfterMs = Number(initialData.poll_after_ms || 1500);
+
+    for (let pollIndex = 0; pollIndex < maxPolls; pollIndex += 1) {
+        const status = getInviteJobStatus(initialData);
+        if (pollIndex === 0 && status === 'queued') {
+            setTransitionOverlayStage(1, {
+                message: '请求已进入队列，系统会按 Team 席位顺序自动处理。'
+            });
+        }
+
+        await delay(Math.max(pollAfterMs, 800));
+
+        const response = await fetch(`/invite-jobs/${encodeURIComponent(jobId)}`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+        const text = await response.text();
+        let data = null;
+        try {
+            data = text ? JSON.parse(text) : null;
+        } catch (error) {
+            throw new Error('服务器响应格式错误');
+        }
+
+        if (!response.ok) {
+            throw new Error(data?.detail || data?.error || '查询任务状态失败');
+        }
+
+        const jobStatus = getInviteJobStatus(data);
+        if (jobStatus === 'success') {
+            advanceTransitionOverlay(2, {
+                message: flowType === 'warranty'
+                    ? '质保邀请已发送，正在展示结果。'
+                    : 'Team 邀请已发送，正在展示结果。'
+            });
+            return data;
+        }
+
+        if (jobStatus === 'failed' || data?.success === false) {
+            throw new Error(data?.error || data?.message || '处理失败，请稍后重试');
+        }
+
+        pollAfterMs = Number(data?.poll_after_ms || pollAfterMs || 1500);
+        if (jobStatus === 'processing') {
+            advanceTransitionOverlay(2, {
+                message: flowType === 'warranty'
+                    ? '正在发送质保邀请，请继续保持页面开启。'
+                    : '正在发送 Team 邀请，请继续保持页面开启。'
+            });
+        } else {
+            setTransitionOverlayHint('请求已记录并排队中，请勿重复提交。');
+        }
+    }
+
+    throw new Error('请求仍在处理中，请稍后刷新或联系管理员查询结果。');
+}
+
 function setCustomerServiceWidgetOpen(isOpen) {
     if (!customerServiceWidget || !customerServiceFab || !customerServicePanel) {
         return;
@@ -1227,10 +1303,16 @@ async function submitWarrantyClaim(email) {
         }
 
         if (response.ok && data.success) {
-            advanceTransitionOverlay(2, {
-                message: '质保邀请已发送，正在整理结果。'
-            });
-            showWarrantyClaimSuccessResult(data, email);
+            if (isQueuedInviteJob(data)) {
+                showToast('质保申请已进入队列，请保持页面开启等待结果。', 'info');
+                const finalData = await waitForInviteJob(data, { flowType: 'warranty' });
+                showWarrantyClaimSuccessResult(finalData, email);
+            } else {
+                advanceTransitionOverlay(2, {
+                    message: '质保邀请已发送，正在整理结果。'
+                });
+                showWarrantyClaimSuccessResult(data, email);
+            }
         } else {
             let errorMessage = '校验失败或当前无法提供质保服务';
             if (typeof data.detail === 'string') {
@@ -1411,9 +1493,16 @@ async function confirmRedeem(teamId, options = {}) {
         }
 
         if (response.ok && data.success) {
-            // 兑换成功
-            console.log('Redemption success');
-            showSuccessResult(data);
+            if (isQueuedInviteJob(data)) {
+                console.log('Redemption queued:', data.job_id);
+                showToast('兑换请求已进入队列，请保持页面开启等待结果。', 'info');
+                const finalData = await waitForInviteJob(data, { flowType: 'redeem' });
+                showSuccessResult(finalData);
+            } else {
+                // 兑换成功
+                console.log('Redemption success');
+                showSuccessResult(data);
+            }
         } else {
             // 兑换失败
             console.warn('Redemption failed:', data);

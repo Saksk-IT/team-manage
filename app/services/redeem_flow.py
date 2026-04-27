@@ -172,9 +172,10 @@ class RedeemFlowService:
         """
         try:
             # 查找所有 active 且未满的 Team
+            capacity_expr = func.coalesce(Team.current_members, 0) + func.coalesce(Team.reserved_members, 0)
             stmt = select(Team).where(
                 Team.status == "active",
-                Team.current_members < Team.max_members,
+                capacity_expr < Team.max_members,
                 Team.import_status == IMPORT_STATUS_CLASSIFIED,
                 or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
             )

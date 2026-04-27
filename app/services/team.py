@@ -2922,9 +2922,10 @@ class TeamService:
         """
         try:
             # 查询 status='active' 且 current_members < max_members 的 Team
+            capacity_expr = func.coalesce(Team.current_members, 0) + func.coalesce(Team.reserved_members, 0)
             stmt = select(Team).where(
                 Team.status == "active",
-                Team.current_members < Team.max_members,
+                capacity_expr < Team.max_members,
                 Team.import_status == IMPORT_STATUS_CLASSIFIED,
                 or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
             )
@@ -3448,9 +3449,10 @@ class TeamService:
         """
         try:
             # 统计所有状态为 active 的 Team 的剩余位置
-            stmt = select(func.sum(Team.max_members - Team.current_members)).where(
+            occupied_expr = func.coalesce(Team.current_members, 0) + func.coalesce(Team.reserved_members, 0)
+            stmt = select(func.sum(Team.max_members - occupied_expr)).where(
                 Team.status == "active",
-                Team.current_members < Team.max_members,
+                occupied_expr < Team.max_members,
                 Team.import_status == IMPORT_STATUS_CLASSIFIED,
                 or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
             )
@@ -3480,9 +3482,10 @@ class TeamService:
             total = total_result.scalar() or 0
             
             # 可用 Team 数 (状态为 active 且未满)
+            occupied_expr = func.coalesce(Team.current_members, 0) + func.coalesce(Team.reserved_members, 0)
             available_stmt = select(func.count(Team.id)).where(
                 Team.status == "active",
-                Team.current_members < Team.max_members
+                occupied_expr < Team.max_members
             )
             if team_type:
                 available_stmt = available_stmt.where(Team.team_type == team_type)
@@ -3510,9 +3513,9 @@ class TeamService:
             total_seats_result = await db_session.execute(total_seats_stmt)
             total_seats = total_seats_result.scalar() or 0
 
-            remaining_seats_stmt = select(func.sum(Team.max_members - Team.current_members)).where(
+            remaining_seats_stmt = select(func.sum(Team.max_members - occupied_expr)).where(
                 Team.status == "active",
-                Team.current_members < Team.max_members
+                occupied_expr < Team.max_members
             )
             if team_type:
                 remaining_seats_stmt = remaining_seats_stmt.where(Team.team_type == team_type)

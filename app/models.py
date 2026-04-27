@@ -47,6 +47,7 @@ class Team(Base):
     subscription_plan = Column(String(100), comment="订阅计划")
     expires_at = Column(DateTime, comment="订阅到期时间")
     current_members = Column(Integer, default=0, comment="当前成员数")
+    reserved_members = Column(Integer, default=0, nullable=False, comment="已预占/排队中的成员席位数")
     max_members = Column(Integer, default=5, comment="最大成员数")
     status = Column(String(20), default="active", comment="状态: active/full/expired/error/banned")
     account_role = Column(String(50), comment="账号角色: account-owner/standard-user 等")
@@ -163,6 +164,36 @@ class RedemptionRecord(Base):
     # 索引
     __table_args__ = (
         Index("idx_email", "email"),
+    )
+
+
+class InviteJob(Base):
+    """前台拉人队列表"""
+    __tablename__ = "invite_jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_type = Column(String(20), nullable=False, comment="任务类型: redeem/warranty")
+    status = Column(String(20), nullable=False, default="queued", comment="状态: queued/processing/success/failed")
+    email = Column(String(255), nullable=False, comment="用户邮箱（统一小写）")
+    code = Column(String(32), comment="兑换码；质保任务为最近普通兑换码")
+    team_id = Column(Integer, ForeignKey("teams.id"), comment="当前预占/处理的 Team ID")
+    idempotency_key = Column(String(255), nullable=False, comment="幂等键")
+    attempt_count = Column(Integer, default=0, nullable=False, comment="处理尝试次数")
+    max_attempts = Column(Integer, default=5, nullable=False, comment="最大处理尝试次数")
+    reservation_released = Column(Boolean, default=False, nullable=False, comment="当前 Team 预占是否已释放")
+    error = Column(Text, comment="失败原因")
+    result_payload = Column(Text, comment="成功/失败结果 JSON")
+    created_at = Column(DateTime, default=get_now, nullable=False, comment="创建时间")
+    updated_at = Column(DateTime, default=get_now, onupdate=get_now, nullable=False, comment="更新时间")
+    started_at = Column(DateTime, comment="开始处理时间")
+    completed_at = Column(DateTime, comment="完成时间")
+
+    __table_args__ = (
+        Index("idx_invite_jobs_status_created_at", "status", "created_at"),
+        Index("idx_invite_jobs_type_email", "job_type", "email"),
+        Index("idx_invite_jobs_code", "code"),
+        Index("idx_invite_jobs_team_status", "team_id", "status"),
+        Index("idx_invite_jobs_idempotency", "idempotency_key"),
     )
 
 

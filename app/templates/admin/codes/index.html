@@ -177,6 +177,8 @@
                         <span class="status-badge status-active">未使用</span>
                         {% elif code.status == 'used' %}
                         <span class="status-badge status-full">已使用</span>
+                        {% elif code.status == 'processing' %}
+                        <span class="status-badge status-info">处理中</span>
                         {% elif code.status == 'warranty_active' %}
                         <span class="status-badge status-info">质保中</span>
                         {% elif code.status == 'expired' %}

@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # 时区配置
     timezone: str = "Asia/Shanghai"
 
+    # 前台拉人队列
+    invite_queue_worker_count: int = 3
+    invite_queue_poll_interval_seconds: float = 1.0
+    invite_queue_processing_timeout_seconds: int = 600
+
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
         env_file_encoding="utf-8",

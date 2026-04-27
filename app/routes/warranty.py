@@ -8,6 +8,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.services.invite_queue import invite_queue_service
 from app.services.settings import settings_service
 from app.services.warranty import warranty_service
 
@@ -95,7 +96,7 @@ async def claim_warranty(
     db_session: AsyncSession = Depends(get_db)
 ):
     await ensure_warranty_service_enabled(db_session)
-    result = await warranty_service.claim_warranty_invite(
+    result = await invite_queue_service.submit_warranty_job(
         db_session=db_session,
         email=request.email
     )
