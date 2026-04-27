@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from datetime import timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
 from sqlalchemy import select
@@ -11,6 +12,7 @@ from app.models import Team
 from app.services.settings import settings_service
 from app.services.team import TeamService
 from app.services.team_auto_refresh import TeamAutoRefreshService
+from app.utils.time_utils import get_now
 
 
 class FakeSessionContext:
@@ -25,7 +27,7 @@ class FakeSessionContext:
 
 
 class TeamAutoRefreshServiceTests(unittest.IsolatedAsyncioTestCase):
-    async def test_run_once_syncs_refreshable_teams_when_enabled(self):
+    async def test_run_once_syncs_only_one_due_team_when_enabled(self):
         service = TeamAutoRefreshService()
         fake_sessions = []
 
@@ -33,11 +35,6 @@ class TeamAutoRefreshServiceTests(unittest.IsolatedAsyncioTestCase):
             session = AsyncMock()
             fake_sessions.append(session)
             return FakeSessionContext(session)
-
-        sync_results = [
-            {"success": True, "message": "同步成功", "error": None},
-            {"success": False, "message": None, "error": "Token 已过期且无法刷新"},
-        ]
 
         with (
             patch.object(
@@ -48,25 +45,24 @@ class TeamAutoRefreshServiceTests(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 service,
                 "_get_refreshable_team_ids",
-                new=AsyncMock(return_value=[11, 22])
-            ),
+                new=AsyncMock(return_value=[11])
+            ) as mocked_ids,
             patch("app.services.team_auto_refresh.AsyncSessionLocal", side_effect=session_factory),
             patch(
                 "app.services.team_auto_refresh.team_service.refresh_team_state",
-                new=AsyncMock(side_effect=sync_results)
+                new=AsyncMock(return_value={"success": True, "message": "同步成功", "error": None})
             ) as mocked_refresh,
         ):
             interval = await service.run_once()
 
         self.assertEqual(interval, 5)
-        self.assertEqual(len(fake_sessions), 2)
+        mocked_ids.assert_awaited_once_with(interval_minutes=5, limit=1)
+        self.assertEqual(len(fake_sessions), 1)
         fake_sessions[0].commit.assert_awaited_once()
-        fake_sessions[1].commit.assert_awaited_once()
-        self.assertEqual(mocked_refresh.await_count, 2)
+        self.assertEqual(mocked_refresh.await_count, 1)
         self.assertEqual(mocked_refresh.await_args_list[0].args[0], 11)
-        self.assertEqual(mocked_refresh.await_args_list[1].args[0], 22)
         self.assertFalse(mocked_refresh.await_args_list[0].kwargs["force_refresh"])
-        self.assertFalse(mocked_refresh.await_args_list[1].kwargs["force_refresh"])
+        self.assertEqual(mocked_refresh.await_args_list[0].kwargs["source"], "auto")
 
     async def test_run_once_skips_sync_when_disabled(self):
         service = TeamAutoRefreshService()
@@ -124,7 +120,10 @@ class TeamAutoRefreshServiceTests(unittest.IsolatedAsyncioTestCase):
 
             service = TeamAutoRefreshService()
             with patch("app.services.team_auto_refresh.AsyncSessionLocal", Session):
-                refreshable_ids = await service._get_refreshable_team_ids()
+                refreshable_ids = await service._get_refreshable_team_ids(
+                    interval_minutes=5,
+                    limit=1,
+                )
 
             async with Session() as session:
                 active_team = await session.scalar(
@@ -132,6 +131,66 @@ class TeamAutoRefreshServiceTests(unittest.IsolatedAsyncioTestCase):
                 )
 
             self.assertEqual(refreshable_ids, [active_team.id])
+        finally:
+            await engine.dispose()
+            if os.path.exists(db_path):
+                os.remove(db_path)
+
+    async def test_get_refreshable_team_ids_returns_one_oldest_due_team(self):
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", future=True)
+        Session = async_sessionmaker(engine, expire_on_commit=False)
+
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+
+            now = get_now()
+            async with Session() as session:
+                never_refreshed = Team(
+                    email="never@example.com",
+                    access_token_encrypted="enc-never",
+                    account_id="acc-never",
+                    team_type="standard",
+                    status="active",
+                    current_members=1,
+                    max_members=5,
+                    last_refresh_at=None,
+                )
+                old_refreshed = Team(
+                    email="old@example.com",
+                    access_token_encrypted="enc-old",
+                    account_id="acc-old",
+                    team_type="standard",
+                    status="active",
+                    current_members=1,
+                    max_members=5,
+                    last_refresh_at=now - timedelta(minutes=41),
+                )
+                recent_refreshed = Team(
+                    email="recent@example.com",
+                    access_token_encrypted="enc-recent",
+                    account_id="acc-recent",
+                    team_type="standard",
+                    status="active",
+                    current_members=1,
+                    max_members=5,
+                    last_refresh_at=now - timedelta(minutes=10),
+                )
+                session.add_all([never_refreshed, old_refreshed, recent_refreshed])
+                await session.commit()
+
+                never_id = never_refreshed.id
+
+            service = TeamAutoRefreshService()
+            with patch("app.services.team_auto_refresh.AsyncSessionLocal", Session):
+                refreshable_ids = await service._get_refreshable_team_ids(
+                    interval_minutes=40,
+                    limit=1,
+                )
+
+            self.assertEqual(refreshable_ids, [never_id])
         finally:
             await engine.dispose()
             if os.path.exists(db_path):
@@ -178,7 +237,10 @@ class TeamAutoRefreshServiceTests(unittest.IsolatedAsyncioTestCase):
 
             auto_refresh_service = TeamAutoRefreshService()
             with patch("app.services.team_auto_refresh.AsyncSessionLocal", Session):
-                refreshable_ids = await auto_refresh_service._get_refreshable_team_ids()
+                refreshable_ids = await auto_refresh_service._get_refreshable_team_ids(
+                    interval_minutes=5,
+                    limit=1,
+                )
 
             self.assertFalse(result["success"])
             self.assertEqual(result["error_code"], "deactivated_workspace")

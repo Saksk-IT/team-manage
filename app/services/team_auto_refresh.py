@@ -4,9 +4,11 @@ Team 自动刷新服务
 """
 import asyncio
 import logging
+import math
+from datetime import timedelta
 from typing import Optional, List
 
-from sqlalchemy import select
+from sqlalchemy import case, or_, select
 
 from app.database import AsyncSessionLocal
 from app.models import Team
@@ -15,6 +17,8 @@ from app.services.team import (
     IMPORT_STATUS_CLASSIFIED,
     team_service,
 )
+from app.services.team_refresh_record import SOURCE_AUTO
+from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
 
@@ -86,16 +90,54 @@ class TeamAutoRefreshService:
         async with AsyncSessionLocal() as session:
             return await settings_service.get_team_auto_refresh_config(session)
 
-    async def _get_refreshable_team_ids(self) -> List[int]:
+    async def _get_refreshable_team_ids(
+        self,
+        *,
+        interval_minutes: int,
+        limit: int = 1,
+    ) -> List[int]:
+        refresh_cutoff = get_now() - timedelta(minutes=max(int(interval_minutes or 1), 1))
         async with AsyncSessionLocal() as session:
             stmt = (
                 select(Team.id)
                 .where(Team.status != "banned")
                 .where(Team.import_status == IMPORT_STATUS_CLASSIFIED)
-                .order_by(Team.id.asc())
+                .where(or_(Team.last_refresh_at.is_(None), Team.last_refresh_at <= refresh_cutoff))
+                .order_by(
+                    case((Team.last_refresh_at.is_(None), 0), else_=1).asc(),
+                    Team.last_refresh_at.asc(),
+                    Team.id.asc(),
+                )
+                .limit(max(int(limit or 1), 1))
             )
             result = await session.execute(stmt)
             return list(result.scalars().all())
+
+    async def _get_next_due_delay_minutes(self, *, interval_minutes: int) -> int:
+        now = get_now()
+        async with AsyncSessionLocal() as session:
+            stmt = (
+                select(Team.last_refresh_at)
+                .where(Team.status != "banned")
+                .where(Team.import_status == IMPORT_STATUS_CLASSIFIED)
+                .where(Team.last_refresh_at.is_not(None))
+                .order_by(Team.last_refresh_at.asc(), Team.id.asc())
+                .limit(1)
+            )
+            result = await session.execute(stmt)
+            oldest_refresh_at = result.scalar_one_or_none()
+
+        if not oldest_refresh_at:
+            return interval_minutes
+
+        next_due_at = oldest_refresh_at + timedelta(minutes=max(int(interval_minutes or 1), 1))
+        delay_seconds = (next_due_at - now).total_seconds()
+        if delay_seconds <= 0:
+            return 1
+        return min(
+            max(math.ceil(delay_seconds / 60), 1),
+            max(int(interval_minutes or 1), 1),
+        )
 
     async def run_once(self) -> int:
         """
@@ -112,13 +154,22 @@ class TeamAutoRefreshService:
                 logger.debug("Team 自动刷新已关闭，跳过本轮同步")
                 return interval_minutes
 
-            team_ids = await self._get_refreshable_team_ids()
+            team_ids = await self._get_refreshable_team_ids(
+                interval_minutes=interval_minutes,
+                limit=1,
+            )
             if not team_ids:
-                logger.debug("没有可自动同步的 Team，跳过本轮同步")
-                return interval_minutes
+                next_delay_minutes = await self._get_next_due_delay_minutes(
+                    interval_minutes=interval_minutes,
+                )
+                logger.debug(
+                    "没有到达自动刷新间隔的 Team，下一次检查将在 %s 分钟后执行",
+                    next_delay_minutes,
+                )
+                return next_delay_minutes
 
             logger.info(
-                "开始自动刷新 Team 状态: 共 %s 个账号，间隔 %s 分钟",
+                "开始自动刷新到期 Team 状态: 本轮 %s 个账号，间隔 %s 分钟",
                 len(team_ids),
                 interval_minutes
             )
@@ -137,6 +188,7 @@ class TeamAutoRefreshService:
                             team_id,
                             session,
                             force_refresh=False,
+                            source=SOURCE_AUTO,
                         )
                         await session.commit()
 

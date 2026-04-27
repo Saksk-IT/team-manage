@@ -281,7 +281,8 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         service.team_service.add_team_member.assert_awaited_once_with(
             smallest_warranty_team.id,
             "buyer@example.com",
-            session
+            session,
+            source="user_warranty",
         )
 
     async def test_claim_warranty_does_not_fallback_to_other_available_team(self):
@@ -339,7 +340,8 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         service.team_service.add_team_member.assert_awaited_once_with(
             smallest_warranty_team.id,
             "buyer@example.com",
-            session
+            session,
+            source="user_warranty",
         )
 
     async def test_claim_warranty_falls_back_to_next_team_for_empty_invite_list_error(self):
@@ -405,8 +407,8 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entry.last_warranty_team_id, larger_warranty_team.id)
         service.team_service.add_team_member.assert_has_awaits(
             [
-                call(smallest_warranty_team.id, "buyer@example.com", session),
-                call(larger_warranty_team.id, "buyer@example.com", session),
+                call(smallest_warranty_team.id, "buyer@example.com", session, source="user_warranty"),
+                call(larger_warranty_team.id, "buyer@example.com", session, source="user_warranty"),
             ]
         )
 
@@ -463,7 +465,8 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         service.team_service.add_team_member.assert_awaited_once_with(
             fallback_warranty_team.id,
             "buyer@example.com",
-            session
+            session,
+            source="user_warranty",
         )
 
     async def test_claim_warranty_rejects_when_latest_team_is_not_banned(self):
@@ -525,7 +528,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             service = WarrantyService()
             service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
 
-            async def fake_sync(team_id, db_session, force_refresh=False, progress_callback=None):
+            async def fake_sync(team_id, db_session, force_refresh=False, progress_callback=None, source=None):
                 team = await db_session.get(Team, team_id)
                 team.status = "banned"
                 await db_session.commit()
@@ -541,7 +544,11 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["success"])
         self.assertTrue(result["can_claim"])
         self.assertEqual(result["latest_team"]["status"], "banned")
-        service.team_service.refresh_team_state.assert_awaited_once_with(ordinary_team.id, session)
+        service.team_service.refresh_team_state.assert_awaited_once_with(
+            ordinary_team.id,
+            session,
+            source="user_warranty",
+        )
 
     async def test_get_warranty_claim_status_requires_live_refresh_success(self):
         async with self.Session() as session:
@@ -577,7 +584,11 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(result["success"])
         self.assertEqual(result["error"], "上游接口超时")
-        service.team_service.refresh_team_state.assert_awaited_once_with(ordinary_team.id, session)
+        service.team_service.refresh_team_state.assert_awaited_once_with(
+            ordinary_team.id,
+            session,
+            source="user_warranty",
+        )
 
     async def test_get_warranty_claim_status_treats_deactivated_workspace_as_banned(self):
         async with self.Session() as session:
@@ -604,7 +615,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             service = WarrantyService()
             service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
 
-            async def fake_sync(team_id, db_session, force_refresh=False, progress_callback=None):
+            async def fake_sync(team_id, db_session, force_refresh=False, progress_callback=None, source=None):
                 team = await db_session.get(Team, team_id)
                 team.status = "banned"
                 return {
@@ -653,7 +664,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             service = WarrantyService()
             service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
 
-            async def fake_sync(team_id, db_session, force_refresh=False, progress_callback=None):
+            async def fake_sync(team_id, db_session, force_refresh=False, progress_callback=None, source=None):
                 team = await db_session.get(Team, team_id)
                 team.status = "banned"
                 await db_session.commit()
@@ -714,7 +725,11 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["can_claim"])
         self.assertEqual(result["latest_team"]["id"], warranty_team.id)
         self.assertEqual(result["latest_team"]["email"], warranty_team.email)
-        service.team_service.refresh_team_state.assert_awaited_once_with(warranty_team.id, session)
+        service.team_service.refresh_team_state.assert_awaited_once_with(
+            warranty_team.id,
+            session,
+            source="user_warranty",
+        )
 
     async def test_get_warranty_claim_status_uses_team_member_snapshot_after_live_refresh(self):
         async with self.Session() as session:
@@ -750,7 +765,11 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["can_claim"])
         self.assertEqual(result["latest_team"]["status"], "banned")
         self.assertEqual(result["latest_team"]["code"], None)
-        service.team_service.refresh_team_state.assert_awaited_once_with(ordinary_team.id, session)
+        service.team_service.refresh_team_state.assert_awaited_once_with(
+            ordinary_team.id,
+            session,
+            source="user_warranty",
+        )
 
     async def test_claim_warranty_uses_team_member_snapshot_when_no_redemption_record_exists(self):
         async with self.Session() as session:

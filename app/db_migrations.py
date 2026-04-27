@@ -345,6 +345,17 @@ def run_auto_migration():
             cursor.execute("ALTER TABLE teams ADD COLUMN import_tag VARCHAR(20)")
             migrations_applied.append("teams.import_tag")
 
+        if not column_exists(cursor, "teams", "last_refresh_at"):
+            logger.info("添加 teams.last_refresh_at 字段")
+            cursor.execute("ALTER TABLE teams ADD COLUMN last_refresh_at DATETIME")
+            cursor.execute("""
+                UPDATE teams
+                SET last_refresh_at = last_sync
+                WHERE last_refresh_at IS NULL
+                  AND last_sync IS NOT NULL
+            """)
+            migrations_applied.append("teams.last_refresh_at")
+
         cursor.execute("""
             UPDATE teams
             SET import_status = 'classified'
@@ -353,6 +364,7 @@ def run_auto_migration():
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_import_tag ON teams (import_tag)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_created_at ON teams (created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_last_refresh_at ON teams (last_refresh_at)")
 
         if not table_exists(cursor, "admin_users"):
             logger.info("创建 admin_users 表")
@@ -602,6 +614,59 @@ def run_auto_migration():
                 ON team_cleanup_records (created_at)
             """)
             migrations_applied.append("team_cleanup_records")
+
+        if not table_exists(cursor, "team_refresh_records"):
+            logger.info("创建 team_refresh_records 表")
+            cursor.execute("""
+                CREATE TABLE team_refresh_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    team_id INTEGER,
+                    team_email VARCHAR(255) NOT NULL,
+                    team_name VARCHAR(255),
+                    team_account_id VARCHAR(100),
+                    source VARCHAR(30) NOT NULL DEFAULT 'unknown',
+                    refresh_status VARCHAR(20) NOT NULL DEFAULT 'success',
+                    force_refresh BOOLEAN NOT NULL DEFAULT 0,
+                    team_status VARCHAR(20),
+                    current_members INTEGER,
+                    max_members INTEGER,
+                    message TEXT,
+                    error TEXT,
+                    error_code VARCHAR(100),
+                    cleanup_record_id INTEGER,
+                    cleanup_removed_member_count INTEGER NOT NULL DEFAULT 0,
+                    cleanup_revoked_invite_count INTEGER NOT NULL DEFAULT 0,
+                    cleanup_failed_count INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME NOT NULL,
+                    FOREIGN KEY(team_id) REFERENCES teams(id),
+                    FOREIGN KEY(cleanup_record_id) REFERENCES team_cleanup_records(id)
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_team_refresh_records_team_id
+                ON team_refresh_records (team_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_team_refresh_records_source
+                ON team_refresh_records (source)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_team_refresh_records_status
+                ON team_refresh_records (refresh_status)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_team_refresh_records_team_status
+                ON team_refresh_records (team_status)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_team_refresh_records_cleanup_record_id
+                ON team_refresh_records (cleanup_record_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_team_refresh_records_created_at
+                ON team_refresh_records (created_at)
+            """)
+            migrations_applied.append("team_refresh_records")
 
         migrations_applied.extend(migrate_customer_service_upload_assets(cursor))
         

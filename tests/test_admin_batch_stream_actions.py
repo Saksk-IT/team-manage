@@ -57,6 +57,7 @@ class BatchStreamActionTests(unittest.IsolatedAsyncioTestCase):
             team_id,
             db_session,
             force_refresh=False,
+            source=None,
             progress_callback=None,
         ):
             force_refresh_calls.append(force_refresh)
@@ -122,6 +123,7 @@ class BatchStreamActionTests(unittest.IsolatedAsyncioTestCase):
             1,
             db,
             force_refresh=True,
+            source="admin_batch",
         )
         db.commit.assert_awaited_once()
         self.assertTrue(payload['success'])
@@ -244,6 +246,7 @@ class BatchStreamActionTests(unittest.IsolatedAsyncioTestCase):
             team_id,
             db_session,
             force_refresh=False,
+            source=None,
             progress_callback=None,
         ):
             started_team_ids.append(team_id)

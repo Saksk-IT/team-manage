@@ -13,6 +13,12 @@ from sqlalchemy.orm import selectinload
 from app.models import Team, TeamAccount, TeamMemberSnapshot, RedemptionCode, RedemptionRecord, WarrantyEmailEntry
 from app.services.chatgpt import ChatGPTService
 from app.services.team_cleanup_record import team_cleanup_record_service
+from app.services.team_refresh_record import (
+    SOURCE_ADMIN_BATCH,
+    SOURCE_ADMIN_MEMBER,
+    SOURCE_UNKNOWN,
+    team_refresh_record_service,
+)
 from app.services.encryption import encryption_service
 from app.services.redemption import RedemptionService
 from app.services.settings import settings_service
@@ -1927,6 +1933,7 @@ class TeamService:
                 "failed_items": [],
                 "attempted": False,
             }
+            cleanup_record_id = None
 
             async def handle_member_fetch_failure(
                 fetch_result: Dict[str, Any],
@@ -1954,6 +1961,7 @@ class TeamService:
                         "cleanup_removed_member_emails": cleanup_summary["removed_member_emails"],
                         "cleanup_revoked_invite_emails": cleanup_summary["revoked_invite_emails"],
                         "cleanup_failed_items": cleanup_summary["failed_items"],
+                        "cleanup_record_id": cleanup_record_id,
                     }
 
                 team.error_count = (team.error_count or 0) + 1
@@ -1979,6 +1987,7 @@ class TeamService:
                     "cleanup_removed_member_emails": cleanup_summary["removed_member_emails"],
                     "cleanup_revoked_invite_emails": cleanup_summary["revoked_invite_emails"],
                     "cleanup_failed_items": cleanup_summary["failed_items"],
+                    "cleanup_record_id": cleanup_record_id,
                 }
 
             # 5. 获取成员列表 (包含已加入和待加入)
@@ -2033,7 +2042,7 @@ class TeamService:
 
                 if cleanup_summary["attempted"]:
                     try:
-                        await team_cleanup_record_service.create_record(
+                        cleanup_record = await team_cleanup_record_service.create_record(
                             db_session=db_session,
                             team_id=team.id,
                             team_email=team.email,
@@ -2041,6 +2050,8 @@ class TeamService:
                             team_account_id=current_account.get("account_id") or team.account_id,
                             cleanup_summary=cleanup_summary,
                         )
+                        if cleanup_record:
+                            cleanup_record_id = cleanup_record.id
                     except Exception as cleanup_record_error:
                         logger.error(
                             "写入 Team 自动清理记录失败: team_id=%s error=%s",
@@ -2162,6 +2173,7 @@ class TeamService:
                 "cleanup_removed_member_emails": cleanup_summary["removed_member_emails"],
                 "cleanup_revoked_invite_emails": cleanup_summary["revoked_invite_emails"],
                 "cleanup_failed_items": cleanup_summary["failed_items"],
+                "cleanup_record_id": cleanup_record_id,
                 "error": None
             }
 
@@ -2180,20 +2192,52 @@ class TeamService:
         db_session: AsyncSession,
         force_refresh: bool = False,
         progress_callback: ProgressCallback = None,
+        source: str = SOURCE_UNKNOWN,
     ) -> Dict[str, Any]:
         """
         统一刷新 Team 后台状态。
 
         所有主动/自动刷新入口都应调用本方法，确保成员数、成员快照、
-        状态和自动清理机制使用同一套语义。
+        状态、自动清理机制、刷新记录和每 Team 自动刷新计时使用同一套语义。
         """
-        return await self.sync_team_info(
+        refresh_result = await self.sync_team_info(
             team_id,
             db_session,
             force_refresh=force_refresh,
             progress_callback=progress_callback,
             enforce_bound_email_cleanup=True,
         )
+        refreshed_team = await db_session.get(Team, team_id)
+        if not refreshed_team:
+            return refresh_result
+
+        refreshed_at = get_now()
+        refreshed_team.last_refresh_at = refreshed_at
+
+        try:
+            refresh_record = await team_refresh_record_service.create_record(
+                db_session=db_session,
+                team=refreshed_team,
+                source=source,
+                force_refresh=force_refresh,
+                refresh_result=refresh_result,
+            )
+            return {
+                **refresh_result,
+                "refresh_record_id": refresh_record.id,
+                "last_refresh_at": refreshed_at.isoformat(),
+            }
+        except Exception as record_error:
+            logger.error(
+                "写入 Team 刷新记录失败: team_id=%s source=%s error=%s",
+                team_id,
+                source,
+                record_error,
+            )
+            return {
+                **refresh_result,
+                "last_refresh_at": refreshed_at.isoformat(),
+            }
 
     async def sync_all_teams(
         self,
@@ -2230,7 +2274,11 @@ class TeamService:
             failed_count = 0
 
             for team in teams:
-                result = await self.refresh_team_state(team.id, db_session)
+                result = await self.refresh_team_state(
+                    team.id,
+                    db_session,
+                    source=SOURCE_ADMIN_BATCH,
+                )
 
                 if result["success"]:
                     success_count += 1
@@ -2478,7 +2526,11 @@ class TeamService:
                 }
 
             # 4. 更新成员数 (不再手动 -1，同步最新数据)
-            await self.refresh_team_state(team_id, db_session)
+            await self.refresh_team_state(
+                team_id,
+                db_session,
+                source=SOURCE_ADMIN_MEMBER,
+            )
 
             await db_session.commit()
 
@@ -2506,7 +2558,8 @@ class TeamService:
         self,
         team_id: int,
         email: str,
-        db_session: AsyncSession
+        db_session: AsyncSession,
+        source: str = SOURCE_ADMIN_MEMBER,
     ) -> Dict[str, Any]:
         """
         添加 Team 成员
@@ -2532,7 +2585,11 @@ class TeamService:
                     "error": f"Team ID {team_id} 不存在"
                 }
 
-            refresh_result = await self.refresh_team_state(team_id, db_session)
+            refresh_result = await self.refresh_team_state(
+                team_id,
+                db_session,
+                source=source,
+            )
             await db_session.commit()
             if not refresh_result.get("success"):
                 return {
@@ -2625,7 +2682,11 @@ class TeamService:
             is_verified = False
             for i in range(3):
                 await asyncio.sleep(5)
-                sync_res = await self.refresh_team_state(team_id, db_session)
+                sync_res = await self.refresh_team_state(
+                    team_id,
+                    db_session,
+                    source=source,
+                )
                 await db_session.commit()
                 member_emails = [m.lower() for m in sync_res.get("member_emails", [])]
                 if email.lower() in member_emails:
@@ -2673,7 +2734,8 @@ class TeamService:
         self,
         team_id: int,
         user_id: str,
-        db_session: AsyncSession
+        db_session: AsyncSession,
+        source: str = SOURCE_ADMIN_MEMBER,
     ) -> Dict[str, Any]:
         """
         删除 Team 成员
@@ -2739,7 +2801,11 @@ class TeamService:
                 }
 
             # 4. 更新成员数 (不再手动 -1，同步最新数据)
-            await self.refresh_team_state(team_id, db_session)
+            await self.refresh_team_state(
+                team_id,
+                db_session,
+                source=source,
+            )
 
             await db_session.commit()
 
@@ -3236,6 +3302,7 @@ class TeamService:
                     ),
                     "device_code_auth_enabled": getattr(team, 'device_code_auth_enabled', False),
                     "last_sync": team.last_sync.isoformat() if team.last_sync else None,
+                    "last_refresh_at": team.last_refresh_at.isoformat() if team.last_refresh_at else None,
                     "created_at": team.created_at.isoformat() if team.created_at else None
                 })
 

@@ -56,6 +56,7 @@ class Team(Base):
     warranty_unavailable_at = Column(DateTime, comment="质保不可用标记时间")
     error_count = Column(Integer, default=0, comment="连续报错次数")
     last_sync = Column(DateTime, comment="最后同步时间")
+    last_refresh_at = Column(DateTime, comment="最后任意渠道刷新时间")
     import_status = Column(String(20), nullable=False, default="classified", comment="导入状态: pending/classified")
     imported_by_user_id = Column(Integer, ForeignKey("admin_users.id"), comment="导入的子管理员 ID")
     imported_by_username = Column(String(100), comment="导入人用户名快照")
@@ -74,6 +75,7 @@ class Team(Base):
         Index("idx_team_imported_by_user_id", "imported_by_user_id"),
         Index("idx_team_import_tag", "import_tag"),
         Index("idx_team_created_at", "created_at"),
+        Index("idx_team_last_refresh_at", "last_refresh_at"),
     )
 
 
@@ -276,4 +278,38 @@ class TeamCleanupRecord(Base):
         Index("idx_team_cleanup_records_team_id", "team_id"),
         Index("idx_team_cleanup_records_status", "cleanup_status"),
         Index("idx_team_cleanup_records_created_at", "created_at"),
+    )
+
+
+class TeamRefreshRecord(Base):
+    """Team 刷新记录表"""
+    __tablename__ = "team_refresh_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), comment="刷新 Team ID")
+    team_email = Column(String(255), nullable=False, comment="Team 管理员邮箱快照")
+    team_name = Column(String(255), comment="Team 名称快照")
+    team_account_id = Column(String(100), comment="Team Account ID 快照")
+    source = Column(String(30), nullable=False, default="unknown", comment="刷新来源")
+    refresh_status = Column(String(20), nullable=False, default="success", comment="刷新结果: success/failed")
+    force_refresh = Column(Boolean, default=False, nullable=False, comment="是否强制刷新 Token")
+    team_status = Column(String(20), comment="刷新后的 Team 状态")
+    current_members = Column(Integer, comment="刷新后的成员数")
+    max_members = Column(Integer, comment="刷新后的最大成员数")
+    message = Column(Text, comment="成功信息")
+    error = Column(Text, comment="失败原因")
+    error_code = Column(String(100), comment="失败代码")
+    cleanup_record_id = Column(Integer, ForeignKey("team_cleanup_records.id"), comment="关联自动清理记录 ID")
+    cleanup_removed_member_count = Column(Integer, nullable=False, default=0, comment="自动删除成员数量")
+    cleanup_revoked_invite_count = Column(Integer, nullable=False, default=0, comment="自动撤回邀请数量")
+    cleanup_failed_count = Column(Integer, nullable=False, default=0, comment="自动清理失败数量")
+    created_at = Column(DateTime, default=get_now, nullable=False, comment="记录创建时间")
+
+    __table_args__ = (
+        Index("idx_team_refresh_records_team_id", "team_id"),
+        Index("idx_team_refresh_records_source", "source"),
+        Index("idx_team_refresh_records_status", "refresh_status"),
+        Index("idx_team_refresh_records_team_status", "team_status"),
+        Index("idx_team_refresh_records_cleanup_record_id", "cleanup_record_id"),
+        Index("idx_team_refresh_records_created_at", "created_at"),
     )

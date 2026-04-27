@@ -32,6 +32,11 @@ from app.services.team import (
     normalize_import_tag,
 )
 from app.services.team_cleanup_record import team_cleanup_record_service
+from app.services.team_refresh_record import (
+    SOURCE_ADMIN_BATCH,
+    SOURCE_ADMIN_MEMBER,
+    team_refresh_record_service,
+)
 from app.services.redemption import RedemptionService
 from app.services.settings import settings_service
 from app.services.admin_sidebar import (
@@ -1687,7 +1692,8 @@ async def add_team_member(
         result = await team_service.add_team_member(
             team_id=team_id,
             email=member_data.email,
-            db_session=db
+            db_session=db,
+            source=SOURCE_ADMIN_MEMBER,
         )
 
         if not result["success"]:
@@ -1734,7 +1740,8 @@ async def delete_team_member(
         result = await team_service.delete_team_member(
             team_id=team_id,
             user_id=user_id,
-            db_session=db
+            db_session=db,
+            source=SOURCE_ADMIN_MEMBER,
         )
 
         if not result["success"]:
@@ -1863,6 +1870,7 @@ async def batch_refresh_teams_stream(
             team_id,
             db,
             force_refresh=True,
+            source=SOURCE_ADMIN_BATCH,
             progress_callback=progress_callback,
         )
         await db.commit()
@@ -1900,6 +1908,7 @@ async def batch_refresh_teams(
                     team_id,
                     db,
                     force_refresh=True,
+                    source=SOURCE_ADMIN_BATCH,
                 )
                 await db.commit()
                 if result.get("success"):
@@ -3780,6 +3789,83 @@ async def team_cleanup_records_page(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"加载自动清理记录页失败: {str(e)}"
+        )
+
+
+@router.get("/team-refresh-records", response_class=HTMLResponse)
+async def team_refresh_records_page(
+    request: Request,
+    search: Optional[str] = None,
+    source: Optional[str] = None,
+    refresh_status: Optional[str] = None,
+    team_status: Optional[str] = None,
+    has_cleanup: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    page: Optional[str] = "1",
+    per_page: int = 20,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        from app.main import templates
+
+        try:
+            page_int = int(page) if page and page.strip() else 1
+        except (ValueError, TypeError):
+            page_int = 1
+
+        logger.info(
+            "管理员访问 Team 刷新记录页 search=%s source=%s refresh_status=%s team_status=%s has_cleanup=%s page=%s per_page=%s",
+            search,
+            source,
+            refresh_status,
+            team_status,
+            has_cleanup,
+            page_int,
+            per_page,
+        )
+
+        result = await team_refresh_record_service.list_refresh_records(
+            db_session=db,
+            search=search,
+            source=source,
+            refresh_status=refresh_status,
+            team_status=team_status,
+            has_cleanup=has_cleanup,
+            start_date=start_date,
+            end_date=end_date,
+            page=page_int,
+            per_page=per_page,
+        )
+
+        return templates.TemplateResponse(
+            request,
+            "admin/team_refresh_records/index.html",
+            await _build_admin_template_context(
+                request,
+                db,
+                current_user,
+                "team_refresh_records",
+                records=result["records"],
+                search=search or "",
+                source=(source or "").strip().lower(),
+                refresh_status=(refresh_status or "").strip().lower(),
+                team_status=(team_status or "").strip().lower(),
+                has_cleanup=(has_cleanup or "").strip().lower(),
+                start_date=start_date or "",
+                end_date=end_date or "",
+                source_options=team_refresh_record_service.SOURCE_LABELS,
+                refresh_status_options=team_refresh_record_service.REFRESH_STATUS_LABELS,
+                team_status_options=team_refresh_record_service.TEAM_STATUS_LABELS,
+                pagination=result["pagination"],
+            )
+        )
+    except Exception as e:
+        logger.error(f"加载 Team 刷新记录页失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"加载 Team 刷新记录页失败: {str(e)}"
         )
 
 

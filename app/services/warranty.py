@@ -21,6 +21,7 @@ from app.models import (
 )
 from app.services.settings import settings_service
 from app.services.team import IMPORT_STATUS_CLASSIFIED
+from app.services.team_refresh_record import SOURCE_USER_WARRANTY
 from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
@@ -869,7 +870,11 @@ class WarrantyService:
 
         previous_team_status = (latest_team.status or "").strip().lower()
         try:
-            sync_result = await self.team_service.refresh_team_state(latest_team.id, db_session)
+            sync_result = await self.team_service.refresh_team_state(
+                latest_team.id,
+                db_session,
+                source=SOURCE_USER_WARRANTY,
+            )
             if not sync_result.get("success"):
                 latest_team_status = (latest_team.status or "").strip().lower()
                 team_became_banned_during_refresh = (
@@ -1170,7 +1175,11 @@ class WarrantyService:
         warranty_teams = await self._get_available_warranty_teams(db_session)
 
         for team in warranty_teams:
-            refresh_result = await self.team_service.refresh_team_state(team.id, db_session)
+            refresh_result = await self.team_service.refresh_team_state(
+                team.id,
+                db_session,
+                source=SOURCE_USER_WARRANTY,
+            )
             await db_session.commit()
             if not refresh_result.get("success"):
                 logger.warning(
@@ -1224,7 +1233,11 @@ class WarrantyService:
         if not team or team.status not in {"active", "full"}:
             return None
 
-        refresh_result = await self.team_service.refresh_team_state(team.id, db_session)
+        refresh_result = await self.team_service.refresh_team_state(
+            team.id,
+            db_session,
+            source=SOURCE_USER_WARRANTY,
+        )
         await db_session.commit()
         if not refresh_result.get("success"):
             return None
@@ -1325,7 +1338,12 @@ class WarrantyService:
 
             last_error = None
             for team in warranty_teams:
-                add_result = await self.team_service.add_team_member(team.id, normalized_email, db_session)
+                add_result = await self.team_service.add_team_member(
+                    team.id,
+                    normalized_email,
+                    db_session,
+                    source=SOURCE_USER_WARRANTY,
+                )
                 if add_result.get("success"):
                     await self._record_warranty_claim_success(
                         db_session=db_session,
@@ -1628,7 +1646,11 @@ class WarrantyService:
                 # 如果数据库有记录，但 API 列表里没你，说明是虚假成功，直接后台修复
                 if team.status != "banned" and team.status != "expired":
                     logger.info(f"质保查询: 正在实时测试 Team {team.id} ({team.team_name}) 的状态")
-                    sync_res = await self.team_service.refresh_team_state(team.id, db_session)
+                    sync_res = await self.team_service.refresh_team_state(
+                        team.id,
+                        db_session,
+                        source=SOURCE_USER_WARRANTY,
+                    )
                     await db_session.commit()
                     member_emails = [m.lower() for m in sync_res.get("member_emails", [])]
                     
@@ -1790,7 +1812,11 @@ class WarrantyService:
                         # --- 自愈逻辑：验证是否真的在 Team 中 ---
                         # 针对“虚假成功”导致的拉人记录残留进行清理
                         logger.info(f"验证质保重复使用: 发现活跃 record，正在同步 Team {team.id} 以校验成员是否存在")
-                        sync_res = await self.team_service.refresh_team_state(team.id, db_session)
+                        sync_res = await self.team_service.refresh_team_state(
+                            team.id,
+                            db_session,
+                            source=SOURCE_USER_WARRANTY,
+                        )
                         await db_session.commit()
                         member_emails = [m.lower() for m in sync_res.get("member_emails", [])]
                         

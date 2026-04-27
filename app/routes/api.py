@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user
+from app.services.team_refresh_record import SOURCE_ADMIN_FORCE, SOURCE_ADMIN_MANUAL
 from app.services.team import TeamService
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ async def refresh_team(
             team_id,
             db,
             force_refresh=force,
+            source=SOURCE_ADMIN_FORCE if force else SOURCE_ADMIN_MANUAL,
         )
         await db.commit()
 

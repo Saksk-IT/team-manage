@@ -30,6 +30,13 @@ SUPER_ADMIN_SIDEBAR_ITEMS: tuple[AdminSidebarItem, ...] = (
     AdminSidebarItem("codes", "codes", "/admin/codes", "ticket", "兑换码管理"),
     AdminSidebarItem("records", "records", "/admin/records", "file-text", "使用记录"),
     AdminSidebarItem(
+        "team_refresh_records",
+        "team_refresh_records",
+        "/admin/team-refresh-records",
+        "refresh-cw",
+        "Team 刷新记录",
+    ),
+    AdminSidebarItem(
         "team_cleanup_records",
         "team_cleanup_records",
         "/admin/team-cleanup-records",

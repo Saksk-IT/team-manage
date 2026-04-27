@@ -26,6 +26,7 @@ class ApiTeamRefreshTests(unittest.IsolatedAsyncioTestCase):
             1,
             db,
             force_refresh=False,
+            source="admin_manual",
         )
         db.commit.assert_awaited_once()
         self.assertEqual(response.status_code, 200)
@@ -51,6 +52,7 @@ class ApiTeamRefreshTests(unittest.IsolatedAsyncioTestCase):
             1,
             db,
             force_refresh=True,
+            source="admin_force",
         )
         db.commit.assert_awaited_once()
         self.assertEqual(response.status_code, 400)
