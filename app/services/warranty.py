@@ -604,14 +604,7 @@ class WarrantyService:
         if not normalized_email:
             raise ValueError("邮箱不能为空")
 
-        try:
-            remaining_claims_int = int(remaining_claims)
-        except (TypeError, ValueError):
-            raise ValueError("剩余次数必须是非负整数")
-
-        if remaining_claims_int < 0:
-            raise ValueError("剩余次数必须是非负整数")
-
+        remaining_claims_int = self._normalize_remaining_claims(remaining_claims)
         expires_at = self._build_warranty_entry_expires_at(remaining_days)
 
         current_entry = None
@@ -645,6 +638,123 @@ class WarrantyService:
         await db_session.commit()
         await db_session.refresh(target_entry)
         return target_entry
+
+    def _normalize_remaining_claims(self, remaining_claims: int) -> int:
+        try:
+            remaining_claims_int = int(remaining_claims)
+        except (TypeError, ValueError):
+            raise ValueError("剩余次数必须是非负整数")
+
+        if remaining_claims_int < 0:
+            raise ValueError("剩余次数必须是非负整数")
+
+        return remaining_claims_int
+
+    async def save_warranty_email_order_entry(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        redeem_code: str,
+        remaining_claims: int,
+        remaining_days: Optional[int],
+        source: str = "manual",
+        entry_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        normalized_email = self.normalize_email(email)
+        if not normalized_email:
+            raise ValueError("邮箱不能为空")
+
+        normalized_code = (redeem_code or "").strip()
+        if not normalized_code:
+            raise ValueError("质保兑换码不能为空")
+
+        remaining_claims_int = self._normalize_remaining_claims(remaining_claims)
+        expires_at = self._build_warranty_entry_expires_at(remaining_days)
+
+        warranty_entry = None
+        if entry_id is not None:
+            result = await db_session.execute(
+                select(WarrantyEmailEntry).where(WarrantyEmailEntry.id == entry_id)
+            )
+            warranty_entry = result.scalar_one_or_none()
+            if not warranty_entry:
+                raise ValueError("质保邮箱记录不存在")
+            if self.normalize_email(warranty_entry.email) != normalized_email:
+                raise ValueError("质保订单编辑不支持变更邮箱，请清空表单后新增记录")
+        else:
+            warranty_entry = await self.get_warranty_email_entry(db_session, normalized_email)
+
+        contexts = await self._load_warranty_order_contexts_for_email(
+            db_session=db_session,
+            email=normalized_email,
+            warranty_entry=warranty_entry,
+            target_code=normalized_code,
+        )
+        if not contexts:
+            raise ValueError("未找到该邮箱绑定的质保兑换码订单")
+
+        context = contexts[0]
+        redemption_code = context.get("redemption_code")
+        if not redemption_code or not redemption_code.has_warranty:
+            entry = await self.save_warranty_email_entry(
+                db_session=db_session,
+                entry_id=entry_id,
+                email=normalized_email,
+                remaining_days=remaining_days,
+                remaining_claims=remaining_claims_int,
+                source=source,
+            )
+            refreshed_contexts = await self._load_warranty_order_contexts_for_email(
+                db_session=db_session,
+                email=normalized_email,
+                warranty_entry=entry,
+                target_code=normalized_code,
+            )
+            if refreshed_contexts:
+                return self._serialize_warranty_email_order_entry(
+                    base_entry=self.serialize_warranty_email_entry(entry),
+                    order=self._serialize_warranty_order_context(refreshed_contexts[0], warranty_entry=entry),
+                )
+            return self.serialize_warranty_email_entry(entry)
+
+        used_claims = max(int(context.get("used_claims") or 0), 0)
+        redemption_code.warranty_claims = used_claims + remaining_claims_int
+        redemption_code.warranty_expires_at = expires_at
+        if warranty_entry:
+            warranty_entry.source = warranty_entry.source or source or "manual"
+            warranty_entry.updated_at = get_now()
+
+        await db_session.commit()
+        await db_session.refresh(redemption_code)
+        if warranty_entry:
+            await db_session.refresh(warranty_entry)
+
+        refreshed_contexts = await self._load_warranty_order_contexts_for_email(
+            db_session=db_session,
+            email=normalized_email,
+            warranty_entry=warranty_entry,
+            target_code=normalized_code,
+        )
+        if not refreshed_contexts:
+            raise ValueError("质保订单已更新，但刷新订单信息失败")
+
+        base_entry = (
+            self.serialize_warranty_email_entry(warranty_entry)
+            if warranty_entry
+            else {
+                "id": entry_id,
+                "email": normalized_email,
+                "source": source or "manual",
+                "source_label": self.WARRANTY_EMAIL_SOURCE_LABELS.get(source or "manual", "未知来源"),
+            }
+        )
+        return self._serialize_warranty_email_order_entry(
+            base_entry=base_entry,
+            order=self._serialize_warranty_order_context(
+                refreshed_contexts[0],
+                warranty_entry=warranty_entry,
+            ),
+        )
 
     async def bulk_update_warranty_email_entries(
         self,

@@ -14,6 +14,7 @@
 
     <form id="warrantyEmailForm" class="settings-form">
         <input type="hidden" id="warrantyEntryId" value="">
+        <input type="hidden" id="warrantyRedeemCode" value="">
         <div id="warrantyEditorNotice" class="editor-notice" style="display: none;"></div>
         <div class="form-group">
             <label for="warrantyEmail">邮箱</label>
@@ -361,18 +362,21 @@
         const notice = document.getElementById('warrantyEditorNotice');
         const submitBtn = document.getElementById('warrantyEditorSubmitBtn');
 
+        const isOrderRow = Boolean(entry?.is_order_row);
+        const orderCode = isOrderRow ? (entry?.last_redeem_code || entry?.warranty_order?.code || '') : '';
+
         if (title) {
-            title.textContent = isEditing ? '编辑质保邮箱' : '新增 / 编辑质保邮箱';
+            title.textContent = isEditing && isOrderRow ? '编辑质保订单' : (isEditing ? '编辑质保邮箱' : '新增 / 编辑质保邮箱');
         }
 
         if (submitBtn) {
-            submitBtn.textContent = isEditing ? '更新质保邮箱' : '保存质保邮箱';
+            submitBtn.textContent = isEditing && isOrderRow ? '更新质保订单' : (isEditing ? '更新质保邮箱' : '保存质保邮箱');
         }
 
         if (notice) {
             if (isEditing && entry?.email) {
                 notice.style.display = 'block';
-                notice.textContent = `当前正在编辑：${entry.email}`;
+                notice.textContent = orderCode ? `当前正在编辑：${entry.email}（兑换码：${orderCode}）` : `当前正在编辑：${entry.email}`;
             } else {
                 notice.style.display = 'none';
                 notice.textContent = '';
@@ -389,6 +393,7 @@
         const remainingClaimsInput = document.getElementById('warrantyRemainingClaims');
 
         document.getElementById('warrantyEntryId').value = '';
+        document.getElementById('warrantyRedeemCode').value = '';
         document.getElementById('warrantyEmail').value = '';
         remainingDaysInput.value = remainingDaysInput.defaultValue;
         remainingClaimsInput.value = remainingClaimsInput.defaultValue;
@@ -400,6 +405,7 @@
         const remainingClaimsInput = document.getElementById('warrantyRemainingClaims');
 
         document.getElementById('warrantyEntryId').value = entry.id || '';
+        document.getElementById('warrantyRedeemCode').value = entry.is_order_row ? (entry.last_redeem_code || '') : '';
         document.getElementById('warrantyEmail').value = entry.email || '';
         remainingDaysInput.value = entry.remaining_days === null || entry.remaining_days === undefined ? '' : String(entry.remaining_days);
         remainingClaimsInput.value = entry.remaining_claims === null || entry.remaining_claims === undefined ? '0' : String(entry.remaining_claims);
@@ -412,6 +418,7 @@
         e.preventDefault();
 
         const entryId = document.getElementById('warrantyEntryId').value.trim();
+        const redeemCode = document.getElementById('warrantyRedeemCode').value.trim();
         const email = document.getElementById('warrantyEmail').value.trim();
         const remainingDaysValue = document.getElementById('warrantyRemainingDays').value.trim();
         const remainingClaims = parseInt(document.getElementById('warrantyRemainingClaims').value, 10);
@@ -438,6 +445,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     entry_id: entryId ? parseInt(entryId, 10) : null,
+                    redeem_code: redeemCode || null,
                     email,
                     remaining_days: remainingDays,
                     remaining_claims: remainingClaims

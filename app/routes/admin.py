@@ -601,8 +601,9 @@ class WarrantySuperCodeConfigRequest(BaseModel):
 class WarrantyEmailSaveRequest(BaseModel):
     entry_id: Optional[int] = Field(None, description="质保邮箱记录 ID")
     email: EmailStr = Field(..., description="质保邮箱")
-    remaining_days: Optional[int] = Field(None, description="剩余天数")
-    remaining_claims: int = Field(..., description="剩余次数")
+    remaining_days: Optional[int] = Field(None, ge=0, description="剩余天数")
+    remaining_claims: int = Field(..., ge=0, description="剩余次数")
+    redeem_code: Optional[str] = Field(None, max_length=32, description="指定质保兑换码")
 
 
 class BulkWarrantyEmailUpdateRequest(BaseModel):
@@ -3909,19 +3910,32 @@ async def save_warranty_email(
     current_user: dict = Depends(require_admin)
 ):
     try:
-        entry = await warranty_service.save_warranty_email_entry(
-            db_session=db,
-            entry_id=payload.entry_id,
-            email=payload.email,
-            remaining_days=payload.remaining_days,
-            remaining_claims=payload.remaining_claims,
-            source="manual"
-        )
+        redeem_code = (payload.redeem_code or "").strip()
+        if redeem_code:
+            entry_data = await warranty_service.save_warranty_email_order_entry(
+                db_session=db,
+                entry_id=payload.entry_id,
+                email=payload.email,
+                redeem_code=redeem_code,
+                remaining_days=payload.remaining_days,
+                remaining_claims=payload.remaining_claims,
+                source="manual"
+            )
+        else:
+            entry = await warranty_service.save_warranty_email_entry(
+                db_session=db,
+                entry_id=payload.entry_id,
+                email=payload.email,
+                remaining_days=payload.remaining_days,
+                remaining_claims=payload.remaining_claims,
+                source="manual"
+            )
+            entry_data = warranty_service.serialize_warranty_email_entry(entry)
         return JSONResponse(
             content={
                 "success": True,
                 "message": "质保邮箱已保存",
-                "entry": warranty_service.serialize_warranty_email_entry(entry)
+                "entry": entry_data
             }
         )
     except ValueError as e:

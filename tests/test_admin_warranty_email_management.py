@@ -66,11 +66,13 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("CODE-123", html)
         self.assertIn('id="warrantyRemainingDays" class="form-control" min="0" value="30"', html)
         self.assertIn("质保邮箱列表</span>", html)
+        self.assertIn('id="warrantyRedeemCode"', html)
         self.assertIn('id="warrantyRemainingClaims" class="form-control" min="0" value="10" required', html)
 
         fill_script_start = html.index("function fillWarrantyEmailForm(entry)")
         fill_script_end = html.index("document.getElementById('warrantyEmailForm')")
         fill_script = html[fill_script_start:fill_script_end]
+        self.assertIn("document.getElementById('warrantyRedeemCode').value", fill_script)
         self.assertIn(
             "remainingDaysInput.value = entry.remaining_days === null || entry.remaining_days === undefined ? '' : String(entry.remaining_days);",
             fill_script,
@@ -81,6 +83,11 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertNotIn("remainingDaysInput.defaultValue", fill_script)
         self.assertNotIn("remainingClaimsInput.defaultValue", fill_script)
+
+        submit_script_start = html.index("document.getElementById('warrantyEmailForm')")
+        submit_script_end = html.index("function getSelectedWarrantyEmailIds()")
+        submit_script = html[submit_script_start:submit_script_end]
+        self.assertIn("redeem_code: redeemCode || null", submit_script)
 
     async def test_warranty_emails_page_supports_search_by_redeem_code(self):
         async with self.Session() as session:
@@ -373,6 +380,117 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(save_response.status_code, 200)
         self.assertTrue(save_payload["success"])
         self.assertEqual(delete_response.status_code, 200)
+
+    async def test_save_warranty_email_order_updates_matching_redeem_code_only(self):
+        async with self.Session() as session:
+            first_team = Team(
+                email="owner-one@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-one",
+                team_name="Team One",
+                status="banned",
+                current_members=2,
+                max_members=5,
+            )
+            second_team = Team(
+                email="owner-two@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-two",
+                team_name="Team Two",
+                status="banned",
+                current_members=2,
+                max_members=5,
+            )
+            session.add_all([first_team, second_team])
+            await session.flush()
+
+            now = get_now()
+            entry = WarrantyEmailEntry(
+                email="buyer@example.com",
+                remaining_claims=10,
+                expires_at=now + timedelta(days=30),
+                source="auto_redeem",
+                last_redeem_code="CODE-B",
+            )
+            code_a = RedemptionCode(
+                code="CODE-A",
+                status="used",
+                has_warranty=True,
+                warranty_days=30,
+                warranty_claims=3,
+                used_by_email="buyer@example.com",
+                used_team_id=first_team.id,
+                used_at=now - timedelta(days=5),
+            )
+            code_b = RedemptionCode(
+                code="CODE-B",
+                status="used",
+                has_warranty=True,
+                warranty_days=30,
+                warranty_claims=2,
+                used_by_email="buyer@example.com",
+                used_team_id=second_team.id,
+                used_at=now - timedelta(days=4),
+            )
+            session.add_all([
+                entry,
+                code_a,
+                code_b,
+                RedemptionRecord(
+                    email="buyer@example.com",
+                    code="CODE-A",
+                    team_id=first_team.id,
+                    account_id=first_team.account_id,
+                    redeemed_at=now - timedelta(days=5),
+                    is_warranty_redemption=False,
+                ),
+                RedemptionRecord(
+                    email="buyer@example.com",
+                    code="CODE-A",
+                    team_id=second_team.id,
+                    account_id=second_team.account_id,
+                    redeemed_at=now - timedelta(days=1),
+                    is_warranty_redemption=True,
+                ),
+                RedemptionRecord(
+                    email="buyer@example.com",
+                    code="CODE-B",
+                    team_id=second_team.id,
+                    account_id=second_team.account_id,
+                    redeemed_at=now - timedelta(days=4),
+                    is_warranty_redemption=False,
+                ),
+            ])
+            await session.commit()
+            await session.refresh(entry)
+
+            response = await save_warranty_email(
+                payload=WarrantyEmailSaveRequest(
+                    entry_id=entry.id,
+                    email="buyer@example.com",
+                    remaining_days=8,
+                    remaining_claims=5,
+                    redeem_code="CODE-A",
+                ),
+                db=session,
+                current_user={"username": "admin"},
+            )
+            payload = json.loads(response.body.decode("utf-8"))
+            entries = await warranty_service.list_warranty_email_entries(session)
+            refreshed_code_a = await session.get(RedemptionCode, code_a.id)
+            refreshed_code_b = await session.get(RedemptionCode, code_b.id)
+
+        entries_by_code = {item["last_redeem_code"]: item for item in entries}
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["entry"]["last_redeem_code"], "CODE-A")
+        self.assertEqual(refreshed_code_a.warranty_claims, 6)
+        self.assertEqual(warranty_service._calculate_remaining_days(refreshed_code_a.warranty_expires_at), 8)
+        self.assertEqual(refreshed_code_b.warranty_claims, 2)
+        self.assertIsNone(refreshed_code_b.warranty_expires_at)
+        self.assertEqual(entries_by_code["CODE-A"]["remaining_claims"], 5)
+        self.assertEqual(entries_by_code["CODE-A"]["remaining_days"], 8)
+        self.assertEqual(entries_by_code["CODE-B"]["remaining_claims"], 2)
 
 
 if __name__ == "__main__":
