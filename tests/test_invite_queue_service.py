@@ -148,20 +148,21 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first["job_id"], second["job_id"])
         self.assertEqual(job_count, 1)
 
-    async def test_same_email_multiple_codes_reuse_active_redeem_job(self):
+    async def test_same_email_concurrent_multiple_codes_reserve_different_teams(self):
         await self._seed_redeem_teams_and_codes(team_count=4, code_count=4)
         service = InviteQueueService()
 
-        async with self.Session() as session:
-            results = []
-            for index in range(1, 5):
-                results.append(
-                    await service.submit_redeem_job(
-                        session,
-                        "buyer@example.com",
-                        f"CODE-{index:03d}",
-                    )
+        async def submit(index):
+            async with self.Session() as session:
+                return await service.submit_redeem_job(
+                    session,
+                    "buyer@example.com",
+                    f"CODE-{index:03d}",
                 )
+
+        results = await asyncio.gather(*(submit(index) for index in range(1, 5)))
+
+        async with self.Session() as session:
             jobs = (
                 await session.execute(
                     select(InviteJob).where(InviteJob.email == "buyer@example.com").order_by(InviteJob.id.asc())
@@ -170,10 +171,25 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
             second_code = await session.scalar(select(RedemptionCode).where(RedemptionCode.code == "CODE-002"))
 
         self.assertTrue(all(result["success"] for result in results))
-        self.assertEqual(len({result["job_id"] for result in results}), 1)
+        self.assertEqual(len({result["job_id"] for result in results}), 4)
+        self.assertEqual([job.team_id for job in jobs], [1, 2, 3, 4])
+        self.assertEqual(second_code.status, "processing")
+
+    async def test_same_code_different_email_does_not_create_second_active_job(self):
+        await self._seed_redeem_teams_and_codes(team_count=2, code_count=1)
+        service = InviteQueueService()
+
+        async with self.Session() as session:
+            first = await service.submit_redeem_job(session, "buyer-a@example.com", "CODE-001")
+            second = await service.submit_redeem_job(session, "buyer-b@example.com", "CODE-001")
+            jobs = (await session.execute(select(InviteJob).order_by(InviteJob.id.asc()))).scalars().all()
+
+        self.assertTrue(first["success"])
+        self.assertFalse(second["success"])
+        self.assertIn("正在被其他邮箱处理", second["error"])
         self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0].email, "buyer-a@example.com")
         self.assertEqual(jobs[0].team_id, 1)
-        self.assertEqual(second_code.status, "unused")
 
     async def test_redeem_submission_skips_team_already_used_by_email(self):
         await self._seed_redeem_teams_and_codes(team_count=2, code_count=2)

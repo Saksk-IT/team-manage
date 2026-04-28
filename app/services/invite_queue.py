@@ -132,17 +132,12 @@ class InviteQueueService:
             try:
                 existing_job = await self._find_active_redeem_job(db_session, normalized_code)
                 if existing_job:
+                    if self._normalize_email(existing_job.email) != normalized_email:
+                        return {
+                            "success": False,
+                            "error": "该兑换码正在被其他邮箱处理，请勿重复使用",
+                        }
                     return self.serialize_job(existing_job)
-
-                existing_email_job = await self._find_active_redeem_job_by_email(db_session, normalized_email)
-                if existing_email_job:
-                    logger.warning(
-                        "同一邮箱已有前台兑换拉人任务，复用原任务: email=%s job_id=%s code=%s",
-                        normalized_email,
-                        existing_email_job.id,
-                        existing_email_job.code,
-                    )
-                    return self.serialize_job(existing_email_job)
 
                 validate_result = await self.redemption_service.validate_code(normalized_code, db_session)
                 if not validate_result.get("success"):
@@ -825,19 +820,6 @@ class InviteQueueService:
             select(InviteJob).where(
                 InviteJob.job_type == JOB_TYPE_REDEEM,
                 InviteJob.code == code,
-                InviteJob.status.in_(ACTIVE_JOB_STATUSES),
-            ).order_by(InviteJob.created_at.desc(), InviteJob.id.desc())
-        )
-        return result.scalars().first()
-
-    async def _find_active_redeem_job_by_email(self, db_session: AsyncSession, email: str) -> Optional[InviteJob]:
-        normalized_email = self._normalize_email(email)
-        if not normalized_email:
-            return None
-        result = await db_session.execute(
-            select(InviteJob).where(
-                InviteJob.job_type == JOB_TYPE_REDEEM,
-                InviteJob.email == normalized_email,
                 InviteJob.status.in_(ACTIVE_JOB_STATUSES),
             ).order_by(InviteJob.created_at.desc(), InviteJob.id.desc())
         )
