@@ -137,6 +137,27 @@
                 {% endif %}
                 {% endif %}
             </ul>
+            {% if sidebar_stats %}
+            <div class="sidebar-stats" aria-label="控制台概览">
+                <div class="sidebar-stats-title">控制台概览</div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">Team 总数</span>
+                    <span class="sidebar-stat-value">{{ sidebar_stats.total_teams }}</span>
+                </div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">可用 Team</span>
+                    <span class="sidebar-stat-value">{{ sidebar_stats.available_teams }}</span>
+                </div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">所有席位</span>
+                    <span class="sidebar-stat-value">{{ sidebar_stats.total_seats }}</span>
+                </div>
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">可用席位</span>
+                    <span class="sidebar-stat-value">{{ sidebar_stats.remaining_seats }}</span>
+                </div>
+            </div>
+            {% endif %}
         </aside>
 
         <!-- 主内容区 -->

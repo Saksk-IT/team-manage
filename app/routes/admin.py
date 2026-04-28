@@ -101,12 +101,37 @@ async def _build_admin_template_context(
     **extra_context: Any,
 ) -> dict[str, Any]:
     sidebar_order = await _resolve_admin_sidebar_order(db, current_user)
+    sidebar_stats = await _get_import_admin_sidebar_stats(db, current_user)
     return {
         "request": request,
         "user": current_user,
         "active_page": active_page,
         "sidebar_items": get_admin_sidebar_items_for_user(current_user, sidebar_order),
+        "sidebar_stats": sidebar_stats,
         **extra_context,
+    }
+
+
+async def _get_import_admin_sidebar_stats(
+    db: AsyncSession,
+    current_user: dict,
+) -> Optional[Dict[str, int]]:
+    if not is_import_admin_user(current_user):
+        return None
+    if not isinstance(db, AsyncSession):
+        return None
+
+    try:
+        stats = await team_service.get_stats(db, team_type=TEAM_TYPE_STANDARD)
+    except Exception as e:
+        logger.warning("加载子管理员侧边栏控制台概览失败: %s", e)
+        return None
+
+    return {
+        "total_teams": int(stats.get("total") or 0),
+        "available_teams": int(stats.get("available") or 0),
+        "total_seats": int(stats.get("total_seats") or 0),
+        "remaining_seats": int(stats.get("remaining_seats") or 0),
     }
 
 
