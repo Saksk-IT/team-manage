@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     invite_queue_worker_count: int = 3
     invite_queue_poll_interval_seconds: float = 1.0
     invite_queue_processing_timeout_seconds: int = 600
+    invite_queue_active_team_limit: int = 10
 
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",

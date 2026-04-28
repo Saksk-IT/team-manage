@@ -35,6 +35,7 @@ JOB_STATUS_FAILED = "failed"
 ACTIVE_JOB_STATUSES = (JOB_STATUS_QUEUED, JOB_STATUS_PROCESSING)
 TERMINAL_JOB_STATUSES = (JOB_STATUS_SUCCESS, JOB_STATUS_FAILED)
 DEFAULT_POLL_AFTER_MS = 1500
+DEFAULT_ACTIVE_TEAM_LIMIT = 10
 
 
 class InviteQueueService:
@@ -48,6 +49,15 @@ class InviteQueueService:
         self._team_locks = defaultdict(asyncio.Lock)
         self._stop_event: Optional[asyncio.Event] = None
         self._tasks: List[asyncio.Task] = []
+
+    def _get_active_team_limit(self) -> int:
+        try:
+            return max(int(settings.invite_queue_active_team_limit or DEFAULT_ACTIVE_TEAM_LIMIT), 1)
+        except (TypeError, ValueError):
+            return DEFAULT_ACTIVE_TEAM_LIMIT
+
+    def _get_default_max_attempts(self) -> int:
+        return self._get_active_team_limit()
 
     async def start(self) -> None:
         if self._tasks:
@@ -124,6 +134,16 @@ class InviteQueueService:
                 if existing_job:
                     return self.serialize_job(existing_job)
 
+                existing_email_job = await self._find_active_redeem_job_by_email(db_session, normalized_email)
+                if existing_email_job:
+                    logger.warning(
+                        "同一邮箱已有前台兑换拉人任务，复用原任务: email=%s job_id=%s code=%s",
+                        normalized_email,
+                        existing_email_job.id,
+                        existing_email_job.code,
+                    )
+                    return self.serialize_job(existing_email_job)
+
                 validate_result = await self.redemption_service.validate_code(normalized_code, db_session)
                 if not validate_result.get("success"):
                     await db_session.rollback()
@@ -156,6 +176,7 @@ class InviteQueueService:
                     code=normalized_code,
                     team_id=team.id,
                     idempotency_key=f"{JOB_TYPE_REDEEM}:{normalized_code}",
+                    max_attempts=self._get_default_max_attempts(),
                     reservation_released=False,
                     created_at=get_now(),
                     updated_at=get_now(),
@@ -222,6 +243,7 @@ class InviteQueueService:
                     code=warranty_entry.last_redeem_code,
                     team_id=team.id,
                     idempotency_key=f"{JOB_TYPE_WARRANTY}:{normalized_email}",
+                    max_attempts=self._get_default_max_attempts(),
                     reservation_released=False,
                     created_at=submitted_at,
                     updated_at=get_now(),
@@ -388,9 +410,20 @@ class InviteQueueService:
         refresh_result = await self.team_service.refresh_team_state(team_id, db_session, source=refresh_source)
         await db_session.commit()
         if not refresh_result.get("success"):
+            team = await db_session.get(Team, team_id)
+            try_next_team = bool(
+                refresh_result.get("allow_try_next_team")
+                or (
+                    team
+                    and (
+                        team.status in {"full", "expired", "error", "banned"}
+                        or bool(getattr(team, "warranty_unavailable", False))
+                    )
+                )
+            )
             return {
                 "success": False,
-                "try_next_team": bool(refresh_result.get("allow_try_next_team")),
+                "try_next_team": try_next_team,
                 "error": refresh_result.get("error") or "刷新 Team 状态失败",
             }
 
@@ -423,6 +456,9 @@ class InviteQueueService:
 
         access_token = await self.team_service.ensure_access_token(team, db_session)
         if not access_token:
+            team.status = "error"
+            self.team_service._mark_warranty_team_unavailable(team, "获取 Team 访问权限失败，账户状态异常")
+            await db_session.commit()
             return {"success": False, "try_next_team": True, "error": "获取 Team 访问权限失败，账户状态异常"}
 
         invite_result = await self.team_service.chatgpt_service.send_invite(
@@ -448,6 +484,7 @@ class InviteQueueService:
                 and (
                     team.status in {"full", "expired", "error", "banned"}
                     or self.team_service._is_team_full_error_message(error_msg)
+                    or self.team_service._is_risk_or_billing_error_message(error_msg)
                 )
             )
             return {"success": False, "try_next_team": try_next, "error": error_msg}
@@ -711,20 +748,28 @@ class InviteQueueService:
         exclude_team_ids: Optional[List[int]] = None,
     ) -> Optional[Team]:
         exclude_team_ids = list(dict.fromkeys([int(team_id) for team_id in exclude_team_ids or [] if team_id]))
+        active_window_team_ids = await self._get_active_window_team_ids(db_session)
+        candidate_team_ids = [
+            team_id
+            for team_id in active_window_team_ids
+            if team_id not in exclude_team_ids
+        ]
+        if not candidate_team_ids:
+            return None
+
         capacity_expr = func.coalesce(Team.current_members, 0) + func.coalesce(Team.reserved_members, 0)
         stmt = select(Team.id).where(
+            Team.id.in_(candidate_team_ids),
             Team.status == "active",
             capacity_expr < Team.max_members,
             Team.import_status == IMPORT_STATUS_CLASSIFIED,
             or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
         )
-        if exclude_team_ids:
-            stmt = stmt.where(Team.id.not_in(exclude_team_ids))
         stmt = stmt.order_by(
             func.coalesce(Team.reserved_members, 0).asc(),
             func.coalesce(Team.current_members, 0).asc(),
             Team.id.asc(),
-        ).limit(20)
+        )
 
         result = await db_session.execute(stmt)
         for team_id in result.scalars().all():
@@ -735,8 +780,6 @@ class InviteQueueService:
                 Team.import_status == IMPORT_STATUS_CLASSIFIED,
                 or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
             )
-            if exclude_team_ids:
-                update_stmt = update_stmt.where(Team.id.not_in(exclude_team_ids))
             update_result = await db_session.execute(
                 update_stmt.values(reserved_members=func.coalesce(Team.reserved_members, 0) + 1)
             )
@@ -747,6 +790,21 @@ class InviteQueueService:
                     await db_session.refresh(team)
                     return team
         return None
+
+    async def _get_active_window_team_ids(self, db_session: AsyncSession) -> List[int]:
+        capacity_expr = func.coalesce(Team.current_members, 0) + func.coalesce(Team.reserved_members, 0)
+        result = await db_session.execute(
+            select(Team.id)
+            .where(
+                Team.status == "active",
+                capacity_expr < Team.max_members,
+                Team.import_status == IMPORT_STATUS_CLASSIFIED,
+                or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
+            )
+            .order_by(Team.id.asc())
+            .limit(self._get_active_team_limit())
+        )
+        return [int(team_id) for team_id in result.scalars().all() if team_id]
 
     async def _release_job_reservation(self, db_session: AsyncSession, job: InviteJob) -> None:
         if not job.team_id or job.reservation_released:
@@ -767,6 +825,19 @@ class InviteQueueService:
             select(InviteJob).where(
                 InviteJob.job_type == JOB_TYPE_REDEEM,
                 InviteJob.code == code,
+                InviteJob.status.in_(ACTIVE_JOB_STATUSES),
+            ).order_by(InviteJob.created_at.desc(), InviteJob.id.desc())
+        )
+        return result.scalars().first()
+
+    async def _find_active_redeem_job_by_email(self, db_session: AsyncSession, email: str) -> Optional[InviteJob]:
+        normalized_email = self._normalize_email(email)
+        if not normalized_email:
+            return None
+        result = await db_session.execute(
+            select(InviteJob).where(
+                InviteJob.job_type == JOB_TYPE_REDEEM,
+                InviteJob.email == normalized_email,
                 InviteJob.status.in_(ACTIVE_JOB_STATUSES),
             ).order_by(InviteJob.created_at.desc(), InviteJob.id.desc())
         )

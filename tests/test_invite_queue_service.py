@@ -95,6 +95,46 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertLessEqual((team.current_members or 0) + (team.reserved_members or 0), team.max_members)
         self.assertEqual([team.reserved_members for team in team_rows], [3, 3, 3])
 
+    async def test_redeem_submission_uses_only_first_ten_available_teams(self):
+        await self._seed_redeem_teams_and_codes(team_count=20, code_count=12)
+        service = InviteQueueService()
+
+        async def submit(index):
+            async with self.Session() as session:
+                return await service.submit_redeem_job(
+                    db_session=session,
+                    email=f"buyer-{index}@example.com",
+                    code=f"CODE-{index:03d}",
+                )
+
+        results = await asyncio.gather(*(submit(index) for index in range(1, 13)))
+
+        async with self.Session() as session:
+            job_team_ids = (await session.execute(select(InviteJob.team_id))).scalars().all()
+            team_rows = (await session.execute(select(Team).order_by(Team.id.asc()))).scalars().all()
+
+        self.assertTrue(all(result["success"] for result in results))
+        self.assertTrue(all(team_id <= 10 for team_id in job_team_ids))
+        self.assertEqual(sum(team.reserved_members or 0 for team in team_rows[:10]), 12)
+        self.assertEqual(sum(team.reserved_members or 0 for team in team_rows[10:]), 0)
+
+    async def test_available_team_window_backfills_after_front_team_becomes_full(self):
+        await self._seed_redeem_teams_and_codes(team_count=11, code_count=0)
+        service = InviteQueueService()
+
+        async with self.Session() as session:
+            first_team = await session.get(Team, 1)
+            first_team.status = "full"
+            await session.commit()
+
+            team = await service._reserve_next_available_team(
+                session,
+                exclude_team_ids=list(range(2, 11)),
+            )
+
+        self.assertIsNotNone(team)
+        self.assertEqual(team.id, 11)
+
     async def test_duplicate_redeem_submission_reuses_active_job(self):
         await self._seed_redeem_teams_and_codes(team_count=1, code_count=1)
         service = InviteQueueService()
@@ -108,7 +148,7 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first["job_id"], second["job_id"])
         self.assertEqual(job_count, 1)
 
-    async def test_same_email_multiple_codes_reserve_different_teams(self):
+    async def test_same_email_multiple_codes_reuse_active_redeem_job(self):
         await self._seed_redeem_teams_and_codes(team_count=4, code_count=4)
         service = InviteQueueService()
 
@@ -127,9 +167,13 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
                     select(InviteJob).where(InviteJob.email == "buyer@example.com").order_by(InviteJob.id.asc())
                 )
             ).scalars().all()
+            second_code = await session.scalar(select(RedemptionCode).where(RedemptionCode.code == "CODE-002"))
 
         self.assertTrue(all(result["success"] for result in results))
-        self.assertEqual([job.team_id for job in jobs], [1, 2, 3, 4])
+        self.assertEqual(len({result["job_id"] for result in results}), 1)
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0].team_id, 1)
+        self.assertEqual(second_code.status, "unused")
 
     async def test_redeem_submission_skips_team_already_used_by_email(self):
         await self._seed_redeem_teams_and_codes(team_count=2, code_count=2)
@@ -229,6 +273,48 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(team.current_members, 2)
         self.assertEqual(code.status, "used")
         self.assertEqual(record_count, 1)
+
+    async def test_redeem_processing_marks_billing_and_intercepted_teams_unavailable_then_tries_next(self):
+        await self._seed_redeem_teams_and_codes(team_count=3, code_count=1)
+        service = InviteQueueService()
+
+        async with self.Session() as session:
+            submit_result = await service.submit_redeem_job(session, "buyer@example.com", "CODE-001")
+
+        service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
+        service.team_service.ensure_access_token = AsyncMock(return_value="token")
+        service.team_service.chatgpt_service.send_invite = AsyncMock(side_effect=[
+            {
+                "success": False,
+                "error": "Billing issue: workspace is restricted due to unpaid invoice.",
+                "error_code": "billing_issue",
+            },
+            {"success": True, "data": {"account_invites": []}},
+            {"success": True, "data": {"account_invites": [{"id": "invite-3"}]}},
+        ])
+
+        with patch("app.services.invite_queue.AsyncSessionLocal", self.Session):
+            await service.process_job_now(submit_result["job_id"])
+
+        async with self.Session() as session:
+            job = await session.get(InviteJob, submit_result["job_id"])
+            first_team = await session.get(Team, 1)
+            second_team = await session.get(Team, 2)
+            third_team = await session.get(Team, 3)
+            code = await session.scalar(select(RedemptionCode).where(RedemptionCode.code == "CODE-001"))
+
+        self.assertEqual(job.status, JOB_STATUS_SUCCESS)
+        self.assertEqual(job.team_id, 3)
+        self.assertEqual(job.attempt_count, 3)
+        self.assertEqual(code.used_team_id, 3)
+        self.assertEqual(first_team.status, "error")
+        self.assertTrue(first_team.warranty_unavailable)
+        self.assertIn("billing", (first_team.warranty_unavailable_reason or "").lower())
+        self.assertEqual(second_team.status, "error")
+        self.assertTrue(second_team.warranty_unavailable)
+        self.assertIn("官方拦截下发", second_team.warranty_unavailable_reason or "")
+        self.assertEqual(third_team.reserved_members, 0)
+        self.assertEqual(service.team_service.chatgpt_service.send_invite.await_count, 3)
 
     async def test_recover_stale_processing_job_releases_reservation_and_requeues(self):
         async with self.Session() as session:

@@ -218,6 +218,39 @@ class TeamService:
         return any(keyword in error_msg for keyword in full_keywords)
 
     @staticmethod
+    def _is_risk_or_billing_error_message(error: Optional[str]) -> bool:
+        error_msg = str(error or "").lower()
+        risk_or_billing_keywords = (
+            "billing",
+            "bill",
+            "invoice",
+            "payment",
+            "past due",
+            "overdue",
+            "unpaid",
+            "delinquent",
+            "payment required",
+            "risk",
+            "fraud",
+            "abuse",
+            "restricted",
+            "restriction",
+            "invites disabled",
+            "cannot invite",
+            "blocked",
+            "suspicious",
+            "风控",
+            "账单",
+            "付款",
+            "支付",
+            "欠费",
+            "受限",
+            "限制",
+            "拦截",
+        )
+        return any(keyword in error_msg for keyword in risk_or_billing_keywords)
+
+    @staticmethod
     def _is_warranty_intercept_error(result: Dict[str, Any]) -> bool:
         error_code = str(result.get("error_code") or "").strip().lower()
         error_msg = str(result.get("error") or "").strip().lower()
@@ -679,6 +712,20 @@ class TeamService:
                 # 进位修正，确保逻辑闭环
                 team.current_members = team.max_members
 
+            if not db_session.in_transaction():
+                await db_session.commit()
+            return True
+
+        # 2.1 判定是否为风控/账单/邀请受限类错误，避免后续前台拉人继续命中该 Team
+        if self._is_risk_or_billing_error_message(error_msg):
+            logger.warning(
+                "检测到 Team 风控/账单/邀请受限错误 (msg=%s), 更新 Team %s (%s) 状态为 error",
+                error_msg,
+                team.id,
+                team.email,
+            )
+            team.status = "error"
+            self._mark_warranty_team_unavailable(team, result.get("error"))
             if not db_session.in_transaction():
                 await db_session.commit()
             return True
@@ -2612,16 +2659,29 @@ class TeamService:
                 return {
                     "success": False,
                     "message": None,
-                    "error": "Team 已过期,无法添加成员"
+                    "error": "Team 已过期,无法添加成员",
+                    "allow_try_next_team": True
+                }
+
+            if team.status in {"error", "banned"}:
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": f"Team 状态不可用 ({team.status}), 无法添加成员",
+                    "allow_try_next_team": True
                 }
 
             # 3. 确保 AT Token 有效
             access_token = await self.ensure_access_token(team, db_session)
             if not access_token:
+                team.status = "error"
+                self._mark_warranty_team_unavailable(team, "Token 已过期且无法刷新")
+                await db_session.commit()
                 return {
                     "success": False,
                     "message": None,
-                    "error": "Token 已过期且无法刷新"
+                    "error": "Token 已过期且无法刷新",
+                    "allow_try_next_team": True
                 }
 
             # 4. 调用 ChatGPT API 发送邀请
@@ -2643,8 +2703,9 @@ class TeamService:
                         error_msg = "Token 已失效 (token_invalidated)"
 
                     allow_try_next_team = bool(
-                        team.status == "full"
+                        team.status in {"full", "expired", "error", "banned"}
                         or self._is_team_full_error_message(error_msg)
+                        or self._is_risk_or_billing_error_message(error_msg)
                     )
 
                     return {
