@@ -220,7 +220,8 @@ class InviteQueueService:
                     )
                     return validation_result
 
-                team = await self._reserve_next_available_team(db_session)
+                email_team_ids = await self._get_warranty_email_team_ids(db_session, normalized_email)
+                team = await self._reserve_next_available_team(db_session, email_team_ids)
                 if not team:
                     await db_session.rollback()
                     await self.warranty_service._record_warranty_claim_result(
@@ -229,9 +230,9 @@ class InviteQueueService:
                         submitted_at=submitted_at,
                         claim_status="failed",
                         before_team_info=validation_result.get("latest_team_info"),
-                        failure_reason="当前没有可用的 Team，请稍后再试",
+                        failure_reason="当前没有可用的不同 Team，请稍后再试",
                     )
-                    return {"success": False, "error": "当前没有可用的 Team，请稍后再试"}
+                    return {"success": False, "error": "当前没有可用的不同 Team，请稍后再试"}
 
                 warranty_entry: Optional[WarrantyEmailEntry] = validation_result.get("warranty_entry")
                 selected_code = (
@@ -360,7 +361,12 @@ class InviteQueueService:
                         )
                         reservation_exclusions = [*excluded_team_ids, *email_team_ids]
                     else:
-                        reservation_exclusions = excluded_team_ids
+                        email_team_ids = await self._get_warranty_email_team_ids(
+                            db_session,
+                            job.email,
+                            exclude_job_id=job.id,
+                        )
+                        reservation_exclusions = [*excluded_team_ids, *email_team_ids]
 
                     team = await self._reserve_next_available_team(db_session, reservation_exclusions)
                     if not team:
@@ -572,6 +578,42 @@ class InviteQueueService:
             exclude_job_id=exclude_job_id,
         )
         return int(team_id) in team_ids
+
+    async def _get_warranty_email_team_ids(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        exclude_job_id: Optional[int] = None,
+    ) -> List[int]:
+        """获取该邮箱已质保加入或正在质保预占的 Team，避免同邮箱多订单进入同一 Team。"""
+        normalized_email = self._normalize_email(email)
+        if not normalized_email:
+            return []
+
+        team_ids: List[int] = []
+        record_result = await db_session.execute(
+            select(RedemptionRecord.team_id).where(
+                func.lower(func.trim(RedemptionRecord.email)) == normalized_email,
+                RedemptionRecord.is_warranty_redemption.is_(True),
+                RedemptionRecord.team_id.is_not(None),
+            )
+        )
+        team_ids.extend(int(team_id) for team_id in record_result.scalars().all() if team_id)
+
+        job_stmt = select(InviteJob.team_id).where(
+            InviteJob.job_type == JOB_TYPE_WARRANTY,
+            InviteJob.email == normalized_email,
+            InviteJob.status.in_(ACTIVE_JOB_STATUSES),
+            InviteJob.team_id.is_not(None),
+            InviteJob.reservation_released.is_(False),
+        )
+        if exclude_job_id:
+            job_stmt = job_stmt.where(InviteJob.id != int(exclude_job_id))
+
+        job_result = await db_session.execute(job_stmt)
+        team_ids.extend(int(team_id) for team_id in job_result.scalars().all() if team_id)
+
+        return list(dict.fromkeys(team_ids))
 
     async def _build_existing_warranty_payload(
         self,

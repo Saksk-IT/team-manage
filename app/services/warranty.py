@@ -1059,6 +1059,25 @@ class WarrantyService:
             "member_state": member_state,
         }
 
+    def _serialize_redemption_code_team_info(
+        self,
+        redemption_code: RedemptionCode,
+        team: Team
+    ) -> Dict[str, Any]:
+        team_status = (team.status or "").strip().lower()
+        return {
+            "id": team.id,
+            "team_name": team.team_name,
+            "email": team.email,
+            "account_id": team.account_id,
+            "status": team_status,
+            "status_label": self.get_team_status_label(team_status),
+            "redeemed_at": redemption_code.used_at.isoformat() if redemption_code and redemption_code.used_at else None,
+            "expires_at": team.expires_at.isoformat() if team and team.expires_at else None,
+            "code": redemption_code.code if redemption_code else None,
+            "is_warranty_redemption": False,
+        }
+
     def _calculate_remaining_days(self, expires_at: Optional[datetime]) -> Optional[int]:
         if not expires_at:
             return None
@@ -1153,6 +1172,7 @@ class WarrantyService:
                     "team": None,
                     "used_claims": 0,
                     "first_used_at": None,
+                    "latest_at": None,
                     "is_legacy_entry_code": bool(legacy_code and code_key == legacy_code and not redemption_code.has_warranty),
                 }
             )
@@ -1160,6 +1180,7 @@ class WarrantyService:
             if not context["latest_record"]:
                 context["latest_record"] = record
                 context["team"] = team
+                context["latest_at"] = record.redeemed_at
 
             if bool(record.is_warranty_redemption):
                 context["used_claims"] += 1
@@ -1169,10 +1190,39 @@ class WarrantyService:
                 if not first_used_at or (record.redeemed_at and record.redeemed_at < first_used_at):
                     context["first_used_at"] = record.redeemed_at
 
+        code_stmt = (
+            select(RedemptionCode, Team)
+            .join(Team, RedemptionCode.used_team_id == Team.id)
+            .where(
+                func.lower(RedemptionCode.used_by_email) == normalized_email,
+                RedemptionCode.has_warranty.is_(True),
+                RedemptionCode.used_team_id.is_not(None),
+            )
+            .order_by(RedemptionCode.used_at.desc(), RedemptionCode.id.desc())
+        )
+        if normalized_code:
+            code_stmt = code_stmt.where(RedemptionCode.code == normalized_code)
+
+        code_result = await db_session.execute(code_stmt)
+        for redemption_code, team in code_result.all():
+            code_key = (redemption_code.code or "").strip()
+            if not code_key or code_key in order_map:
+                continue
+            order_map[code_key] = {
+                "code": code_key,
+                "redemption_code": redemption_code,
+                "latest_record": None,
+                "team": team,
+                "used_claims": 0,
+                "first_used_at": redemption_code.used_at,
+                "latest_at": redemption_code.used_at,
+                "is_legacy_entry_code": False,
+            }
+
         contexts = list(order_map.values())
         contexts.sort(
             key=lambda item: (
-                item["latest_record"].redeemed_at if item.get("latest_record") else datetime.min,
+                item.get("latest_at") or datetime.min,
                 item["latest_record"].id if item.get("latest_record") else 0,
             ),
             reverse=True,
@@ -1189,11 +1239,18 @@ class WarrantyService:
                 context["team_info"] = legacy_entry_context.get("team_info")
                 if legacy_entry_context.get("record"):
                     context["latest_record"] = legacy_entry_context.get("record")
+                    context["latest_at"] = legacy_entry_context["record"].redeemed_at
             else:
-                context["team_info"] = self._serialize_latest_team_info(
-                    context["latest_record"],
-                    context["team"],
-                )
+                if context.get("latest_record"):
+                    context["team_info"] = self._serialize_latest_team_info(
+                        context["latest_record"],
+                        context["team"],
+                    )
+                else:
+                    context["team_info"] = self._serialize_redemption_code_team_info(
+                        context["redemption_code"],
+                        context["team"],
+                    )
         return contexts
 
     async def _refresh_warranty_order_context_for_email(

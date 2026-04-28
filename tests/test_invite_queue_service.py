@@ -468,6 +468,7 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(first["job_id"], second_order["job_id"])
         self.assertEqual(job_count, 2)
         self.assertEqual([job.code for job in jobs], ["CODE-A", "CODE-B"])
+        self.assertEqual(len({job.team_id for job in jobs}), 2)
 
     async def test_warranty_processing_records_before_team_before_success_record(self):
         service = InviteQueueService()
