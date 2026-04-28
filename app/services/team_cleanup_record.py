@@ -129,12 +129,12 @@ class TeamCleanupRecordService:
         search: Optional[str] = None,
         cleanup_status: Optional[str] = None,
         page: int = 1,
-        per_page: int = 20,
+        per_page: int = 100,
     ) -> Dict[str, Any]:
         normalized_search = (search or "").strip()
         normalized_status = (cleanup_status or "").strip().lower()
         safe_page = max(int(page or 1), 1)
-        safe_per_page = max(int(per_page or 20), 1)
+        safe_per_page = max(int(per_page or 100), 1)
 
         stmt = select(TeamCleanupRecord)
         count_stmt = select(func.count(TeamCleanupRecord.id))

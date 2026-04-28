@@ -482,7 +482,7 @@ class RedemptionService:
         self,
         db_session: AsyncSession,
         page: int = 1,
-        per_page: int = 50,
+        per_page: int = 100,
         search: Optional[str] = None,
         status: Optional[str] = None,
         selected_codes: Optional[List[str]] = None,

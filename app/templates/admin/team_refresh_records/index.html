@@ -174,7 +174,7 @@
     {% if has_cleanup %}{% set _ = query_params.append('has_cleanup=' + has_cleanup|urlencode) %}{% endif %}
     {% if start_date %}{% set _ = query_params.append('start_date=' + start_date|urlencode) %}{% endif %}
     {% if end_date %}{% set _ = query_params.append('end_date=' + end_date|urlencode) %}{% endif %}
-    {% if pagination.per_page != 20 %}{% set _ = query_params.append('per_page=' + pagination.per_page|string) %}{% endif %}
+    {% if pagination.per_page != 100 %}{% set _ = query_params.append('per_page=' + pagination.per_page|string) %}{% endif %}
     {% set base_query = '&' + query_params|join('&') if query_params else '' %}
 
     <div class="pagination">

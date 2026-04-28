@@ -320,7 +320,7 @@ class WarrantyService:
         search: Optional[str] = None,
         claim_status: Optional[str] = None,
         page: int = 1,
-        per_page: int = 20,
+        per_page: int = 100,
     ) -> Dict[str, Any]:
         normalized_status = (claim_status or "").strip().lower()
         normalized_search = (search or "").strip()
@@ -352,7 +352,7 @@ class WarrantyService:
             count_stmt = count_stmt.where(and_(*filters))
 
         safe_page = max(int(page or 1), 1)
-        safe_per_page = max(int(per_page or 20), 1)
+        safe_per_page = max(int(per_page or 100), 1)
         offset = (safe_page - 1) * safe_per_page
 
         stmt = (

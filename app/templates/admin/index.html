@@ -93,9 +93,9 @@
                         {% if members_max_filter != '' %}
                         <input type="hidden" name="members_max" value="{{ members_max_filter }}">
                         {% endif %}
-                        {% if pagination and pagination.per_page != 20 %}
-                        <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
-                        {% endif %}
+                {% if pagination and pagination.per_page != 100 %}
+                <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+                {% endif %}
                     </div>
                 </form>
 
@@ -150,9 +150,9 @@
             {% if status_filter %}
             <input type="hidden" name="status" value="{{ status_filter }}">
             {% endif %}
-            {% if pagination and pagination.per_page != 20 %}
-            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
-            {% endif %}
+                    {% if pagination and pagination.per_page != 100 %}
+                    <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+                    {% endif %}
             <select name="review_status" class="form-control" aria-label="{{ '入库状态筛选' if is_import_only_mode else '审核状态筛选' }}">
                 <option value="" {% if not review_status_filter %}selected{% endif %}>{{ '全部入库状态' if is_import_only_mode else '全部审核状态' }}</option>
                 <option value="pending" {% if review_status_filter == 'pending' %}selected{% endif %}>{{ '待入控制台' if is_import_only_mode else '待审核' }}</option>
@@ -188,9 +188,9 @@
             {% if search %}
             <input type="hidden" name="search" value="{{ search }}">
             {% endif %}
-            {% if pagination and pagination.per_page != 20 %}
-            <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
-            {% endif %}
+                    {% if pagination and pagination.per_page != 100 %}
+                    <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+                    {% endif %}
             <label class="team-filter-field team-filter-field-range">
                 <span>导入时间</span>
                 <div class="filter-range-inputs">
@@ -449,7 +449,7 @@
     {% set device_auth_param = '&device_auth=' + device_auth_filter|urlencode if device_auth_filter else '' %}
     {% set members_min_param = '&members_min=' + members_min_filter|string if members_min_filter != '' else '' %}
     {% set members_max_param = '&members_max=' + members_max_filter|string if members_max_filter != '' else '' %}
-    {% set per_page_param = '&per_page=' + pagination.per_page|string if pagination.per_page != 20 else '' %}
+    {% set per_page_param = '&per_page=' + pagination.per_page|string if pagination.per_page != 100 else '' %}
     {% set base_query = search_param + status_param + review_status_param + import_tag_param + imported_by_user_id_param + imported_from_param + imported_to_param + expires_from_param + expires_to_param + device_auth_param + members_min_param + members_max_param + per_page_param %}
 
     <div class="pagination-controls">

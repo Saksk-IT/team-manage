@@ -311,6 +311,46 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('name="remaining_claims_min"', html)
         self.assertIn('name="remaining_days_max"', html)
 
+    async def test_warranty_emails_page_paginates_with_default_100_per_page(self):
+        async with self.Session() as session:
+            now = get_now()
+            session.add_all([
+                WarrantyEmailEntry(
+                    email=f"user{i:03d}@example.com",
+                    remaining_claims=3,
+                    expires_at=now + timedelta(days=5),
+                    source="manual",
+                    updated_at=now + timedelta(seconds=i),
+                )
+                for i in range(105)
+            ])
+            await session.commit()
+
+            first_page_response = await warranty_emails_page(
+                request=self._build_request(),
+                search=None,
+                db=session,
+                current_user={"username": "admin"}
+            )
+            second_page_response = await warranty_emails_page(
+                request=self._build_request(),
+                search=None,
+                page="2",
+                db=session,
+                current_user={"username": "admin"}
+            )
+
+        first_page_html = first_page_response.body.decode("utf-8")
+        second_page_html = second_page_response.body.decode("utf-8")
+        checkbox_marker = 'class="warranty-email-checkbox"'
+
+        self.assertEqual(first_page_html.count(checkbox_marker), 100)
+        self.assertEqual(second_page_html.count(checkbox_marker), 5)
+        self.assertIn("user104@example.com", first_page_html)
+        self.assertNotIn("user000@example.com", first_page_html)
+        self.assertIn("user000@example.com", second_page_html)
+        self.assertIn('option value="100" selected', first_page_html)
+
     async def test_bulk_update_warranty_email_remaining_days_and_claims(self):
         async with self.Session() as session:
             entry_one = WarrantyEmailEntry(

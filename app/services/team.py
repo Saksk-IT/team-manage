@@ -3125,7 +3125,7 @@ class TeamService:
         self,
         db_session: AsyncSession,
         page: int = 1,
-        per_page: int = 20,
+        per_page: int = 100,
         search: Optional[str] = None,
         status: Optional[str] = None,
         team_type: Optional[str] = None,

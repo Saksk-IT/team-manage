@@ -161,6 +161,93 @@
         </table>
     </div>
 
+    {% if pagination %}
+    {% set query_params = [] %}
+    {% if search %}{% set _ = query_params.append('search=' + search|urlencode) %}{% endif %}
+    {% if warranty_email_filters.status_filter %}{% set _ = query_params.append('status_filter=' + warranty_email_filters.status_filter|urlencode) %}{% endif %}
+    {% if warranty_email_filters.source_filter %}{% set _ = query_params.append('source_filter=' + warranty_email_filters.source_filter|urlencode) %}{% endif %}
+    {% if warranty_email_filters.remaining_claims_min != '' %}{% set _ = query_params.append('remaining_claims_min=' + warranty_email_filters.remaining_claims_min|string) %}{% endif %}
+    {% if warranty_email_filters.remaining_claims_max != '' %}{% set _ = query_params.append('remaining_claims_max=' + warranty_email_filters.remaining_claims_max|string) %}{% endif %}
+    {% if warranty_email_filters.remaining_days_min != '' %}{% set _ = query_params.append('remaining_days_min=' + warranty_email_filters.remaining_days_min|string) %}{% endif %}
+    {% if warranty_email_filters.remaining_days_max != '' %}{% set _ = query_params.append('remaining_days_max=' + warranty_email_filters.remaining_days_max|string) %}{% endif %}
+    {% if pagination.per_page != 100 %}{% set _ = query_params.append('per_page=' + pagination.per_page|string) %}{% endif %}
+    {% set base_query = '&' + query_params|join('&') if query_params else '' %}
+
+    <div class="pagination">
+        <div class="per-page-selector">
+            每页
+            <select class="per-page-select" onchange="changePerPage(this.value)">
+                <option value="20" {% if pagination.per_page == 20 %}selected{% endif %}>20</option>
+                <option value="50" {% if pagination.per_page == 50 %}selected{% endif %}>50</option>
+                <option value="100" {% if pagination.per_page == 100 %}selected{% endif %}>100</option>
+            </select>
+        </div>
+
+        {% if pagination.total_pages > 1 %}
+        <div class="pagination-controls">
+            <a href="?page=1{{ base_query }}"
+                class="btn btn-sm btn-secondary {% if pagination.current_page == 1 %}disabled{% endif %}" title="首页">
+                <i data-lucide="chevrons-left" style="width: 14px; height: 14px;"></i>
+            </a>
+
+            {% if pagination.current_page > 1 %}
+            <a href="?page={{ pagination.current_page - 1 }}{{ base_query }}" class="btn btn-sm btn-secondary" title="上一页">
+                <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+            </a>
+            {% else %}
+            <button class="btn btn-sm btn-secondary" disabled>
+                <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+            </button>
+            {% endif %}
+
+            <div class="pagination-numbers">
+                {% set start_page = pagination.current_page - 2 %}
+                {% set end_page = pagination.current_page + 2 %}
+                {% if start_page < 1 %}{% set end_page = end_page + (1 - start_page) %}{% set start_page = 1 %}{% endif %}
+                {% if end_page > pagination.total_pages %}
+                    {% set start_page = start_page - (end_page - pagination.total_pages) %}
+                    {% set end_page = pagination.total_pages %}
+                    {% if start_page < 1 %}{% set start_page = 1 %}{% endif %}
+                {% endif %}
+
+                {% if start_page > 1 %}
+                <a href="?page=1{{ base_query }}" class="page-number">1</a>
+                {% if start_page > 2 %}
+                <span class="page-dots">...</span>
+                {% endif %}
+                {% endif %}
+
+                {% for p in range(start_page, end_page + 1) %}
+                <a href="?page={{ p }}{{ base_query }}" class="page-number {% if p == pagination.current_page %}active{% endif %}">{{ p }}</a>
+                {% endfor %}
+
+                {% if end_page < pagination.total_pages %}
+                {% if end_page < pagination.total_pages - 1 %}
+                <span class="page-dots">...</span>
+                {% endif %}
+                <a href="?page={{ pagination.total_pages }}{{ base_query }}" class="page-number">{{ pagination.total_pages }}</a>
+                {% endif %}
+            </div>
+
+            {% if pagination.current_page < pagination.total_pages %}
+            <a href="?page={{ pagination.current_page + 1 }}{{ base_query }}" class="btn btn-sm btn-secondary" title="下一页">
+                <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+            </a>
+            {% else %}
+            <button class="btn btn-sm btn-secondary" disabled>
+                <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+            </button>
+            {% endif %}
+
+            <a href="?page={{ pagination.total_pages }}{{ base_query }}"
+                class="btn btn-sm btn-secondary {% if pagination.current_page == pagination.total_pages %}disabled{% endif %}" title="末页">
+                <i data-lucide="chevrons-right" style="width: 14px; height: 14px;"></i>
+            </a>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <div id="warrantyEmailBulkActionBar" class="bulk-action-bar" style="display: none;">
         <div class="bulk-info">
             已选择 <span id="warrantyEmailSelectedCount">0</span> 个质保邮箱
@@ -615,6 +702,13 @@
         } catch (error) {
             showToast('网络错误', 'error');
         }
+    }
+
+    function changePerPage(value) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('per_page', value);
+        url.searchParams.set('page', '1');
+        window.location.href = url.toString();
     }
 </script>
 {% endblock %}

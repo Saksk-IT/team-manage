@@ -162,7 +162,7 @@ class TeamRefreshRecordService:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         page: int = 1,
-        per_page: int = 20,
+        per_page: int = 100,
     ) -> Dict[str, Any]:
         normalized_search = (search or "").strip()
         normalized_source = self.normalize_source(source) if (source or "").strip() else ""
@@ -178,7 +178,7 @@ class TeamRefreshRecordService:
         start_datetime = self._parse_date_boundary(start_date)
         end_datetime = self._parse_date_boundary(end_date, is_end=True)
         safe_page = max(int(page or 1), 1)
-        safe_per_page = min(max(int(per_page or 20), 1), 100)
+        safe_per_page = min(max(int(per_page or 100), 1), 100)
 
         stmt = select(TeamRefreshRecord)
         count_stmt = select(func.count(TeamRefreshRecord.id))

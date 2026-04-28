@@ -138,7 +138,7 @@
     {% set query_params = [] %}
     {% if search %}{% set _ = query_params.append('search=' + search|urlencode) %}{% endif %}
     {% if cleanup_status %}{% set _ = query_params.append('cleanup_status=' + cleanup_status|urlencode) %}{% endif %}
-    {% if pagination.per_page != 20 %}{% set _ = query_params.append('per_page=' + pagination.per_page|string) %}{% endif %}
+    {% if pagination.per_page != 100 %}{% set _ = query_params.append('per_page=' + pagination.per_page|string) %}{% endif %}
     {% set base_query = '&' + query_params|join('&') if query_params else '' %}
 
     <div class="pagination">

@@ -158,7 +158,7 @@
         %}
         {% if filters.start_date %}{% set _ = query_params.append('start_date=' + filters.start_date) %}{% endif %}
         {% if filters.end_date %}{% set _ = query_params.append('end_date=' + filters.end_date) %}{% endif %}
-        {% if pagination.per_page != 20 %}{% set _ = query_params.append('per_page=' + pagination.per_page|string) %}{%
+        {% if pagination.per_page != 100 %}{% set _ = query_params.append('per_page=' + pagination.per_page|string) %}{%
         endif %}
 
         {% set base_query = '&' + query_params|join('&') if query_params else '' %}

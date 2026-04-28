@@ -1095,7 +1095,7 @@ async def _render_team_dashboard_page(
 async def admin_dashboard(
     request: Request,
     page: int = 1,
-    per_page: int = 20,
+    per_page: int = 100,
     search: Optional[str] = None,
     status: Optional[str] = None,
     imported_from: Optional[str] = None,
@@ -1157,7 +1157,7 @@ async def warranty_teams_dashboard(
 async def pending_teams_dashboard(
     request: Request,
     page: int = 1,
-    per_page: int = 20,
+    per_page: int = 100,
     search: Optional[str] = None,
     status: Optional[str] = None,
     review_status: Optional[str] = None,
@@ -1194,7 +1194,7 @@ async def pending_teams_dashboard(
 async def import_only_page(
     request: Request,
     page: int = 1,
-    per_page: int = 20,
+    per_page: int = 100,
     search: Optional[str] = None,
     status: Optional[str] = None,
     review_status: Optional[str] = None,
@@ -2172,7 +2172,7 @@ async def batch_enable_device_auth(
 async def codes_list_page(
     request: Request,
     page: int = 1,
-    per_page: int = 50,
+    per_page: int = 100,
     search: Optional[str] = None,
     status_filter: Optional[str] = None,
     team_id: Optional[str] = None,
@@ -2227,10 +2227,10 @@ async def codes_list_page(
             "remaining_days_max": code_filter_kwargs["remaining_days_max"],
             "remaining_claims_min": code_filter_kwargs["remaining_claims_min"],
             "remaining_claims_max": code_filter_kwargs["remaining_claims_max"],
-            "per_page": per_page if per_page != 50 else None,
+            "per_page": per_page if per_page != 100 else None,
         })
         reset_query = _build_query_string({
-            "per_page": per_page if per_page != 50 else None,
+            "per_page": per_page if per_page != 100 else None,
         })
 
         logger.info(
@@ -2862,7 +2862,7 @@ async def records_page(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     page: Optional[str] = "1",
-    per_page: int = 20,
+    per_page: int = 100,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
@@ -3438,11 +3438,21 @@ async def warranty_emails_page(
     remaining_claims_max: Optional[str] = None,
     remaining_days_min: Optional[str] = None,
     remaining_days_max: Optional[str] = None,
+    page: Optional[str] = "1",
+    per_page: int = 100,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
     try:
         from app.main import templates
+        import math
+
+        try:
+            page_int = int(page) if page and page.strip() else 1
+        except (ValueError, TypeError):
+            page_int = 1
+        page_int = max(page_int, 1)
+        safe_per_page = max(int(per_page or 100), 1)
 
         normalized_status = _normalize_optional_filter_text(status_filter)
         if normalized_status and normalized_status not in warranty_service.WARRANTY_EMAIL_STATUS_LABELS:
@@ -3482,7 +3492,7 @@ async def warranty_emails_page(
         _validate_code_filter_range(parsed_remaining_days_min, parsed_remaining_days_max, "剩余天数")
 
         logger.info(
-            "管理员访问质保邮箱列表页 search=%s status=%s source=%s claims=%s-%s days=%s-%s",
+            "管理员访问质保邮箱列表页 search=%s status=%s source=%s claims=%s-%s days=%s-%s page=%s per_page=%s",
             search,
             normalized_status,
             normalized_source,
@@ -3490,8 +3500,10 @@ async def warranty_emails_page(
             parsed_remaining_claims_max,
             parsed_remaining_days_min,
             parsed_remaining_days_max,
+            page_int,
+            safe_per_page,
         )
-        entries = await warranty_service.list_warranty_email_entries(
+        all_entries = await warranty_service.list_warranty_email_entries(
             db_session=db,
             search=search,
             status_filter=normalized_status,
@@ -3501,6 +3513,12 @@ async def warranty_emails_page(
             remaining_days_min=parsed_remaining_days_min,
             remaining_days_max=parsed_remaining_days_max,
         )
+        total_entries = len(all_entries)
+        total_pages = max(math.ceil(total_entries / safe_per_page), 1) if total_entries else 1
+        if page_int > total_pages:
+            page_int = total_pages
+        offset = (page_int - 1) * safe_per_page
+        entries = all_entries[offset:offset + safe_per_page]
         return templates.TemplateResponse(
             request,
             "admin/warranty_emails/index.html",
@@ -3543,7 +3561,13 @@ async def warranty_emails_page(
                     parsed_remaining_claims_max is not None,
                     parsed_remaining_days_min is not None,
                     parsed_remaining_days_max is not None,
-                ])
+                ]),
+                pagination={
+                    "current_page": page_int,
+                    "total_pages": total_pages,
+                    "total": total_entries,
+                    "per_page": safe_per_page,
+                }
             )
         )
     except HTTPException:
@@ -3713,7 +3737,7 @@ async def warranty_claim_records_page(
     search: Optional[str] = None,
     claim_status: Optional[str] = None,
     page: Optional[str] = "1",
-    per_page: int = 20,
+    per_page: int = 100,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
@@ -3769,7 +3793,7 @@ async def team_cleanup_records_page(
     search: Optional[str] = None,
     cleanup_status: Optional[str] = None,
     page: Optional[str] = "1",
-    per_page: int = 20,
+    per_page: int = 100,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
@@ -3830,7 +3854,7 @@ async def team_refresh_records_page(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     page: Optional[str] = "1",
-    per_page: int = 20,
+    per_page: int = 100,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
