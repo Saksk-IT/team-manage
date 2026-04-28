@@ -105,6 +105,8 @@ CODE_STATUS_LABELS = {
     "warranty_active": "质保中",
 }
 
+FRONT_WITHDRAW_DISABLED_MESSAGE = "前台自助撤销已关闭，撤销请联系客服处理。"
+
 
 def _get_code_status_label(code_status: Optional[str]) -> Optional[str]:
     if not code_status:
@@ -218,7 +220,7 @@ async def withdraw_bound_email(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    根据兑换码撤销当前绑定邮箱对应的使用记录。
+    前台自助撤销已关闭，仅保留接口级拦截，避免旧页面或脚本继续调用。
     """
     code = (request.code or "").strip()
     if not code:
@@ -227,34 +229,11 @@ async def withdraw_bound_email(
             detail="兑换码不能为空"
         )
 
-    try:
-        logger.info("前台请求撤销兑换码绑定邮箱: %s", code)
-
-        result = await redemption_service.withdraw_record_by_code(
-            code=code,
-            db_session=db
-        )
-
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result.get("error") or "撤销失败"
-            )
-
-        return BoundEmailWithdrawResponse(
-            success=True,
-            message=result.get("message") or "撤销成功",
-            error=None
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"前台撤销绑定邮箱失败: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"撤销失败: {str(e)}"
-        )
+    logger.info("前台自助撤销已关闭，拒绝撤销兑换码绑定邮箱: %s", code)
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=FRONT_WITHDRAW_DISABLED_MESSAGE
+    )
 
 
 @router.post("/confirm", response_model=RedeemResponse)

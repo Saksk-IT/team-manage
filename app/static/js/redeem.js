@@ -805,13 +805,14 @@ function renderBoundEmailLookupResult(data, code) {
         `);
     }
 
-    const actionsHtml = bound ? `
-        <div class="lookup-result__actions">
-            <button type="button" class="btn btn-danger" id="boundEmailWithdrawBtn">
-                <i data-lucide="undo-2"></i> 撤销绑定并恢复兑换码
-            </button>
-        </div>
-    ` : '';
+    if (bound) {
+        detailItems.push(`
+            <div class="lookup-result__item">
+                <span class="lookup-result__label">撤销说明</span>
+                <span class="lookup-result__value">撤销请联系客服处理。</span>
+            </div>
+        `);
+    }
 
     resultContainer.className = variantClass;
     resultContainer.style.display = 'block';
@@ -819,17 +820,10 @@ function renderBoundEmailLookupResult(data, code) {
         <div class="lookup-result__title">${escapeHtml(title)}</div>
         <div class="lookup-result__message">${escapeHtml(data?.message || '')}</div>
         <div class="lookup-result__list">${detailItems.join('')}</div>
-        ${actionsHtml}
     `;
 
     if (window.lucide) {
         lucide.createIcons();
-    }
-
-    if (bound) {
-        document.getElementById('boundEmailWithdrawBtn')?.addEventListener('click', () => {
-            withdrawBoundEmailByCode(code, data.email || '');
-        });
     }
 }
 
@@ -866,74 +860,6 @@ async function lookupBoundEmailByCode(code) {
         return data;
     } catch (error) {
         throw new Error(error.message || '网络错误,请稍后重试');
-    }
-}
-
-async function withdrawBoundEmailByCode(code, email) {
-    const confirmed = await showSystemConfirm({
-        title: '确认撤销兑换记录',
-        message: `确定要撤销 ${email || '该邮箱'} 的兑换记录吗？\n\n这将执行以下操作：\n1. 在 ChatGPT Team 中撤回邀请或删除成员\n2. 恢复对应兑换码为“未使用”状态\n3. 删除此条使用记录`,
-        confirmText: '撤销记录',
-        danger: true,
-    });
-    if (!confirmed) return;
-
-    const withdrawBtn = document.getElementById('boundEmailWithdrawBtn');
-    const originalContent = withdrawBtn?.innerHTML;
-
-    if (withdrawBtn) {
-        withdrawBtn.disabled = true;
-        withdrawBtn.innerHTML = '<i data-lucide="loader" class="spinning"></i> 撤销中...';
-        if (window.lucide) {
-            lucide.createIcons();
-        }
-    }
-
-    try {
-        const response = await fetch('/redeem/bound-email/withdraw', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                code
-            })
-        });
-
-        const text = await response.text();
-        let data;
-        try {
-            data = text ? JSON.parse(text) : {};
-        } catch (error) {
-            throw new Error('服务器响应格式错误');
-        }
-
-        if (!response.ok || !data.success) {
-            let errorMessage = '撤销失败';
-            if (typeof data?.detail === 'string') {
-                errorMessage = data.detail;
-            } else if (typeof data?.error === 'string') {
-                errorMessage = data.error;
-            }
-            throw new Error(errorMessage);
-        }
-
-        showToast(data.message || '撤销成功', 'success');
-        renderBoundEmailLookupResult({
-            found: true,
-            bound: false,
-            code_status_label: '未使用',
-            message: data.message || '已撤销绑定邮箱并恢复兑换码为未使用状态。'
-        }, code);
-    } catch (error) {
-        showToast(error.message || '撤销失败，请稍后重试', 'error');
-        if (withdrawBtn) {
-            withdrawBtn.disabled = false;
-            withdrawBtn.innerHTML = originalContent || '<i data-lucide="undo-2"></i> 撤销绑定并恢复兑换码';
-            if (window.lucide) {
-                lucide.createIcons();
-            }
-        }
     }
 }
 

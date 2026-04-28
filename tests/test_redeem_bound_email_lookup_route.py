@@ -86,43 +86,34 @@ class RedeemBoundEmailLookupRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.status_code, 500)
         self.assertEqual(ctx.exception.detail, "数据库异常")
 
-    async def test_withdraw_bound_email_returns_success_message(self):
+    async def test_withdraw_bound_email_is_disabled_for_front_page(self):
         db = AsyncMock()
 
         with patch(
             "app.routes.redeem.redemption_service.withdraw_record_by_code",
-            new=AsyncMock(return_value={
-                "success": True,
-                "message": "成功撤回记录并恢复兑换码 CODE-123",
-            })
+            new=AsyncMock()
         ) as mocked_withdraw:
-            result = await withdraw_bound_email(
-                request=BoundEmailWithdrawRequest(code="CODE-123"),
-                db=db,
-            )
-
-        mocked_withdraw.assert_awaited_once_with(code="CODE-123", db_session=db)
-        self.assertTrue(result.success)
-        self.assertEqual(result.message, "成功撤回记录并恢复兑换码 CODE-123")
-
-    async def test_withdraw_bound_email_raises_when_service_fails(self):
-        db = AsyncMock()
-
-        with patch(
-            "app.routes.redeem.redemption_service.withdraw_record_by_code",
-            new=AsyncMock(return_value={
-                "success": False,
-                "error": "该兑换码当前未绑定邮箱，无需撤销",
-            })
-        ):
             with self.assertRaises(HTTPException) as ctx:
                 await withdraw_bound_email(
-                    request=BoundEmailWithdrawRequest(code="UNUSED-001"),
+                    request=BoundEmailWithdrawRequest(code="CODE-123"),
                     db=db,
                 )
 
+        mocked_withdraw.assert_not_awaited()
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertEqual(ctx.exception.detail, "前台自助撤销已关闭，撤销请联系客服处理。")
+
+    async def test_withdraw_bound_email_still_rejects_empty_code(self):
+        db = AsyncMock()
+
+        with self.assertRaises(HTTPException) as ctx:
+            await withdraw_bound_email(
+                request=BoundEmailWithdrawRequest(code=" "),
+                db=db,
+            )
+
         self.assertEqual(ctx.exception.status_code, 400)
-        self.assertEqual(ctx.exception.detail, "该兑换码当前未绑定邮箱，无需撤销")
+        self.assertEqual(ctx.exception.detail, "兑换码不能为空")
 
 
 if __name__ == "__main__":

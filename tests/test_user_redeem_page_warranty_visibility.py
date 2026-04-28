@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from starlette.requests import Request
@@ -49,9 +50,9 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("兑换服务", html)
         self.assertIn("查询绑定邮箱", html)
-        self.assertIn("自助撤销", html)
+        self.assertNotIn("自助撤销", html)
         self.assertIn('id="boundEmailLookupForm"', html)
-        self.assertIn("可查询当前绑定的完整邮箱，也可在查询结果中撤销兑换码", html)
+        self.assertIn("可查询当前绑定的完整邮箱。撤销请联系客服处理。", html)
         self.assertNotIn("质保服务", html)
         self.assertNotIn("质保说明", html)
         self.assertNotIn("提交质保", html)
@@ -104,9 +105,9 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("质保服务", html)
         self.assertIn("查询绑定邮箱", html)
-        self.assertIn("自助撤销", html)
+        self.assertNotIn("自助撤销", html)
         self.assertIn('id="boundEmailLookupForm"', html)
-        self.assertIn("可查询当前绑定的完整邮箱，也可在查询结果中撤销兑换码", html)
+        self.assertIn("可查询当前绑定的完整邮箱。撤销请联系客服处理。", html)
         self.assertIn("质保说明", html)
         self.assertIn("如您购买了质保服务", html)
         self.assertIn("查看状态", html)
@@ -137,6 +138,14 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("超级兑换码", html)
         self.assertIn("质保邮箱", html)
         self.assertIn("warrantyServiceEnabled: true", html)
+
+    def test_redeem_js_does_not_expose_front_withdraw_action(self):
+        js_path = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "redeem.js"
+        js = js_path.read_text(encoding="utf-8")
+
+        self.assertNotIn("/redeem/bound-email/withdraw", js)
+        self.assertNotIn("boundEmailWithdrawBtn", js)
+        self.assertNotIn("撤销绑定并恢复兑换码", js)
 
 
 if __name__ == "__main__":
