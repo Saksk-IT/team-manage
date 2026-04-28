@@ -76,6 +76,14 @@ class UserRedeemTransitionOverlayTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("submitWarrantyClaim(email, button.dataset.code || null, button)", script)
         self.assertIn("...(code ? { code } : {})", script)
 
+    def test_redeem_js_normalizes_non_banned_warranty_order_status(self):
+        script = Path("app/static/js/redeem.js").read_text(encoding="utf-8")
+
+        self.assertIn("return { label: '正常', className: 'status-badge--success' };", script)
+        self.assertIn("normalizeWarrantyStatusMessage", script)
+        self.assertIn("${escapeHtml(badge.label)}</span>", script)
+        self.assertNotIn("latestTeam.status_label || badge.label", script)
+
 
 if __name__ == "__main__":
     unittest.main()

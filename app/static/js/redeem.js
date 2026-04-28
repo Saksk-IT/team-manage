@@ -605,7 +605,15 @@ function getWarrantyTeamStatusBadge(status) {
         return { label: '封禁', className: 'status-badge--danger' };
     }
 
-    return { label: '可用', className: 'status-badge--success' };
+    return { label: '正常', className: 'status-badge--success' };
+}
+
+function normalizeWarrantyStatusMessage(message) {
+    if (!message) {
+        return '';
+    }
+
+    return String(message).replace(/当前状态为「[^」]*」/g, '当前状态为「正常」');
 }
 
 function getWarrantyTeamStatusMessage(data, canClaim) {
@@ -613,7 +621,8 @@ function getWarrantyTeamStatusMessage(data, canClaim) {
         return data?.message || '该邮箱最近加入的 Team 已封禁，可以继续提交质保。';
     }
 
-    return '该邮箱最近加入的 Team 当前状态为可用，只有当状态为封禁时才可以提交质保';
+    return normalizeWarrantyStatusMessage(data?.message)
+        || '该邮箱最近加入的 Team 当前状态为「正常」，只有当状态为封禁时才可以提交质保';
 }
 
 function normalizeWarrantyOrders(data) {
@@ -637,7 +646,7 @@ function normalizeWarrantyOrders(data) {
 }
 
 function getWarrantyOrderStatusMessage(order, canClaim) {
-    if (order?.message) {
+    if (canClaim && order?.message) {
         return order.message;
     }
     return getWarrantyTeamStatusMessage(order, canClaim);
@@ -691,7 +700,7 @@ function renderWarrantyStatusResult(data, email) {
             <div class="status-panel status-panel--order">
                 <div class="status-panel__header">
                     <div class="status-panel__title">质保订单 ${escapeHtml(String(index + 1))}</div>
-                    <span class="status-badge ${badge.className}">${escapeHtml(latestTeam.status_label || badge.label)}</span>
+                    <span class="status-badge ${badge.className}">${escapeHtml(badge.label)}</span>
                 </div>
                 <div class="status-panel__list">${detailItems}</div>
                 <div class="status-panel__message ${messageClass}">${escapeHtml(statusMessage)}</div>
