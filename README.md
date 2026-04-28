@@ -56,7 +56,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml down
 
 - **使用记录查询**
   - 多维度筛选（邮箱、兑换码、Team ID、日期范围）
-  - 分页展示（每页20条记录）
+  - 分页展示（默认每页100条记录）
   - 统计数据（总数、今日、本周、本月）
 
 - **系统设置**
