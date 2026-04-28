@@ -266,7 +266,16 @@ class PendingTeamClassificationTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SubAdminImportRouteTests(unittest.IsolatedAsyncioTestCase):
-    async def test_sub_admin_single_import_is_forced_to_pending_without_codes(self):
+    def _build_import_admin_user(self):
+        return {
+            "id": 7,
+            "username": "importer01",
+            "is_admin": True,
+            "role": "import_admin",
+            "is_super_admin": False,
+        }
+
+    async def test_sub_admin_single_import_enters_console_without_codes(self):
         from unittest.mock import AsyncMock, patch
         from app.routes.admin import TeamImportRequest, team_import
 
@@ -281,13 +290,7 @@ class SubAdminImportRouteTests(unittest.IsolatedAsyncioTestCase):
             "message": "ok",
             "error": None,
         }
-        current_user = {
-            "id": 7,
-            "username": "importer01",
-            "is_admin": True,
-            "role": "import_admin",
-            "is_super_admin": False,
-        }
+        current_user = self._build_import_admin_user()
 
         with patch(
             "app.routes.admin.team_service.import_team_single",
@@ -312,10 +315,49 @@ class SubAdminImportRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["team_type"], TEAM_TYPE_STANDARD)
         self.assertFalse(kwargs["generate_warranty_codes"])
         self.assertFalse(kwargs["generate_codes_on_import"])
-        self.assertEqual(kwargs["import_status"], IMPORT_STATUS_PENDING)
+        self.assertEqual(kwargs["import_status"], IMPORT_STATUS_CLASSIFIED)
         self.assertEqual(kwargs["imported_by_user_id"], 7)
         self.assertEqual(kwargs["imported_by_username"], "importer01")
         self.assertEqual(kwargs["import_tag"], IMPORT_TAG_SELF_PAID)
+
+    async def test_sub_admin_batch_import_enters_console_without_codes(self):
+        from unittest.mock import patch
+        from app.routes.admin import TeamImportRequest, team_import
+
+        async def fake_import_team_batch(**kwargs):
+            yield {"type": "finish", "total": 1, "success_count": 1, "failed_count": 0}
+
+        with patch(
+            "app.routes.admin.team_service.import_team_batch",
+            side_effect=fake_import_team_batch,
+        ) as mocked_import_batch:
+            response = await team_import(
+                import_data=TeamImportRequest(
+                    import_type="batch",
+                    team_type="warranty",
+                    content="eyJ.payload",
+                    generate_warranty_codes=True,
+                    warranty_days=45,
+                    import_tag=IMPORT_TAG_OTHER_PAID,
+                ),
+                db="db-session",
+                current_user=self._build_import_admin_user(),
+            )
+
+            body = []
+            async for chunk in response.body_iterator:
+                body.append(chunk)
+
+        self.assertTrue(body)
+        mocked_import_batch.assert_called_once()
+        kwargs = mocked_import_batch.call_args.kwargs
+        self.assertEqual(kwargs["team_type"], TEAM_TYPE_STANDARD)
+        self.assertFalse(kwargs["generate_warranty_codes"])
+        self.assertFalse(kwargs["generate_codes_on_import"])
+        self.assertEqual(kwargs["import_status"], IMPORT_STATUS_CLASSIFIED)
+        self.assertEqual(kwargs["imported_by_user_id"], 7)
+        self.assertEqual(kwargs["imported_by_username"], "importer01")
+        self.assertEqual(kwargs["import_tag"], IMPORT_TAG_OTHER_PAID)
 
 
 if __name__ == "__main__":

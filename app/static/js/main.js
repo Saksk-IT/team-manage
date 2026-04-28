@@ -66,10 +66,10 @@ function getImportModeMeta(teamType = TEAM_TYPE_STANDARD) {
     if (isImportOnlyPage()) {
         return {
             modalTitle: '导入 Team',
-            singleHelper: '子管理员导入后不会生成兑换码；账号会进入待分类池，由总管理员审核后进入统一控制台 Team 池。',
-            batchHelper: '支持粘贴一行一个 AT Token，也支持完整 JSON。导入后进入待分类池，不生成兑换码。',
+            singleHelper: '子管理员导入后不会生成兑换码；账号会直接进入统一控制台 Team 池。',
+            batchHelper: '支持粘贴一行一个 AT Token，也支持完整 JSON。导入后直接进入统一控制台 Team 池，不生成兑换码。',
             singleResultTitle: '导入结果',
-            batchCodesTitle: '待分类导入结果'
+            batchCodesTitle: '导入结果'
         };
     }
 
@@ -306,7 +306,7 @@ function showImportTeamModal(teamType = TEAM_TYPE_STANDARD) {
 function renderImportedTeamsSummary(importedTeams = [], teamType = TEAM_TYPE_STANDARD, generateWarrantyCodes = false) {
     if (!importedTeams.length) {
         if (isImportOnlyPage()) {
-            return '<div class="text-muted">本次导入已进入待分类池，等待总管理员决定去向。</div>';
+            return '<div class="text-muted">本次导入已进入统一控制台 Team 池。</div>';
         }
         return '<div class="text-muted">本次导入不会自动生成兑换码；请在兑换码管理页面生成普通或质保兑换码。</div>';
     }
@@ -319,7 +319,7 @@ function renderImportedTeamsSummary(importedTeams = [], teamType = TEAM_TYPE_STA
             <div style="font-size: 0.875rem; color: var(--text-muted); line-height: 1.6;">
                 当前成员 ${team.current_members}/${team.max_members}，剩余席位 ${team.remaining_seats}，
                 ${isImportOnlyPage()
-            ? '已进入待分类池，等待总管理员审核'
+            ? '已进入统一控制台 Team 池'
             : '已进入统一控制台 Team 池，兑换码请在兑换码管理页面生成'}
             </div>
             ${team.import_tag_label ? `<div class="text-muted small">标签：${escapeHtml(team.import_tag_label)}</div>` : ''}
@@ -648,7 +648,7 @@ async function handleSingleImport(event) {
             const importedTeams = result.data.imported_teams || [];
             showSingleImportResult(importedTeams, teamType, false);
             if (isImportOnlyPage()) {
-                showToast('Team 导入成功，已进入待分类池，等待总管理员分类', 'success');
+                showToast('Team 导入成功，已进入统一控制台 Team 池', 'success');
             } else {
                 showToast('Team 导入成功，兑换码请在兑换码管理页面生成', 'success');
             }
@@ -772,7 +772,7 @@ async function handleBatchImport(event) {
                                                 <span style="color: var(--text-muted);">#${team.team_id}</span>
                                                 ：剩余 ${team.remaining_seats} 席，
                                                 ${isImportOnlyPage()
-                                                    ? '已进入待分类池，等待总管理员审核'
+                                                    ? '已进入统一控制台 Team 池'
                                                     : '已进入统一控制台 Team 池，兑换码请在兑换码管理页面生成'}
                                                 ${team.import_tag_label ? `，标签 ${escapeHtml(team.import_tag_label)}` : ''}
 
@@ -801,7 +801,7 @@ async function handleBatchImport(event) {
                         finalSummaryEl.textContent = `总数: ${data.total} | 成功: ${data.success_count} | 失败: ${data.failed_count}`;
 
                         if (data.failed_count === 0 && isImportOnlyPage()) {
-                            showToast('全部导入成功，已进入待分类池，等待总管理员分类', 'success');
+                            showToast('全部导入成功，已进入统一控制台 Team 池', 'success');
                         } else if (data.failed_count === 0) {
                             showToast('全部导入成功，兑换码请在兑换码管理页面生成', 'success');
                         } else {

@@ -16,7 +16,7 @@ class AdminSidebarItem:
 
 SUPER_ADMIN_SIDEBAR_ITEMS: tuple[AdminSidebarItem, ...] = (
     AdminSidebarItem("dashboard", "dashboard", "/admin", "layout-dashboard", "控制台"),
-    AdminSidebarItem("pending_teams", "pending_teams", "/admin/pending-teams", "inbox", "导入审核"),
+    AdminSidebarItem("pending_teams", "pending_teams", "/admin/pending-teams", "inbox", "导入记录"),
     AdminSidebarItem("sub_admins", "sub_admins", "/admin/sub-admins", "user-cog", "子管理员"),
     AdminSidebarItem("email_whitelist", "email_whitelist", "/admin/email-whitelist", "shield-check", "邮箱白名单"),
     AdminSidebarItem("warranty_emails", "warranty_emails", "/admin/warranty-emails", "key-round", "质保邮箱列表"),

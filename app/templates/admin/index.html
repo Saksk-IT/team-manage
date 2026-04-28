@@ -21,21 +21,21 @@
         <div class="stat-icon"><i data-lucide="check-circle"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.available_teams }}</div>
-            <div class="stat-label">{{ '待审核' if is_review_mode else '可用 Team' }}</div>
+            <div class="stat-label">{{ '待入控制台' if is_import_only_mode else ('待审核' if is_review_mode else '可用 Team') }}</div>
         </div>
     </div>
     <div class="stat-card stat-info">
         <div class="stat-icon"><i data-lucide="users-round"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.total_seats }}</div>
-            <div class="stat-label">{{ '已审核' if is_review_mode else '所有席位' }}</div>
+            <div class="stat-label">{{ '已入控制台' if is_import_only_mode else ('已审核' if is_review_mode else '所有席位') }}</div>
         </div>
     </div>
     <div class="stat-card stat-warning">
         <div class="stat-icon"><i data-lucide="armchair"></i></div>
         <div class="stat-info-group">
             <div class="stat-value">{{ stats.remaining_seats }}</div>
-            <div class="stat-label">{{ '未审核' if is_review_mode else '可用席位' }}</div>
+            <div class="stat-label">{{ '未入控制台' if is_import_only_mode else ('未审核' if is_review_mode else '可用席位') }}</div>
         </div>
     </div>
 </div>
@@ -46,7 +46,7 @@
         <div class="team-toolbar-primary">
             <div class="team-list-heading">
                 <h3>{{ '我的导入' if is_import_only_mode else ('子管理员导入记录' if is_review_mode else 'Team 列表') }}</h3>
-                <p>{{ '查看并筛选导入记录，批量审核或维护 Team。' if is_review_mode else '筛选、搜索并批量维护 Team 账号。' }}</p>
+                <p>{{ '查看导入记录；成功导入的 Team 会直接进入控制台。' if is_import_only_mode else ('查看并筛选导入记录，批量进入控制台或维护 Team。' if is_review_mode else '筛选、搜索并批量维护 Team 账号。') }}</p>
             </div>
 
             <div class="team-toolbar-actions">
@@ -153,10 +153,10 @@
             {% if pagination and pagination.per_page != 20 %}
             <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
             {% endif %}
-            <select name="review_status" class="form-control" aria-label="审核状态筛选">
-                <option value="" {% if not review_status_filter %}selected{% endif %}>全部审核状态</option>
-                <option value="pending" {% if review_status_filter == 'pending' %}selected{% endif %}>待审核</option>
-                <option value="classified" {% if review_status_filter == 'classified' %}selected{% endif %}>已审核</option>
+            <select name="review_status" class="form-control" aria-label="{{ '入库状态筛选' if is_import_only_mode else '审核状态筛选' }}">
+                <option value="" {% if not review_status_filter %}selected{% endif %}>{{ '全部入库状态' if is_import_only_mode else '全部审核状态' }}</option>
+                <option value="pending" {% if review_status_filter == 'pending' %}selected{% endif %}>{{ '待入控制台' if is_import_only_mode else '待审核' }}</option>
+                <option value="classified" {% if review_status_filter == 'classified' %}selected{% endif %}>{{ '已入控制台' if is_import_only_mode else '已审核' }}</option>
             </select>
             <select name="import_tag" class="form-control" aria-label="导入标签筛选">
                 <option value="" {% if not import_tag_filter %}selected{% endif %}>全部标签</option>
@@ -266,7 +266,7 @@
                 <th>导入人</th>
                 <th>标签</th>
                 <th>导入时间</th>
-                <th>审核状态</th>
+                <th>{{ '入库状态' if is_import_only_mode else '审核状态' }}</th>
                 {% endif %}
                 <th>成员数</th>
                 <th>订阅计划</th>
@@ -321,9 +321,9 @@
                 </td>
                 <td>
                     {% if team.import_status == 'pending' %}
-                    <span class="status-badge status-warning" title="管理员尚未分类">待审核</span>
+                    <span class="status-badge status-warning" title="{{ '历史待入控制台记录' if is_import_only_mode else '管理员尚未分类' }}">{{ '待入控制台' if is_import_only_mode else '待审核' }}</span>
                     {% else %}
-                    <span class="status-badge status-active" title="{{ team.import_decision_label }}">已审核</span>
+                    <span class="status-badge status-active" title="{{ team.import_decision_label }}">{{ '已入控制台' if is_import_only_mode else '已审核' }}</span>
                     <div class="text-muted small" style="margin-top: 0.25rem;">{{ team.import_decision_label }}</div>
                     {% endif %}
                 </td>
@@ -377,9 +377,9 @@
                     <div class="action-buttons">
                         {% if is_import_only_mode %}
                         {% if team.import_status == 'pending' %}
-                        <span class="status-badge status-warning">待总管理员审核</span>
+                        <span class="status-badge status-warning">待入控制台</span>
                         {% else %}
-                        <span class="status-badge status-active" title="{{ team.import_decision_label }}">已审核</span>
+                        <span class="status-badge status-active" title="{{ team.import_decision_label }}">已入控制台</span>
                         {% endif %}
                         {% elif is_review_mode %}
                         {% if team.import_status == 'pending' %}

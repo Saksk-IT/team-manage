@@ -28,6 +28,9 @@ class SubAdminImportModalTests(unittest.TestCase):
     def test_import_modal_defaults_to_batch_import_on_import_only_page(self):
         main_js = Path("app/static/js/main.js").read_text(encoding="utf-8")
         self.assertIn("const initialTabId = isImportOnlyPage() ? 'batchImport' : 'singleImport';", main_js)
+        self.assertIn("导入后直接进入统一控制台 Team 池", main_js)
+        self.assertNotIn("导入后进入待分类池", main_js)
+        self.assertNotIn("等待总管理员审核", main_js)
 
     def test_review_page_template_exposes_batch_classify_actions(self):
         template = Path("app/templates/admin/index.html").read_text(encoding="utf-8")

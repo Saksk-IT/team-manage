@@ -1142,7 +1142,7 @@ async def pending_teams_dashboard(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
-    """总管理员查看子管理员导入审核记录。"""
+    """总管理员查看子管理员导入记录；历史待处理记录仍可手动进入控制台。"""
     return await _render_team_dashboard_page(
         request=request,
         db=db,
@@ -1541,7 +1541,7 @@ async def team_import(
             team_type = TEAM_TYPE_STANDARD
             generate_warranty_codes = False
             generate_codes_on_import = False
-            import_status = IMPORT_STATUS_PENDING
+            import_status = IMPORT_STATUS_CLASSIFIED
             imported_by_user_id = current_user.get("id")
 
         logger.info(
