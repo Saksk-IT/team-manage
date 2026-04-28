@@ -184,6 +184,85 @@ class WarrantyService:
             "completed_at": record.completed_at.isoformat() if record.completed_at else None,
         }
 
+    def _apply_before_team_info_to_claim_record(
+        self,
+        record_data: Dict[str, Any],
+        before_team_info: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        before_snapshot = self._serialize_warranty_claim_team_snapshot(before_team_info)
+        return {
+            **record_data,
+            "before_team_id": before_snapshot["team_id"],
+            "before_team_name": before_snapshot["team_name"],
+            "before_team_email": before_snapshot["team_email"],
+            "before_team_account_id": before_snapshot["team_account_id"],
+            "before_team_status": before_snapshot["team_status"],
+            "before_team_status_label": self.get_team_status_label(before_snapshot["team_status"]),
+            "before_team_recorded_at": before_snapshot["team_recorded_at"],
+        }
+
+    async def _find_legacy_before_team_info_for_claim_record(
+        self,
+        db_session: AsyncSession,
+        record: WarrantyClaimRecord,
+    ) -> Optional[Dict[str, Any]]:
+        claim_status = (record.claim_status or "").strip().lower()
+        if claim_status != "success" or not record.after_team_id:
+            return None
+        if record.before_team_id not in {None, record.after_team_id}:
+            return None
+
+        normalized_email = self.normalize_email(record.email)
+        if not normalized_email:
+            return None
+
+        cutoff_at = record.submitted_at or record.completed_at or get_now()
+        record_stmt = (
+            select(RedemptionRecord, Team)
+            .join(Team, RedemptionRecord.team_id == Team.id)
+            .where(
+                func.lower(RedemptionRecord.email) == normalized_email,
+                RedemptionRecord.team_id != record.after_team_id,
+                RedemptionRecord.redeemed_at <= cutoff_at,
+            )
+            .order_by(RedemptionRecord.redeemed_at.desc(), RedemptionRecord.id.desc())
+        )
+        record_result = await db_session.execute(record_stmt)
+        record_row = record_result.first()
+        if record_row:
+            return self._serialize_latest_team_info(record_row[0], record_row[1])
+
+        snapshot_stmt = (
+            select(TeamMemberSnapshot, Team)
+            .join(Team, TeamMemberSnapshot.team_id == Team.id)
+            .where(
+                TeamMemberSnapshot.email == normalized_email,
+                TeamMemberSnapshot.team_id != record.after_team_id,
+                TeamMemberSnapshot.updated_at <= cutoff_at,
+            )
+            .order_by(TeamMemberSnapshot.updated_at.desc(), TeamMemberSnapshot.id.desc())
+        )
+        snapshot_result = await db_session.execute(snapshot_stmt)
+        snapshot_row = snapshot_result.first()
+        if snapshot_row:
+            return self._serialize_snapshot_team_info(snapshot_row[0], snapshot_row[1])
+
+        return None
+
+    async def _serialize_warranty_claim_record_for_list(
+        self,
+        db_session: AsyncSession,
+        record: WarrantyClaimRecord,
+    ) -> Dict[str, Any]:
+        record_data = self.serialize_warranty_claim_record(record)
+        before_team_info = await self._find_legacy_before_team_info_for_claim_record(
+            db_session,
+            record,
+        )
+        if not before_team_info:
+            return record_data
+        return self._apply_before_team_info_to_claim_record(record_data, before_team_info)
+
     async def _record_warranty_claim_result(
         self,
         db_session: AsyncSession,
@@ -286,7 +365,10 @@ class WarrantyService:
         total = total_result.scalar() or 0
 
         records_result = await db_session.execute(stmt)
-        records = [self.serialize_warranty_claim_record(record) for record in records_result.scalars().all()]
+        records = [
+            await self._serialize_warranty_claim_record_for_list(db_session, record)
+            for record in records_result.scalars().all()
+        ]
 
         total_pages = max(math.ceil(total / safe_per_page), 1) if total else 1
         return {
