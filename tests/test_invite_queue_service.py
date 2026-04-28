@@ -10,14 +10,22 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import InviteJob, RedemptionCode, RedemptionRecord, Team, TeamMemberSnapshot, WarrantyEmailEntry
+from app.models import (
+    InviteJob,
+    RedemptionCode,
+    RedemptionRecord,
+    Team,
+    TeamMemberSnapshot,
+    WarrantyClaimRecord,
+    WarrantyEmailEntry,
+)
 from app.services.invite_queue import (
     JOB_STATUS_PROCESSING,
     JOB_STATUS_QUEUED,
     JOB_STATUS_SUCCESS,
     InviteQueueService,
 )
-from app.services.team import TEAM_TYPE_STANDARD
+from app.services.team import TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY
 from app.utils.time_utils import get_now
 
 
@@ -305,6 +313,81 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first["job_id"], second["job_id"])
         self.assertEqual(job_count, 1)
         self.assertEqual(team.reserved_members, 1)
+
+    async def test_warranty_processing_records_before_team_before_success_record(self):
+        service = InviteQueueService()
+
+        async with self.Session() as session:
+            before_team = Team(
+                email="before-owner@example.com",
+                access_token_encrypted="dummy-before",
+                account_id="acc-before",
+                team_type=TEAM_TYPE_STANDARD,
+                team_name="Before Team",
+                status="banned",
+                current_members=2,
+                reserved_members=0,
+                max_members=5,
+            )
+            after_team = Team(
+                email="after-owner@example.com",
+                access_token_encrypted="dummy-after",
+                account_id="acc-after",
+                team_type=TEAM_TYPE_WARRANTY,
+                team_name="After Team",
+                status="active",
+                current_members=1,
+                reserved_members=0,
+                max_members=5,
+            )
+            session.add_all([before_team, after_team])
+            await session.flush()
+            session.add_all([
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=5),
+                    source="manual",
+                    last_redeem_code="CODE-WARRANTY",
+                ),
+                RedemptionRecord(
+                    email="buyer@example.com",
+                    code="CODE-WARRANTY",
+                    team_id=before_team.id,
+                    account_id=before_team.account_id,
+                    redeemed_at=get_now() - timedelta(minutes=10),
+                    is_warranty_redemption=False,
+                ),
+            ])
+            await session.commit()
+
+            with patch.object(
+                service.warranty_service.team_service,
+                "refresh_team_state",
+                AsyncMock(return_value={"success": True, "member_emails": []}),
+            ):
+                submit_result = await service.submit_warranty_job(session, "buyer@example.com")
+
+        service.team_service.refresh_team_state = AsyncMock(return_value={"success": True, "member_emails": []})
+        service.team_service.ensure_access_token = AsyncMock(return_value="token")
+        service.team_service.chatgpt_service.send_invite = AsyncMock(return_value={
+            "success": True,
+            "data": {"account_invites": [{"id": "invite-1"}]},
+        })
+
+        with patch("app.services.invite_queue.AsyncSessionLocal", self.Session):
+            await service.process_job_now(submit_result["job_id"])
+
+        async with self.Session() as session:
+            claim_record = await session.scalar(
+                select(WarrantyClaimRecord).where(WarrantyClaimRecord.email == "buyer@example.com")
+            )
+
+        self.assertIsNotNone(claim_record)
+        self.assertEqual(claim_record.before_team_id, before_team.id)
+        self.assertEqual(claim_record.before_team_name, "Before Team")
+        self.assertEqual(claim_record.after_team_id, after_team.id)
+        self.assertEqual(claim_record.after_team_name, "After Team")
 
 
 if __name__ == "__main__":

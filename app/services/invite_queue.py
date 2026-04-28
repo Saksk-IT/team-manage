@@ -551,6 +551,8 @@ class InviteQueueService:
         if not existing_team:
             return None
 
+        before_team_info = await self._load_before_team_info(db_session, job.email)
+
         if warranty_entry.last_warranty_team_id != existing_team.id:
             warranty_entry.last_warranty_team_id = existing_team.id
             await db_session.commit()
@@ -561,7 +563,7 @@ class InviteQueueService:
             email=job.email,
             submitted_at=job.created_at or get_now(),
             claim_status="success",
-            before_team_info=await self._load_before_team_info(db_session, job.email),
+            before_team_info=before_team_info,
             after_team=existing_team,
         )
         return {
@@ -582,6 +584,7 @@ class InviteQueueService:
             warranty_entry = await self.warranty_service.get_warranty_email_entry(db_session, job.email)
             if not warranty_entry:
                 return {"success": False, "error": "质保邮箱记录不存在"}
+            before_team_info = await self._load_before_team_info(db_session, job.email)
             await self.warranty_service._record_warranty_claim_success(
                 db_session=db_session,
                 entry=warranty_entry,
@@ -593,7 +596,7 @@ class InviteQueueService:
                 email=job.email,
                 submitted_at=job.created_at or get_now(),
                 claim_status="success",
-                before_team_info=await self._load_before_team_info(db_session, job.email),
+                before_team_info=before_team_info,
                 after_team=team,
             )
             return {
