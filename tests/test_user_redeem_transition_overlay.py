@@ -68,6 +68,14 @@ class UserRedeemTransitionOverlayTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("advanceTransitionOverlay(", script)
         self.assertIn("closeTransitionOverlay()", script)
 
+    def test_redeem_js_renders_multi_warranty_order_submission(self):
+        script = Path("app/static/js/redeem.js").read_text(encoding="utf-8")
+
+        self.assertIn("data?.warranty_orders", script)
+        self.assertIn("warranty-order-claim-btn", script)
+        self.assertIn("submitWarrantyClaim(email, button.dataset.code || null, button)", script)
+        self.assertIn("...(code ? { code } : {})", script)
+
 
 if __name__ == "__main__":
     unittest.main()

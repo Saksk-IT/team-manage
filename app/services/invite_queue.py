@@ -189,15 +189,17 @@ class InviteQueueService:
         self,
         db_session: AsyncSession,
         email: str,
+        code: Optional[str] = None,
     ) -> Dict[str, Any]:
         submitted_at = get_now()
         normalized_email = self._normalize_email(email)
+        normalized_code = (code or "").strip()
         if not normalized_email:
             return {"success": False, "error": "邮箱不能为空"}
 
         async with self._submit_lock:
             try:
-                existing_job = await self._find_active_warranty_job(db_session, normalized_email)
+                existing_job = await self._find_active_warranty_job(db_session, normalized_email, normalized_code or None)
                 if existing_job:
                     return self.serialize_job(existing_job)
 
@@ -205,6 +207,7 @@ class InviteQueueService:
                     db_session=db_session,
                     email=normalized_email,
                     require_latest_team_banned=True,
+                    code=normalized_code or None,
                 )
                 if not validation_result.get("success"):
                     await self.warranty_service._record_warranty_claim_result(
@@ -230,14 +233,19 @@ class InviteQueueService:
                     )
                     return {"success": False, "error": "当前没有可用的 Team，请稍后再试"}
 
-                warranty_entry: WarrantyEmailEntry = validation_result["warranty_entry"]
+                warranty_entry: Optional[WarrantyEmailEntry] = validation_result.get("warranty_entry")
+                selected_code = (
+                    validation_result.get("warranty_code")
+                    or (warranty_entry.last_redeem_code if warranty_entry else None)
+                    or normalized_code
+                )
                 job = InviteJob(
                     job_type=JOB_TYPE_WARRANTY,
                     status=JOB_STATUS_QUEUED,
                     email=normalized_email,
-                    code=warranty_entry.last_redeem_code,
+                    code=selected_code,
                     team_id=team.id,
-                    idempotency_key=f"{JOB_TYPE_WARRANTY}:{normalized_email}",
+                    idempotency_key=f"{JOB_TYPE_WARRANTY}:{normalized_email}:{selected_code or 'legacy'}",
                     max_attempts=self._get_default_max_attempts(),
                     reservation_released=False,
                     created_at=submitted_at,
@@ -571,24 +579,40 @@ class InviteQueueService:
         job: InviteJob,
     ) -> Optional[Dict[str, Any]]:
         warranty_entry = await self.warranty_service.get_warranty_email_entry(db_session, job.email)
-        if not warranty_entry:
+        selected_code = (job.code or "").strip()
+        if not warranty_entry and not selected_code:
             return None
 
-        existing_team = await self.warranty_service._find_existing_warranty_team_from_entry(db_session, warranty_entry)
-        if not existing_team:
-            existing_team = await self.warranty_service._find_existing_full_warranty_team_for_email_from_records(
+        if selected_code:
+            existing_team = await self.warranty_service._find_existing_warranty_team_from_records(
                 db_session,
+                selected_code,
                 job.email,
             )
+        else:
+            existing_team = await self.warranty_service._find_existing_warranty_team_from_entry(db_session, warranty_entry)
+            if not existing_team:
+                existing_team = await self.warranty_service._find_existing_full_warranty_team_for_email_from_records(
+                    db_session,
+                    job.email,
+                )
+            if not existing_team:
+                return None
+
         if not existing_team:
             return None
 
-        before_team_info = await self._load_before_team_info(db_session, job.email)
+        before_team_info = await self._load_before_team_info(db_session, job.email, selected_code or None)
 
-        if warranty_entry.last_warranty_team_id != existing_team.id:
+        if warranty_entry and warranty_entry.last_warranty_team_id != existing_team.id:
             warranty_entry.last_warranty_team_id = existing_team.id
             await db_session.commit()
             await db_session.refresh(warranty_entry)
+        order_info = (
+            await self.warranty_service.get_warranty_order_info(db_session, job.email, selected_code, warranty_entry)
+            if selected_code
+            else None
+        )
 
         await self.warranty_service._record_warranty_claim_result(
             db_session=db_session,
@@ -602,7 +626,11 @@ class InviteQueueService:
             "success": True,
             "message": "质保邀请已存在，请直接查收邮箱中的邀请邮件。",
             "team_info": self._serialize_team_info(existing_team),
-            "warranty_info": self.warranty_service.serialize_warranty_email_entry(warranty_entry),
+            "warranty_info": (
+                order_info.get("warranty_info")
+                if order_info
+                else self.warranty_service.serialize_warranty_email_entry(warranty_entry) if warranty_entry else {}
+            ),
             "_skip_member_increment": True,
         }
 
@@ -614,14 +642,21 @@ class InviteQueueService:
     ) -> Dict[str, Any]:
         if job.job_type == JOB_TYPE_WARRANTY:
             warranty_entry = await self.warranty_service.get_warranty_email_entry(db_session, job.email)
-            if not warranty_entry:
+            selected_code = (job.code or "").strip()
+            if not warranty_entry and not selected_code:
                 return {"success": False, "error": "质保邮箱记录不存在"}
-            before_team_info = await self._load_before_team_info(db_session, job.email)
+            before_team_info = await self._load_before_team_info(db_session, job.email, selected_code or None)
             await self.warranty_service._record_warranty_claim_success(
                 db_session=db_session,
                 entry=warranty_entry,
                 email=job.email,
                 team=team,
+                redeem_code=selected_code or None,
+            )
+            order_info = (
+                await self.warranty_service.get_warranty_order_info(db_session, job.email, selected_code, warranty_entry)
+                if selected_code
+                else None
             )
             await self.warranty_service._record_warranty_claim_result(
                 db_session=db_session,
@@ -635,7 +670,11 @@ class InviteQueueService:
                 "success": True,
                 "message": "质保邀请发送成功，请查收邮箱。",
                 "team_info": self._serialize_team_info(team),
-                "warranty_info": self.warranty_service.serialize_warranty_email_entry(warranty_entry),
+                "warranty_info": (
+                    order_info.get("warranty_info")
+                    if order_info
+                    else self.warranty_service.serialize_warranty_email_entry(warranty_entry) if warranty_entry else {}
+                ),
             }
 
         redemption_code = await self._get_redemption_code(db_session, job.code or "")
@@ -724,7 +763,7 @@ class InviteQueueService:
                 email=job.email,
                 submitted_at=job.created_at or get_now(),
                 claim_status="failed",
-                before_team_info=await self._load_before_team_info(db_session, job.email),
+                before_team_info=await self._load_before_team_info(db_session, job.email, job.code),
                 failure_reason=error,
             )
             job = await self.get_job(db_session, int(job.id)) or job
@@ -825,13 +864,22 @@ class InviteQueueService:
         )
         return result.scalars().first()
 
-    async def _find_active_warranty_job(self, db_session: AsyncSession, email: str) -> Optional[InviteJob]:
+    async def _find_active_warranty_job(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        code: Optional[str] = None,
+    ) -> Optional[InviteJob]:
+        stmt = select(InviteJob).where(
+            InviteJob.job_type == JOB_TYPE_WARRANTY,
+            InviteJob.email == email,
+            InviteJob.status.in_(ACTIVE_JOB_STATUSES),
+        )
+        normalized_code = (code or "").strip()
+        if normalized_code:
+            stmt = stmt.where(InviteJob.code == normalized_code)
         result = await db_session.execute(
-            select(InviteJob).where(
-                InviteJob.job_type == JOB_TYPE_WARRANTY,
-                InviteJob.email == email,
-                InviteJob.status.in_(ACTIVE_JOB_STATUSES),
-            ).order_by(InviteJob.created_at.desc(), InviteJob.id.desc())
+            stmt.order_by(InviteJob.created_at.desc(), InviteJob.id.desc())
         )
         return result.scalars().first()
 
@@ -839,9 +887,27 @@ class InviteQueueService:
         result = await db_session.execute(select(RedemptionCode).where(RedemptionCode.code == code))
         return result.scalar_one_or_none()
 
-    async def _load_before_team_info(self, db_session: AsyncSession, email: str) -> Optional[Dict[str, Any]]:
+    async def _load_before_team_info(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        code: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         try:
-            latest_context = await self.warranty_service._load_latest_team_context_for_email(db_session, email)
+            normalized_code = (code or "").strip()
+            if normalized_code:
+                warranty_entry = await self.warranty_service.get_warranty_email_entry(db_session, email)
+                latest_contexts = await self.warranty_service._load_warranty_order_contexts_for_email(
+                    db_session,
+                    email,
+                    warranty_entry=warranty_entry,
+                    target_code=normalized_code,
+                )
+                latest_context = latest_contexts[0] if latest_contexts else None
+                if not latest_context:
+                    latest_context = await self.warranty_service._load_latest_team_context_for_email(db_session, email)
+            else:
+                latest_context = await self.warranty_service._load_latest_team_context_for_email(db_session, email)
             if latest_context:
                 return latest_context.get("team_info")
         except Exception as exc:

@@ -702,8 +702,11 @@ class WarrantyService:
     async def _consume_warranty_claim(
         self,
         db_session: AsyncSession,
-        entry: WarrantyEmailEntry
+        entry: Optional[WarrantyEmailEntry]
     ) -> None:
+        if not entry:
+            await db_session.commit()
+            return
         entry.remaining_claims = max(int(entry.remaining_claims or 0) - 1, 0)
         await db_session.commit()
         await db_session.refresh(entry)
@@ -711,17 +714,20 @@ class WarrantyService:
     async def _record_warranty_claim_success(
         self,
         db_session: AsyncSession,
-        entry: WarrantyEmailEntry,
+        entry: Optional[WarrantyEmailEntry],
         email: str,
-        team: Team
+        team: Team,
+        redeem_code: Optional[str] = None,
     ) -> None:
-        entry.last_warranty_team_id = team.id
+        if entry:
+            entry.last_warranty_team_id = team.id
 
-        if entry.last_redeem_code:
+        record_code = (redeem_code or (entry.last_redeem_code if entry else "") or "").strip()
+        if record_code:
             db_session.add(
                 RedemptionRecord(
                     email=self.normalize_email(email),
-                    code=entry.last_redeem_code,
+                    code=record_code,
                     team_id=team.id,
                     account_id=team.account_id,
                     is_warranty_redemption=True,
@@ -1053,21 +1059,357 @@ class WarrantyService:
             "member_state": member_state,
         }
 
+    def _calculate_remaining_days(self, expires_at: Optional[datetime]) -> Optional[int]:
+        if not expires_at:
+            return None
+
+        remaining_seconds = (expires_at - get_now()).total_seconds()
+        if remaining_seconds <= 0:
+            return 0
+        return max(math.ceil(remaining_seconds / 86400), 0)
+
+    def _get_order_initial_claims(
+        self,
+        redemption_code: RedemptionCode,
+        warranty_entry: Optional[WarrantyEmailEntry] = None,
+        is_legacy_entry_code: bool = False,
+    ) -> int:
+        if redemption_code and redemption_code.has_warranty:
+            claim_value = (
+                redemption_code.warranty_claims
+                if redemption_code.warranty_claims is not None
+                else self.AUTO_WARRANTY_ENTRY_DEFAULT_CLAIMS
+            )
+            return max(int(claim_value), 0)
+        if is_legacy_entry_code and warranty_entry:
+            return max(int(warranty_entry.remaining_claims or 0), 0)
+        return self.AUTO_WARRANTY_ENTRY_DEFAULT_CLAIMS
+
+    def _get_order_expires_at(
+        self,
+        redemption_code: RedemptionCode,
+        first_used_at: Optional[datetime],
+        warranty_entry: Optional[WarrantyEmailEntry] = None,
+        is_legacy_entry_code: bool = False,
+    ) -> Optional[datetime]:
+        if redemption_code and redemption_code.has_warranty:
+            if redemption_code.warranty_expires_at:
+                return redemption_code.warranty_expires_at
+            start_at = redemption_code.used_at or first_used_at
+            if start_at:
+                days = (
+                    redemption_code.warranty_days
+                    if redemption_code.warranty_days is not None
+                    else self.AUTO_WARRANTY_ENTRY_DEFAULT_DAYS
+                )
+                return start_at + timedelta(days=days)
+        if is_legacy_entry_code and warranty_entry:
+            return warranty_entry.expires_at
+        return None
+
+    async def _load_warranty_order_contexts_for_email(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        warranty_entry: Optional[WarrantyEmailEntry] = None,
+        target_code: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        normalized_email = self.normalize_email(email)
+        normalized_code = (target_code or "").strip()
+        if not normalized_email:
+            return []
+
+        legacy_code = (warranty_entry.last_redeem_code or "").strip() if warranty_entry else ""
+        code_filters = [RedemptionCode.has_warranty.is_(True)]
+        if legacy_code:
+            code_filters.append(RedemptionRecord.code == legacy_code)
+
+        stmt = (
+            select(RedemptionRecord, RedemptionCode, Team)
+            .join(RedemptionCode, RedemptionRecord.code == RedemptionCode.code)
+            .join(Team, RedemptionRecord.team_id == Team.id)
+            .where(
+                func.lower(RedemptionRecord.email) == normalized_email,
+                or_(*code_filters),
+            )
+            .order_by(RedemptionRecord.redeemed_at.desc(), RedemptionRecord.id.desc())
+        )
+        if normalized_code:
+            stmt = stmt.where(RedemptionRecord.code == normalized_code)
+
+        result = await db_session.execute(stmt)
+        order_map: Dict[str, Dict[str, Any]] = {}
+        for record, redemption_code, team in result.all():
+            code_key = (record.code or "").strip()
+            if not code_key:
+                continue
+
+            context = order_map.setdefault(
+                code_key,
+                {
+                    "code": code_key,
+                    "redemption_code": redemption_code,
+                    "latest_record": None,
+                    "team": None,
+                    "used_claims": 0,
+                    "first_used_at": None,
+                    "is_legacy_entry_code": bool(legacy_code and code_key == legacy_code and not redemption_code.has_warranty),
+                }
+            )
+
+            if not context["latest_record"]:
+                context["latest_record"] = record
+                context["team"] = team
+
+            if bool(record.is_warranty_redemption):
+                context["used_claims"] += 1
+
+            if not bool(record.is_warranty_redemption):
+                first_used_at = context["first_used_at"]
+                if not first_used_at or (record.redeemed_at and record.redeemed_at < first_used_at):
+                    context["first_used_at"] = record.redeemed_at
+
+        contexts = list(order_map.values())
+        contexts.sort(
+            key=lambda item: (
+                item["latest_record"].redeemed_at if item.get("latest_record") else datetime.min,
+                item["latest_record"].id if item.get("latest_record") else 0,
+            ),
+            reverse=True,
+        )
+        legacy_entry_context = None
+        if warranty_entry and warranty_entry.last_warranty_team_id:
+            legacy_entry_context = await self._load_latest_team_context_from_warranty_entry(
+                db_session,
+                warranty_entry,
+            )
+        for context in contexts:
+            if context.get("is_legacy_entry_code") and legacy_entry_context:
+                context["team"] = legacy_entry_context.get("team")
+                context["team_info"] = legacy_entry_context.get("team_info")
+                if legacy_entry_context.get("record"):
+                    context["latest_record"] = legacy_entry_context.get("record")
+            else:
+                context["team_info"] = self._serialize_latest_team_info(
+                    context["latest_record"],
+                    context["team"],
+                )
+        return contexts
+
+    async def _refresh_warranty_order_context_for_email(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        code: str,
+        warranty_entry: Optional[WarrantyEmailEntry] = None,
+    ) -> Optional[Dict[str, Any]]:
+        contexts = await self._load_warranty_order_contexts_for_email(
+            db_session,
+            email,
+            warranty_entry=warranty_entry,
+            target_code=code,
+        )
+        if not contexts:
+            return None
+
+        latest_context = contexts[0]
+        latest_team = latest_context.get("team")
+        if not latest_team:
+            return latest_context
+
+        previous_team_status = (latest_team.status or "").strip().lower()
+        try:
+            sync_result = await self.team_service.refresh_team_state(
+                latest_team.id,
+                db_session,
+                source=SOURCE_USER_WARRANTY,
+            )
+            if not sync_result.get("success"):
+                latest_team_status = (latest_team.status or "").strip().lower()
+                team_became_banned_during_refresh = (
+                    previous_team_status != "banned"
+                    and latest_team_status == "banned"
+                )
+                if (
+                    sync_result.get("error_code") in self.team_service.BANNED_ERROR_CODES
+                    or team_became_banned_during_refresh
+                ):
+                    if latest_team_status != "banned":
+                        latest_team.status = "banned"
+                    await db_session.commit()
+                    refreshed_contexts = await self._load_warranty_order_contexts_for_email(
+                        db_session,
+                        email,
+                        warranty_entry=warranty_entry,
+                        target_code=code,
+                    )
+                    return refreshed_contexts[0] if refreshed_contexts else latest_context
+
+                raise RuntimeError(sync_result.get("error") or "实时刷新订单 Team 状态失败，请稍后重试")
+            await db_session.commit()
+        except Exception as exc:
+            logger.warning(
+                "质保订单状态刷新异常 email=%s code=%s team_id=%s error=%s",
+                self.normalize_email(email),
+                code,
+                latest_team.id,
+                exc
+            )
+            raise RuntimeError(str(exc) or "实时刷新订单 Team 状态失败，请稍后重试") from exc
+
+        refreshed_contexts = await self._load_warranty_order_contexts_for_email(
+            db_session,
+            email,
+            warranty_entry=warranty_entry,
+            target_code=code,
+        )
+        return refreshed_contexts[0] if refreshed_contexts else latest_context
+
+    def _serialize_warranty_order_context(
+        self,
+        context: Dict[str, Any],
+        warranty_entry: Optional[WarrantyEmailEntry] = None,
+    ) -> Dict[str, Any]:
+        redemption_code = context["redemption_code"]
+        initial_claims = self._get_order_initial_claims(
+            redemption_code,
+            warranty_entry=warranty_entry,
+            is_legacy_entry_code=bool(context.get("is_legacy_entry_code")),
+        )
+        used_claims = max(int(context.get("used_claims") or 0), 0)
+        remaining_claims = max(initial_claims - used_claims, 0)
+        expires_at = self._get_order_expires_at(
+            redemption_code,
+            context.get("first_used_at"),
+            warranty_entry=warranty_entry,
+            is_legacy_entry_code=bool(context.get("is_legacy_entry_code")),
+        )
+        remaining_days = self._calculate_remaining_days(expires_at)
+        warranty_valid = remaining_claims > 0 and bool(expires_at) and expires_at > get_now()
+        latest_team_info = context.get("team_info")
+        latest_status = (latest_team_info or {}).get("status")
+        can_claim = bool(warranty_valid and latest_status == "banned")
+
+        if can_claim:
+            message = "该质保订单最近加入的 Team 已封禁，可以提交质保。"
+        elif not warranty_valid and remaining_claims <= 0:
+            message = "该质保订单暂无可用质保次数。"
+        elif not warranty_valid:
+            message = "该质保订单质保资格已过期或未启用。"
+        else:
+            message = f"该质保订单最近加入的 Team 当前状态为「{latest_team_info['status_label']}」，暂不可提交质保。"
+
+        warranty_info = {
+            "remaining_claims": remaining_claims,
+            "remaining_days": remaining_days,
+            "expires_at": expires_at.isoformat() if expires_at else None,
+            "used_claims": used_claims,
+            "total_claims": initial_claims,
+        }
+        return {
+            "code": context["code"],
+            "has_warranty": bool(redemption_code.has_warranty),
+            "can_claim": can_claim,
+            "warranty_valid": warranty_valid,
+            "remaining_claims": remaining_claims,
+            "remaining_days": remaining_days,
+            "warranty_expires_at": expires_at.isoformat() if expires_at else None,
+            "used_claims": used_claims,
+            "total_claims": initial_claims,
+            "latest_team": latest_team_info,
+            "warranty_info": warranty_info,
+            "message": message,
+        }
+
+    async def get_warranty_order_info(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        code: str,
+        warranty_entry: Optional[WarrantyEmailEntry] = None,
+    ) -> Optional[Dict[str, Any]]:
+        contexts = await self._load_warranty_order_contexts_for_email(
+            db_session,
+            email,
+            warranty_entry=warranty_entry,
+            target_code=code,
+        )
+        if not contexts:
+            return None
+        return self._serialize_warranty_order_context(contexts[0], warranty_entry=warranty_entry)
+
     async def get_warranty_claim_status(
         self,
         db_session: AsyncSession,
         email: str
     ) -> Dict[str, Any]:
+        normalized_email = self.normalize_email(email)
+        if not normalized_email:
+            return {"success": False, "error": "邮箱不能为空"}
+
+        warranty_entry = await self.get_warranty_email_entry(db_session, normalized_email)
+        base_contexts = await self._load_warranty_order_contexts_for_email(
+            db_session,
+            normalized_email,
+            warranty_entry=warranty_entry,
+        )
+        if base_contexts:
+            warranty_orders: List[Dict[str, Any]] = []
+            for context in base_contexts:
+                try:
+                    refreshed_context = await self._refresh_warranty_order_context_for_email(
+                        db_session,
+                        normalized_email,
+                        context["code"],
+                        warranty_entry=warranty_entry,
+                    )
+                except RuntimeError as exc:
+                    return {
+                        "success": False,
+                        "error": str(exc) or "实时刷新订单 Team 状态失败，请稍后重试"
+                    }
+                if refreshed_context:
+                    warranty_orders.append(
+                        self._serialize_warranty_order_context(
+                            refreshed_context,
+                            warranty_entry=warranty_entry,
+                        )
+                    )
+
+            if not warranty_orders:
+                return {
+                    "success": False,
+                    "error": "未找到该邮箱绑定的质保订单，请先手动刷新 Team 或等待系统自动刷新后再试"
+                }
+
+            primary_order = warranty_orders[0]
+            can_claim = any(bool(order.get("can_claim")) for order in warranty_orders)
+            claimable_count = sum(1 for order in warranty_orders if order.get("can_claim"))
+            if claimable_count > 1:
+                message = f"检测到 {claimable_count} 个可提交质保的订单，请选择对应订单提交。"
+            elif claimable_count == 1:
+                message = "检测到 1 个可提交质保的订单，请选择对应订单提交。"
+            else:
+                message = "已查询到质保订单，但当前没有可提交质保的封禁 Team。"
+
+            return {
+                "success": True,
+                "email": normalized_email,
+                "can_claim": can_claim,
+                "latest_team": primary_order.get("latest_team"),
+                "warranty_info": primary_order.get("warranty_info"),
+                "warranty_orders": warranty_orders,
+                "message": message
+            }
+
         validation_result = await self.validate_warranty_claim_input(
             db_session=db_session,
-            email=email,
+            email=normalized_email,
             require_latest_team_banned=False
         )
         if not validation_result.get("success"):
             return validation_result
 
-        normalized_email = validation_result["normalized_email"]
-        warranty_entry = validation_result["warranty_entry"]
         try:
             latest_context = await self._refresh_latest_team_context_for_email(
                 db_session,
@@ -1253,6 +1595,27 @@ class WarrantyService:
         result = await db_session.execute(stmt)
         return result.scalars().first()
 
+    async def _find_existing_warranty_team_from_records(
+        self,
+        db_session: AsyncSession,
+        ordinary_code: str,
+        email: str
+    ) -> Optional[Team]:
+        normalized_email = (email or "").strip().lower()
+        stmt = (
+            select(Team)
+            .join(RedemptionRecord, RedemptionRecord.team_id == Team.id)
+            .where(
+                RedemptionRecord.code == ordinary_code,
+                func.lower(RedemptionRecord.email) == normalized_email,
+                RedemptionRecord.is_warranty_redemption.is_(True),
+                Team.status.in_(["active", "full"])
+            )
+            .order_by(RedemptionRecord.redeemed_at.desc(), Team.created_at.asc())
+        )
+        result = await db_session.execute(stmt)
+        return result.scalars().first()
+
     async def _find_existing_warranty_team_for_email(
         self,
         db_session: AsyncSession,
@@ -1340,25 +1703,37 @@ class WarrantyService:
     async def claim_warranty_invite(
         self,
         db_session: AsyncSession,
-        email: str
+        email: str,
+        code: Optional[str] = None,
     ) -> Dict[str, Any]:
         submitted_at = get_now()
         normalized_email = self.normalize_email(email)
+        normalized_code = (code or "").strip()
         before_team_info = None
 
         try:
             if normalized_email:
-                latest_context = await self._load_latest_team_context_for_email(
-                    db_session,
-                    normalized_email
-                )
+                if normalized_code:
+                    latest_contexts = await self._load_warranty_order_contexts_for_email(
+                        db_session,
+                        normalized_email,
+                        warranty_entry=await self.get_warranty_email_entry(db_session, normalized_email),
+                        target_code=normalized_code,
+                    )
+                    latest_context = latest_contexts[0] if latest_contexts else None
+                else:
+                    latest_context = await self._load_latest_team_context_for_email(
+                        db_session,
+                        normalized_email
+                    )
                 if latest_context:
                     before_team_info = latest_context.get("team_info")
 
             validation_result = await self.validate_warranty_claim_input(
                 db_session=db_session,
                 email=email,
-                require_latest_team_banned=True
+                require_latest_team_banned=True,
+                code=normalized_code or None,
             )
             if not validation_result.get("success"):
                 await self._record_warranty_claim_result(
@@ -1373,22 +1748,43 @@ class WarrantyService:
 
             normalized_email = validation_result["normalized_email"]
             warranty_entry = validation_result["warranty_entry"]
+            selected_code = (
+                validation_result.get("warranty_code")
+                or (warranty_entry.last_redeem_code if warranty_entry else None)
+            )
             before_team_info = validation_result.get("latest_team_info") or before_team_info
 
-            existing_team = await self._find_existing_warranty_team_from_entry(db_session, warranty_entry)
-            if not existing_team:
-                existing_team = await self._find_existing_full_warranty_team_for_email_from_records(
+            if selected_code:
+                existing_team = await self._find_existing_warranty_team_from_records(
                     db_session,
-                    normalized_email
+                    selected_code,
+                    normalized_email,
                 )
-            if not existing_team:
-                existing_team = await self._find_existing_warranty_team_for_email(db_session, normalized_email)
+            else:
+                existing_team = await self._find_existing_warranty_team_from_entry(db_session, warranty_entry)
+                if not existing_team:
+                    existing_team = await self._find_existing_full_warranty_team_for_email_from_records(
+                        db_session,
+                        normalized_email
+                    )
+                if not existing_team:
+                    existing_team = await self._find_existing_warranty_team_for_email(db_session, normalized_email)
 
             if existing_team:
-                if warranty_entry.last_warranty_team_id != existing_team.id:
+                if warranty_entry and warranty_entry.last_warranty_team_id != existing_team.id:
                     warranty_entry.last_warranty_team_id = existing_team.id
                     await db_session.commit()
                     await db_session.refresh(warranty_entry)
+                order_info = (
+                    await self.get_warranty_order_info(db_session, normalized_email, selected_code, warranty_entry)
+                    if selected_code
+                    else None
+                )
+                warranty_info = (
+                    order_info.get("warranty_info")
+                    if order_info
+                    else self.serialize_warranty_email_entry(warranty_entry) if warranty_entry else {}
+                )
 
                 await self._record_warranty_claim_result(
                     db_session=db_session,
@@ -1407,7 +1803,7 @@ class WarrantyService:
                         "email": existing_team.email,
                         "expires_at": existing_team.expires_at.isoformat() if existing_team.expires_at else None
                     },
-                    "warranty_info": self.serialize_warranty_email_entry(warranty_entry)
+                    "warranty_info": warranty_info
                 }
 
             warranty_teams = await self._get_available_warranty_teams(db_session)
@@ -1436,7 +1832,13 @@ class WarrantyService:
                         db_session=db_session,
                         entry=warranty_entry,
                         email=normalized_email,
-                        team=team
+                        team=team,
+                        redeem_code=selected_code,
+                    )
+                    order_info = (
+                        await self.get_warranty_order_info(db_session, normalized_email, selected_code, warranty_entry)
+                        if selected_code
+                        else None
                     )
                     await self._record_warranty_claim_result(
                         db_session=db_session,
@@ -1455,7 +1857,11 @@ class WarrantyService:
                             "email": team.email,
                             "expires_at": team.expires_at.isoformat() if team.expires_at else None
                         },
-                        "warranty_info": self.serialize_warranty_email_entry(warranty_entry)
+                        "warranty_info": (
+                            order_info.get("warranty_info")
+                            if order_info
+                            else self.serialize_warranty_email_entry(warranty_entry) if warranty_entry else {}
+                        )
                     }
 
                 last_error = add_result.get("error")
@@ -1508,7 +1914,8 @@ class WarrantyService:
         self,
         db_session: AsyncSession,
         email: str,
-        require_latest_team_banned: bool = False
+        require_latest_team_banned: bool = False,
+        code: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         校验前台质保申请的基础输入：
@@ -1521,6 +1928,57 @@ class WarrantyService:
             return {"success": False, "error": "邮箱不能为空"}
 
         warranty_entry = await self.get_warranty_email_entry(db_session, normalized_email)
+        normalized_code = (code or "").strip()
+        if normalized_code:
+            try:
+                latest_context = await self._refresh_warranty_order_context_for_email(
+                    db_session,
+                    normalized_email,
+                    normalized_code,
+                    warranty_entry=warranty_entry,
+                )
+            except RuntimeError as exc:
+                return {
+                    "success": False,
+                    "error": str(exc) or "实时刷新订单 Team 状态失败，请稍后重试"
+                }
+            if not latest_context:
+                logger.warning(
+                    "质保申请失败: 未找到该邮箱绑定的质保订单 email=%s code=%s",
+                    normalized_email,
+                    normalized_code,
+                )
+                return {"success": False, "error": "未找到该邮箱绑定的质保订单"}
+
+            warranty_order = self._serialize_warranty_order_context(
+                latest_context,
+                warranty_entry=warranty_entry,
+            )
+            latest_team_info = latest_context.get("team_info")
+            if int(warranty_order.get("remaining_claims") or 0) <= 0:
+                return {"success": False, "error": "该质保订单暂无可用质保次数"}
+            if not warranty_order.get("warranty_valid"):
+                return {"success": False, "error": "该质保订单质保资格已过期或未启用"}
+            if require_latest_team_banned and not warranty_order.get("can_claim"):
+                if latest_team_info:
+                    return {
+                        "success": False,
+                        "error": f"该质保订单最近加入的 Team 当前状态为「{latest_team_info['status_label']}」，仅封禁后可提交质保",
+                        "latest_team_info": latest_team_info,
+                    }
+                return {"success": False, "error": "未找到该质保订单最近加入的 Team 记录"}
+
+            return {
+                "success": True,
+                "normalized_email": normalized_email,
+                "warranty_entry": warranty_entry,
+                "warranty_code": normalized_code,
+                "warranty_order": warranty_order,
+                "latest_record": latest_context.get("latest_record"),
+                "latest_team": latest_context.get("team"),
+                "latest_team_info": latest_team_info,
+            }
+
         if not warranty_entry:
             logger.warning("质保申请失败: 邮箱不在质保列表中 email=%s", normalized_email)
             return {"success": False, "error": "该邮箱不在质保邮箱列表中"}

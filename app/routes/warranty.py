@@ -3,8 +3,8 @@
 处理用户质保查询请求
 """
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+from pydantic import BaseModel, EmailStr, Field
+from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -49,6 +49,7 @@ class WarrantyCheckResponse(BaseModel):
     can_claim: bool
     latest_team: Optional[WarrantyLatestTeamInfo] = None
     warranty_info: Optional[dict] = None
+    warranty_orders: List[dict] = Field(default_factory=list)
     message: Optional[str]
     error: Optional[str]
 
@@ -74,6 +75,7 @@ async def check_warranty(
         "can_claim": result.get("can_claim", False),
         "latest_team": result.get("latest_team"),
         "warranty_info": result.get("warranty_info"),
+        "warranty_orders": result.get("warranty_orders", []),
         "message": result.get("message"),
         "error": None,
     }
@@ -88,6 +90,7 @@ class EnableDeviceAuthRequest(BaseModel):
 
 class WarrantyClaimRequest(BaseModel):
     email: EmailStr
+    code: Optional[str] = None
 
 
 @router.post("/claim")
@@ -98,7 +101,8 @@ async def claim_warranty(
     await ensure_warranty_service_enabled(db_session)
     result = await invite_queue_service.submit_warranty_job(
         db_session=db_session,
-        email=request.email
+        email=request.email,
+        code=request.code
     )
 
     if not result.get("success"):
@@ -142,7 +146,8 @@ async def validate_fake_warranty_success(
     result = await warranty_service.validate_warranty_claim_input(
         db_session=db_session,
         email=request.email,
-        require_latest_team_banned=True
+        require_latest_team_banned=True,
+        code=request.code
     )
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error") or "校验失败")

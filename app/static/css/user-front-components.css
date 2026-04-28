@@ -60,6 +60,11 @@
     margin-top: 1rem;
 }
 
+.status-result {
+    display: grid;
+    gap: 0.85rem;
+}
+
 .lookup-result,
 .status-panel,
 .result-details,
@@ -185,6 +190,11 @@
 .status-badge--danger {
     background: var(--danger-soft);
     color: #fecdd3;
+}
+
+.status-badge--warning {
+    background: rgba(245, 158, 11, 0.16);
+    color: #fde68a;
 }
 
 .status-panel__message {

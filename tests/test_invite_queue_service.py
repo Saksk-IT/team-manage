@@ -416,6 +416,59 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(job_count, 1)
         self.assertEqual(team.reserved_members, 1)
 
+    async def test_warranty_submission_is_idempotent_by_email_and_code(self):
+        service = InviteQueueService()
+
+        async def fake_validate(db_session, email, require_latest_team_banned=False, code=None):
+            return {
+                "success": True,
+                "normalized_email": email,
+                "warranty_entry": SimpleNamespace(last_redeem_code=code),
+                "warranty_code": code,
+                "latest_team_info": {"id": 99, "status": "banned"},
+            }
+
+        service.warranty_service.validate_warranty_claim_input = AsyncMock(side_effect=fake_validate)
+
+        async with self.Session() as session:
+            session.add_all([
+                Team(
+                    email="owner-1@example.com",
+                    access_token_encrypted="dummy",
+                    account_id="acc-1",
+                    team_type=TEAM_TYPE_STANDARD,
+                    team_name="Team 1",
+                    status="active",
+                    current_members=1,
+                    reserved_members=0,
+                    max_members=3,
+                ),
+                Team(
+                    email="owner-2@example.com",
+                    access_token_encrypted="dummy",
+                    account_id="acc-2",
+                    team_type=TEAM_TYPE_STANDARD,
+                    team_name="Team 2",
+                    status="active",
+                    current_members=1,
+                    reserved_members=0,
+                    max_members=3,
+                ),
+            ])
+            await session.commit()
+
+            first = await service.submit_warranty_job(session, "buyer@example.com", code="CODE-A")
+            duplicate = await service.submit_warranty_job(session, "buyer@example.com", code="CODE-A")
+            second_order = await service.submit_warranty_job(session, "buyer@example.com", code="CODE-B")
+            job_count = await session.scalar(select(func.count(InviteJob.id)))
+            jobs = (await session.execute(select(InviteJob).order_by(InviteJob.code.asc()))).scalars().all()
+
+        self.assertTrue(first["success"])
+        self.assertEqual(first["job_id"], duplicate["job_id"])
+        self.assertNotEqual(first["job_id"], second_order["job_id"])
+        self.assertEqual(job_count, 2)
+        self.assertEqual([job.code for job in jobs], ["CODE-A", "CODE-B"])
+
     async def test_warranty_processing_records_before_team_before_success_record(self):
         service = InviteQueueService()
 

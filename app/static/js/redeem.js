@@ -616,6 +616,33 @@ function getWarrantyTeamStatusMessage(data, canClaim) {
     return '该邮箱最近加入的 Team 当前状态为可用，只有当状态为封禁时才可以提交质保';
 }
 
+function normalizeWarrantyOrders(data) {
+    if (Array.isArray(data?.warranty_orders) && data.warranty_orders.length > 0) {
+        return data.warranty_orders;
+    }
+
+    if (data?.latest_team) {
+        return [{
+            code: data.latest_team.code || data?.warranty_info?.last_redeem_code || '',
+            latest_team: data.latest_team,
+            warranty_info: data.warranty_info || {},
+            remaining_claims: data?.warranty_info?.remaining_claims,
+            remaining_days: data?.warranty_info?.remaining_days,
+            can_claim: Boolean(data?.can_claim),
+            message: data?.message || ''
+        }];
+    }
+
+    return [];
+}
+
+function getWarrantyOrderStatusMessage(order, canClaim) {
+    if (order?.message) {
+        return order.message;
+    }
+    return getWarrantyTeamStatusMessage(order, canClaim);
+}
+
 function resetWarrantyStatusResult() {
     currentWarrantyEmail = '';
     currentWarrantyStatus = null;
@@ -634,55 +661,86 @@ function renderWarrantyStatusResult(data, email) {
     const statusContainer = document.getElementById('warrantyStatusResult');
     if (!statusContainer) return;
 
-    const latestTeam = data?.latest_team || {};
-    const warrantyInfo = data?.warranty_info || {};
-    const badge = getWarrantyTeamStatusBadge(latestTeam.status || latestTeam.status_label);
-    const canClaim = Boolean(data?.can_claim);
-    const statusMessage = getWarrantyTeamStatusMessage(data, canClaim);
-    const messageClass = canClaim ? 'status-panel__message--success' : 'status-panel__message--warning';
+    const warrantyOrders = normalizeWarrantyOrders(data);
+    const summaryMessage = data?.message || '查询完成，请选择需要提交质保的订单。';
+    const orderCards = warrantyOrders.map((order, index) => {
+        const latestTeam = order?.latest_team || {};
+        const warrantyInfo = order?.warranty_info || {};
+        const badge = getWarrantyTeamStatusBadge(latestTeam.status || latestTeam.status_label);
+        const canClaim = Boolean(order?.can_claim);
+        const statusMessage = getWarrantyOrderStatusMessage(order, canClaim);
+        const messageClass = canClaim ? 'status-panel__message--success' : 'status-panel__message--warning';
+        const code = order?.code || latestTeam.code || '';
+        const remainingClaims = order?.remaining_claims ?? warrantyInfo.remaining_claims ?? '-';
+        const remainingDays = order?.remaining_days ?? warrantyInfo.remaining_days ?? '-';
+        const detailItems = [
+            ['质保订单', code || `订单 ${index + 1}`],
+            ['Team 名称', latestTeam.team_name || '-'],
+            ['Team 账号', latestTeam.email || '-'],
+            ['最近加入时间', formatDateTime(latestTeam.redeemed_at)],
+            ['剩余质保次数', String(remainingClaims)],
+            ['剩余质保天数', String(remainingDays)]
+        ].map(([label, value]) => `
+            <div class="status-panel__item">
+                <span class="status-panel__label">${escapeHtml(label)}</span>
+                <span class="status-panel__value">${escapeHtml(value)}</span>
+            </div>
+        `).join('');
 
-    const detailItems = [
-        ['邮箱地址', email],
-        ['Team 名称', latestTeam.team_name || '-'],
-        ['Team 账号', latestTeam.email || '-'],
-        ['最近加入时间', formatDateTime(latestTeam.redeemed_at)],
-        ['剩余质保次数', String(warrantyInfo.remaining_claims ?? '-')],
-        ['剩余质保天数', String(warrantyInfo.remaining_days ?? '-')]
-    ].map(([label, value]) => `
-        <div class="status-panel__item">
-            <span class="status-panel__label">${escapeHtml(label)}</span>
-            <span class="status-panel__value">${escapeHtml(value)}</span>
-        </div>
-    `).join('');
+        return `
+            <div class="status-panel status-panel--order">
+                <div class="status-panel__header">
+                    <div class="status-panel__title">质保订单 ${escapeHtml(String(index + 1))}</div>
+                    <span class="status-badge ${badge.className}">${escapeHtml(latestTeam.status_label || badge.label)}</span>
+                </div>
+                <div class="status-panel__list">${detailItems}</div>
+                <div class="status-panel__message ${messageClass}">${escapeHtml(statusMessage)}</div>
+                ${canClaim ? `
+                    <div class="status-panel__actions">
+                        <button type="button" class="btn btn-primary warranty-order-claim-btn" data-code="${escapeHtml(code)}">
+                            <i data-lucide="shield"></i> 提交此订单质保
+                        </button>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }).join('');
 
     statusContainer.style.display = 'block';
     statusContainer.innerHTML = `
-        <div class="status-panel">
+        <div class="status-panel status-panel--summary">
             <div class="status-panel__header">
-                <div class="status-panel__title">最近加入 Team 状态</div>
-                <span class="status-badge ${badge.className}">${escapeHtml(badge.label)}</span>
+                <div class="status-panel__title">质保订单查询结果</div>
+                <span class="status-badge ${data?.can_claim ? 'status-badge--danger' : 'status-badge--success'}">
+                    ${escapeHtml(data?.can_claim ? '有可提交订单' : '暂无可提交订单')}
+                </span>
             </div>
-            <div class="status-panel__list">${detailItems}</div>
-            <div class="status-panel__message ${messageClass}">${escapeHtml(statusMessage)}</div>
-            ${canClaim ? `
-                <div class="status-panel__actions">
-                    <button type="button" id="continueWarrantyClaimBtn" class="btn btn-primary">
-                        <i data-lucide="shield"></i> 提交质保
-                    </button>
+            <div class="status-panel__list">
+                <div class="status-panel__item">
+                    <span class="status-panel__label">邮箱地址</span>
+                    <span class="status-panel__value">${escapeHtml(email)}</span>
                 </div>
-            ` : ''}
+                <div class="status-panel__item">
+                    <span class="status-panel__label">质保订单数</span>
+                    <span class="status-panel__value">${escapeHtml(String(warrantyOrders.length))}</span>
+                </div>
+            </div>
+            <div class="status-panel__message ${data?.can_claim ? 'status-panel__message--success' : 'status-panel__message--warning'}">
+                ${escapeHtml(summaryMessage)}
+            </div>
         </div>
+        ${orderCards || '<div class="status-panel__message status-panel__message--warning">未查询到质保订单。</div>'}
     `;
 
     if (window.lucide) {
         lucide.createIcons();
     }
 
-    if (canClaim) {
-        document.getElementById('continueWarrantyClaimBtn')?.addEventListener('click', () => {
-            submitWarrantyClaim(email);
+    statusContainer.querySelectorAll('.warranty-order-claim-btn').forEach((button) => {
+        button.addEventListener('click', () => {
+            submitWarrantyClaim(email, button.dataset.code || null, button);
         });
-    }
+    });
 }
 
 function resetBoundEmailLookupResult() {
@@ -1221,8 +1279,8 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
     }
 });
 
-async function submitWarrantyClaim(email) {
-    const continueBtn = document.getElementById('continueWarrantyClaimBtn');
+async function submitWarrantyClaim(email, code = null, triggerButton = null) {
+    const continueBtn = triggerButton || document.getElementById('continueWarrantyClaimBtn');
     if (continueBtn) {
         continueBtn.disabled = true;
         continueBtn.innerHTML = `<i data-lucide="shield"></i> ${escapeHtml(warrantyFakeSuccessEnabled ? '处理中（15秒）...' : '提交中...')}`;
@@ -1244,7 +1302,8 @@ async function submitWarrantyClaim(email) {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    email
+                    email,
+                    ...(code ? { code } : {})
                 })
             });
 
@@ -1290,7 +1349,8 @@ async function submitWarrantyClaim(email) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                email
+                email,
+                ...(code ? { code } : {})
             })
         });
 
@@ -1328,7 +1388,7 @@ async function submitWarrantyClaim(email) {
         closeTransitionOverlay();
         if (continueBtn) {
             continueBtn.disabled = false;
-            continueBtn.innerHTML = `<i data-lucide="shield"></i> 提交质保`;
+            continueBtn.innerHTML = `<i data-lucide="shield"></i> 提交此订单质保`;
             if (window.lucide) {
                 lucide.createIcons();
             }
