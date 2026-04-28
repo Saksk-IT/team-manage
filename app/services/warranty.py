@@ -409,6 +409,7 @@ class WarrantyService:
         stmt = select(WarrantyEmailEntry)
         db_filters = []
         normalized_search = (search or "").strip()
+        matched_emails = set()
         if normalized_search:
             search_pattern = f"%{normalized_search}%"
             matched_emails = await self._find_warranty_entry_emails_by_redeem_code(
@@ -432,7 +433,35 @@ class WarrantyService:
 
         stmt = stmt.order_by(WarrantyEmailEntry.updated_at.desc(), WarrantyEmailEntry.created_at.desc())
         result = await db_session.execute(stmt)
-        entries = [self.serialize_warranty_email_entry(entry) for entry in result.scalars().all()]
+        entries = []
+        for entry in result.scalars().all():
+            serialized_entry = self.serialize_warranty_email_entry(entry)
+            order_contexts = await self._load_warranty_order_contexts_for_email(
+                db_session=db_session,
+                email=entry.email,
+                warranty_entry=entry,
+            )
+            if order_contexts:
+                entries.extend(
+                    self._serialize_warranty_email_order_entry(
+                        base_entry=serialized_entry,
+                        order=self._serialize_warranty_order_context(order_context, warranty_entry=entry),
+                    )
+                    for order_context in order_contexts
+                )
+            else:
+                entries.append(serialized_entry)
+
+        if normalized_search:
+            entries = [
+                entry
+                for entry in entries
+                if self._warranty_email_entry_matches_search(entry, normalized_search)
+                or (
+                    not entry.get("is_order_row")
+                    and self.normalize_email(entry.get("email")) in matched_emails
+                )
+            ]
 
         normalized_status = (status_filter or "").strip().lower()
         if normalized_status in self.WARRANTY_EMAIL_STATUS_LABELS:
@@ -449,6 +478,60 @@ class WarrantyService:
                 remaining_days_max=remaining_days_max,
             )
         ]
+
+    def _serialize_warranty_email_order_entry(
+        self,
+        base_entry: Dict[str, Any],
+        order: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        warranty_info = order.get("warranty_info") or {}
+        remaining_claims = int(warranty_info.get("remaining_claims") or 0)
+        remaining_days = warranty_info.get("remaining_days")
+        expires_at = warranty_info.get("expires_at")
+        latest_team = order.get("latest_team") or {}
+
+        if remaining_claims <= 0 and not expires_at:
+            status = "inactive"
+        elif remaining_claims <= 0:
+            status = "claims_exhausted"
+        elif remaining_days is None:
+            status = "inactive"
+        elif remaining_days <= 0:
+            status = "expired"
+        else:
+            status = "active"
+
+        return {
+            **base_entry,
+            "row_key": f"{base_entry.get('id')}:{order.get('code')}",
+            "is_order_row": True,
+            "last_redeem_code": order.get("code"),
+            "remaining_claims": remaining_claims,
+            "remaining_days": remaining_days,
+            "expires_at": expires_at,
+            "status": status,
+            "status_label": self.WARRANTY_EMAIL_STATUS_LABELS.get(status, "未知"),
+            "last_warranty_team_id": latest_team.get("id") or base_entry.get("last_warranty_team_id"),
+            "updated_at": (latest_team.get("redeemed_at") or base_entry.get("updated_at")),
+            "warranty_order": order,
+        }
+
+    def _warranty_email_entry_matches_search(self, entry: Dict[str, Any], search: str) -> bool:
+        normalized_search = (search or "").strip().lower()
+        if not normalized_search:
+            return True
+
+        searchable_values = [
+            entry.get("email"),
+            entry.get("last_redeem_code"),
+            entry.get("status_label"),
+            entry.get("source_label"),
+            entry.get("last_warranty_team_id"),
+        ]
+        return any(
+            normalized_search in str(value or "").lower()
+            for value in searchable_values
+        )
 
     def _warranty_entry_matches_remaining_filters(
         self,

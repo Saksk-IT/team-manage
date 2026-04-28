@@ -8,7 +8,7 @@ from starlette.requests import Request
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import RedemptionCode, RedemptionRecord, WarrantyEmailEntry
+from app.models import RedemptionCode, RedemptionRecord, Team, WarrantyEmailEntry
 from app.routes.admin import (
     BulkWarrantyEmailUpdateRequest,
     WarrantyEmailSaveRequest,
@@ -162,6 +162,92 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         html = response.body.decode("utf-8")
         self.assertIn("buyer@example.com", html)
         self.assertNotIn("other@example.com", html)
+
+    async def test_warranty_email_list_expands_multiple_warranty_codes(self):
+        async with self.Session() as session:
+            first_team = Team(
+                email="owner-one@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-one",
+                team_name="Team One",
+                status="banned",
+                current_members=2,
+                max_members=5,
+            )
+            second_team = Team(
+                email="owner-two@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-two",
+                team_name="Team Two",
+                status="active",
+                current_members=2,
+                max_members=5,
+            )
+            session.add_all([first_team, second_team])
+            await session.flush()
+            now = get_now()
+            session.add_all([
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=10,
+                    expires_at=now + timedelta(days=30),
+                    source="auto_redeem",
+                    last_redeem_code="CODE-B"
+                ),
+                RedemptionCode(
+                    code="CODE-A",
+                    status="used",
+                    has_warranty=True,
+                    warranty_days=30,
+                    warranty_claims=3,
+                    used_by_email="buyer@example.com",
+                    used_team_id=first_team.id,
+                    used_at=now - timedelta(days=2),
+                ),
+                RedemptionCode(
+                    code="CODE-B",
+                    status="used",
+                    has_warranty=True,
+                    warranty_days=30,
+                    warranty_claims=1,
+                    used_by_email="buyer@example.com",
+                    used_team_id=second_team.id,
+                    used_at=now - timedelta(days=1),
+                ),
+                RedemptionRecord(
+                    email="buyer@example.com",
+                    code="CODE-A",
+                    team_id=first_team.id,
+                    account_id=first_team.account_id,
+                    redeemed_at=now - timedelta(days=2),
+                    is_warranty_redemption=False,
+                ),
+                RedemptionRecord(
+                    email="buyer@example.com",
+                    code="CODE-B",
+                    team_id=second_team.id,
+                    account_id=second_team.account_id,
+                    redeemed_at=now - timedelta(days=1),
+                    is_warranty_redemption=False,
+                ),
+            ])
+            await session.commit()
+
+            entries = await warranty_service.list_warranty_email_entries(session)
+            response = await warranty_emails_page(
+                request=self._build_request(),
+                search=None,
+                db=session,
+                current_user={"username": "admin"}
+            )
+
+        entries_by_code = {entry["last_redeem_code"]: entry for entry in entries}
+        html = response.body.decode("utf-8")
+        self.assertEqual(set(entries_by_code.keys()), {"CODE-A", "CODE-B"})
+        self.assertEqual(entries_by_code["CODE-A"]["remaining_claims"], 3)
+        self.assertEqual(entries_by_code["CODE-B"]["remaining_claims"], 1)
+        self.assertIn("CODE-A", html)
+        self.assertIn("CODE-B", html)
 
     async def test_warranty_emails_page_supports_status_source_and_remaining_filters(self):
         async with self.Session() as session:
