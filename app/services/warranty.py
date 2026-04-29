@@ -808,6 +808,31 @@ class WarrantyService:
             "updated_count": len(entries),
         }
 
+    async def bulk_delete_warranty_email_entries(
+        self,
+        db_session: AsyncSession,
+        entry_ids: List[int],
+    ) -> Dict[str, Any]:
+        normalized_ids = self._normalize_warranty_entry_ids(entry_ids)
+        if not normalized_ids:
+            raise ValueError("请先选择要删除的质保邮箱")
+
+        result = await db_session.execute(
+            select(WarrantyEmailEntry).where(WarrantyEmailEntry.id.in_(normalized_ids))
+        )
+        entries = result.scalars().all()
+        if not entries:
+            raise ValueError("未找到可删除的质保邮箱记录")
+
+        for entry in entries:
+            await db_session.delete(entry)
+
+        await db_session.commit()
+        return {
+            "requested_count": len(normalized_ids),
+            "deleted_count": len(entries),
+        }
+
     def _normalize_warranty_entry_ids(self, entry_ids: List[int]) -> List[int]:
         normalized_ids = []
         for entry_id in entry_ids or []:

@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.database import Base
 from app.models import RedemptionCode, RedemptionRecord, Team, WarrantyEmailEntry
 from app.routes.admin import (
+    BulkWarrantyEmailDeleteRequest,
     BulkWarrantyEmailUpdateRequest,
     WarrantyEmailSaveRequest,
+    bulk_delete_warranty_emails,
     bulk_update_warranty_emails,
     delete_warranty_email,
     save_warranty_email,
@@ -68,6 +70,9 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("质保邮箱列表</span>", html)
         self.assertIn('id="warrantyRedeemCode"', html)
         self.assertIn('id="warrantyRemainingClaims" class="form-control" min="0" value="10" required', html)
+        self.assertIn("批量删除", html)
+        self.assertIn("function bulkDeleteWarrantyEmails()", html)
+        self.assertIn("/admin/warranty-emails/bulk-delete", html)
 
         fill_script_start = html.index("function fillWarrantyEmailForm(entry)")
         fill_script_end = html.index("document.getElementById('warrantyEmailForm')")
@@ -395,6 +400,53 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(entry.remaining_claims, 5)
             remaining_days = warranty_service._get_warranty_entry_remaining_days(entry)
             self.assertEqual(remaining_days, 7)
+
+    async def test_bulk_delete_warranty_emails_deletes_selected_entries(self):
+        async with self.Session() as session:
+            entry_one = WarrantyEmailEntry(
+                email="one@example.com",
+                remaining_claims=1,
+                expires_at=get_now() + timedelta(days=2),
+                source="manual",
+            )
+            entry_two = WarrantyEmailEntry(
+                email="two@example.com",
+                remaining_claims=2,
+                expires_at=get_now() + timedelta(days=3),
+                source="auto_redeem",
+            )
+            entry_keep = WarrantyEmailEntry(
+                email="keep@example.com",
+                remaining_claims=3,
+                expires_at=get_now() + timedelta(days=4),
+                source="manual",
+            )
+            session.add_all([entry_one, entry_two, entry_keep])
+            await session.commit()
+            await session.refresh(entry_one)
+            await session.refresh(entry_two)
+            await session.refresh(entry_keep)
+
+            response = await bulk_delete_warranty_emails(
+                payload=BulkWarrantyEmailDeleteRequest(
+                    entry_ids=[entry_one.id, entry_two.id, entry_one.id],
+                ),
+                db=session,
+                current_user={"username": "admin"},
+            )
+
+            payload = json.loads(response.body.decode("utf-8"))
+            deleted_one = await session.get(WarrantyEmailEntry, entry_one.id)
+            deleted_two = await session.get(WarrantyEmailEntry, entry_two.id)
+            kept_entry = await session.get(WarrantyEmailEntry, entry_keep.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["requested_count"], 2)
+        self.assertEqual(payload["deleted_count"], 2)
+        self.assertIsNone(deleted_one)
+        self.assertIsNone(deleted_two)
+        self.assertIsNotNone(kept_entry)
 
     async def test_save_and_delete_warranty_email(self):
         async with self.Session() as session:

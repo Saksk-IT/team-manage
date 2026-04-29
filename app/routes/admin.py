@@ -614,6 +614,10 @@ class BulkWarrantyEmailUpdateRequest(BaseModel):
     remaining_claims: Optional[int] = Field(None, ge=0, description="剩余次数")
 
 
+class BulkWarrantyEmailDeleteRequest(BaseModel):
+    entry_ids: List[int] = Field(..., min_length=1, description="质保邮箱记录 ID 列表")
+
+
 class EmailWhitelistSaveRequest(BaseModel):
     entry_id: Optional[int] = Field(None, description="邮箱白名单记录 ID")
     email: EmailStr = Field(..., description="白名单邮箱")
@@ -3713,6 +3717,31 @@ async def delete_email_whitelist_entry(
         )
 
 
+@router.post("/email-whitelist/sync-warranty-emails")
+async def sync_email_whitelist_from_warranty_emails(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        result = await email_whitelist_service.sync_only_from_warranty_email_entries(
+            db_session=db,
+            commit=True,
+        )
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": "邮箱白名单已同步质保邮箱列表",
+                **result,
+            }
+        )
+    except Exception as e:
+        logger.error(f"同步邮箱白名单质保邮箱列表失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"同步失败: {str(e)}"}
+        )
+
+
 @router.post("/warranty-team-whitelist/save", include_in_schema=False)
 async def legacy_save_warranty_team_whitelist_entry(
     payload: EmailWhitelistSaveRequest,
@@ -4007,6 +4036,37 @@ async def bulk_update_warranty_emails(
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"批量更新失败: {str(e)}"}
+        )
+
+
+@router.post("/warranty-emails/bulk-delete")
+async def bulk_delete_warranty_emails(
+    payload: BulkWarrantyEmailDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        result = await warranty_service.bulk_delete_warranty_email_entries(
+            db_session=db,
+            entry_ids=payload.entry_ids,
+        )
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": "质保邮箱批量删除完成",
+                **result,
+            }
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"success": False, "error": str(e)}
+        )
+    except Exception as e:
+        logger.error(f"批量删除质保邮箱失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"批量删除失败: {str(e)}"}
         )
 
 

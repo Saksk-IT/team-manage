@@ -256,6 +256,9 @@
             <button type="button" onclick="showBulkUpdateWarrantyEmailModal()" class="btn btn-primary">
                 <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i> 批量修改剩余值
             </button>
+            <button type="button" onclick="bulkDeleteWarrantyEmails()" class="btn btn-danger">
+                <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i> 批量删除
+            </button>
             <button type="button" onclick="deselectAllWarrantyEmails()" class="btn btn-secondary">取消全选</button>
         </div>
     </div>
@@ -552,9 +555,10 @@
     });
 
     function getSelectedWarrantyEmailIds() {
-        return Array.from(document.querySelectorAll('.warranty-email-checkbox:checked'))
+        const ids = Array.from(document.querySelectorAll('.warranty-email-checkbox:checked'))
             .map((checkbox) => Number(checkbox.value))
             .filter((entryId) => Number.isInteger(entryId) && entryId > 0);
+        return Array.from(new Set(ids));
     }
 
     function toggleSelectAllWarrantyEmails(checkbox) {
@@ -581,6 +585,7 @@
         const actionBar = document.getElementById('warrantyEmailBulkActionBar');
         const selectAll = document.getElementById('selectAllWarrantyEmails');
         const allCheckboxes = Array.from(document.querySelectorAll('.warranty-email-checkbox'));
+        const checkedCount = allCheckboxes.filter((checkbox) => checkbox.checked).length;
 
         if (countText) {
             countText.textContent = String(count);
@@ -589,8 +594,8 @@
             actionBar.style.display = count > 0 ? 'flex' : 'none';
         }
         if (selectAll && allCheckboxes.length > 0) {
-            selectAll.checked = count === allCheckboxes.length;
-            selectAll.indeterminate = count > 0 && count < allCheckboxes.length;
+            selectAll.checked = checkedCount === allCheckboxes.length;
+            selectAll.indeterminate = checkedCount > 0 && checkedCount < allCheckboxes.length;
         }
     }
 
@@ -669,6 +674,41 @@
                 setTimeout(() => window.location.reload(), 300);
             } else {
                 showToast(data.error || '批量更新失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    async function bulkDeleteWarrantyEmails() {
+        const entryIds = getSelectedWarrantyEmailIds();
+        if (entryIds.length === 0) {
+            showToast('请先选择要删除的质保邮箱', 'error');
+            return;
+        }
+
+        const confirmed = await showSystemConfirm({
+            title: '确认批量删除质保邮箱',
+            message: `确定要删除已选择的 ${entryIds.length} 个质保邮箱吗？删除后对应邮箱将失去质保资格。`,
+            confirmText: '批量删除',
+            danger: true,
+        });
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/warranty-emails/bulk-delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ entry_ids: entryIds })
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                showToast(data.message || '质保邮箱批量删除完成', 'success');
+                setTimeout(() => window.location.reload(), 300);
+            } else {
+                showToast(data.error || '批量删除失败', 'error');
             }
         } catch (error) {
             showToast('网络错误', 'error');

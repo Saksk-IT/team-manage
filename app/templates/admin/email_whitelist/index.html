@@ -5,7 +5,7 @@
 {% block content %}
 <div class="page-header">
     <h2>邮箱白名单</h2>
-    <p class="page-subtitle">白名单账号不会被系统自动清理机制移除；系统会自动同步控制台 Team 兑换绑定邮箱、质保邮箱列表有效账号，以及管理员手动拉入的邮箱。</p>
+    <p class="page-subtitle">白名单账号不会被系统自动清理机制移除；可一键同步为仅保留质保邮箱列表有效账号。</p>
 </div>
 
 <div class="content-section" id="whitelistEditorCard">
@@ -40,9 +40,13 @@
 </div>
 
 <div class="content-section">
-    <div class="section-header">
+    <div class="section-header whitelist-list-header">
         <h3>白名单账号</h3>
+        <button type="button" class="btn btn-primary" id="syncWarrantyWhitelistBtn" onclick="syncWhitelistFromWarrantyEmails()">
+            <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i> 一键同步质保邮箱列表
+        </button>
     </div>
+    <p class="form-help" style="margin-bottom: 1rem;">点击后邮箱白名单将仅保留当前有效的质保邮箱，其他来源会被移出；后续自动同步也以质保邮箱列表为准。</p>
 
     <form method="get" action="/admin/email-whitelist" class="whitelist-filter-form">
         <label class="whitelist-filter-field whitelist-filter-field-wide">
@@ -187,6 +191,11 @@
         flex-wrap: wrap;
     }
 
+    .whitelist-list-header {
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
     @media (max-width: 768px) {
         .whitelist-filter-form {
             grid-template-columns: 1fr;
@@ -194,6 +203,10 @@
 
         .whitelist-filter-field-wide {
             grid-column: span 1;
+        }
+
+        .whitelist-list-header .btn {
+            width: 100%;
         }
     }
 </style>
@@ -305,6 +318,52 @@
             }
         } catch (error) {
             showToast('网络错误', 'error');
+        }
+    }
+
+    async function syncWhitelistFromWarrantyEmails() {
+        const confirmed = await showSystemConfirm({
+            title: '一键同步质保邮箱列表',
+            message: '同步后，邮箱白名单将仅保留当前有效的质保邮箱，控制台 Team、手动维护等其他来源会被移出；后续自动同步也以质保邮箱列表为准。确定继续吗？',
+            confirmText: '开始同步',
+            danger: true,
+        });
+        if (!confirmed) {
+            return;
+        }
+
+        const button = document.getElementById('syncWarrantyWhitelistBtn');
+        const originalHtml = button?.innerHTML || '';
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<i data-lucide="loader" style="width: 16px; height: 16px;"></i> 同步中...';
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+        }
+
+        try {
+            const response = await fetch('/admin/email-whitelist/sync-warranty-emails', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                showToast(data.message || '邮箱白名单已同步质保邮箱列表', 'success');
+                setTimeout(() => window.location.reload(), 300);
+            } else {
+                showToast(data.error || '同步失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.innerHTML = originalHtml;
+                if (window.lucide) {
+                    lucide.createIcons();
+                }
+            }
         }
     }
 </script>

@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import EmailWhitelistEntry, RedemptionCode, RedemptionRecord, WarrantyEmailEntry
+from app.models import EmailWhitelistEntry, RedemptionCode, RedemptionRecord, Setting, WarrantyEmailEntry
 from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,10 @@ class EmailWhitelistService:
     SOURCE_WARRANTY_EMAIL = "warranty_email"
     SOURCE_MANUAL = "manual"
     SOURCE_MANUAL_PULL = "manual_pull"
+
+    SYNC_MODE_SETTING_KEY = "email_whitelist_sync_mode"
+    SYNC_MODE_ALL = "all"
+    SYNC_MODE_WARRANTY_ONLY = "warranty_only"
 
     SYSTEM_SOURCES = {SOURCE_CONSOLE_TEAM, SOURCE_WARRANTY_EMAIL}
 
@@ -41,6 +45,35 @@ class EmailWhitelistService:
 
     def normalize_email(self, email: Optional[str]) -> str:
         return (email or "").strip().lower()
+
+    async def get_sync_mode(self, db_session: AsyncSession) -> str:
+        result = await db_session.execute(
+            select(Setting.value).where(Setting.key == self.SYNC_MODE_SETTING_KEY)
+        )
+        normalized_mode = (result.scalar_one_or_none() or self.SYNC_MODE_ALL).strip().lower()
+        if normalized_mode == self.SYNC_MODE_WARRANTY_ONLY:
+            return self.SYNC_MODE_WARRANTY_ONLY
+        return self.SYNC_MODE_ALL
+
+    async def _set_sync_mode(self, db_session: AsyncSession, sync_mode: str) -> None:
+        normalized_mode = (sync_mode or self.SYNC_MODE_ALL).strip().lower()
+        if normalized_mode not in {self.SYNC_MODE_ALL, self.SYNC_MODE_WARRANTY_ONLY}:
+            normalized_mode = self.SYNC_MODE_ALL
+
+        result = await db_session.execute(
+            select(Setting).where(Setting.key == self.SYNC_MODE_SETTING_KEY)
+        )
+        setting = result.scalar_one_or_none()
+        if setting:
+            setting.value = normalized_mode
+        else:
+            db_session.add(
+                Setting(
+                    key=self.SYNC_MODE_SETTING_KEY,
+                    value=normalized_mode,
+                    description="邮箱白名单自动同步模式",
+                )
+            )
 
     def _is_effective_warranty_email_entry(self, entry: WarrantyEmailEntry) -> bool:
         if not entry:
@@ -130,6 +163,14 @@ class EmailWhitelistService:
         commit: bool = False,
     ) -> Dict[str, int]:
         """同步系统自动清理依赖的邮箱来源到邮箱白名单。"""
+        sync_mode = await self.get_sync_mode(db_session)
+        if sync_mode == self.SYNC_MODE_WARRANTY_ONLY:
+            return await self.sync_only_from_warranty_email_entries(
+                db_session,
+                commit=commit,
+                update_sync_mode=False,
+            )
+
         console_entries = await self._collect_console_team_entries(db_session)
         active_warranty_entries = await self._collect_warranty_email_entries(db_session)
         legacy_manual_pull_entries = await self._collect_legacy_manual_pull_entries(db_session)
@@ -246,6 +287,96 @@ class EmailWhitelistService:
                 await db_session.commit()
 
         return {
+            "created_count": created_count,
+            "reactivated_count": reactivated_count,
+            "deactivated_count": deactivated_count,
+            "source_updated_count": source_updated_count,
+        }
+
+    async def sync_only_from_warranty_email_entries(
+        self,
+        db_session: AsyncSession,
+        *,
+        commit: bool = False,
+        update_sync_mode: bool = True,
+    ) -> Dict[str, int]:
+        """一键同步邮箱白名单：仅保留当前有效的质保邮箱来源。"""
+        active_warranty_entries = await self._collect_warranty_email_entries(db_session)
+
+        whitelist_result = await db_session.execute(select(EmailWhitelistEntry))
+        whitelist_entries = whitelist_result.scalars().all()
+        whitelist_by_email = {
+            self.normalize_email(entry.email): entry
+            for entry in whitelist_entries
+        }
+
+        target_emails = set(active_warranty_entries.keys())
+        created_count = 0
+        reactivated_count = 0
+        deactivated_count = 0
+        source_updated_count = 0
+
+        if update_sync_mode:
+            await self._set_sync_mode(db_session, self.SYNC_MODE_WARRANTY_ONLY)
+
+        for email, warranty_entry in active_warranty_entries.items():
+            existing_entry = whitelist_by_email.get(email)
+            if existing_entry:
+                if not existing_entry.is_active:
+                    reactivated_count += 1
+                existing_entry.is_active = True
+                if existing_entry.source != self.SOURCE_WARRANTY_EMAIL:
+                    existing_entry.source = self.SOURCE_WARRANTY_EMAIL
+                    source_updated_count += 1
+                if warranty_entry.last_warranty_team_id and not existing_entry.last_warranty_team_id:
+                    existing_entry.last_warranty_team_id = warranty_entry.last_warranty_team_id
+                if not existing_entry.note:
+                    existing_entry.note = "一键同步自质保邮箱列表"
+                continue
+
+            db_session.add(
+                EmailWhitelistEntry(
+                    email=email,
+                    source=self.SOURCE_WARRANTY_EMAIL,
+                    is_active=True,
+                    note="一键同步自质保邮箱列表",
+                    last_warranty_team_id=warranty_entry.last_warranty_team_id,
+                )
+            )
+            created_count += 1
+
+        for entry in whitelist_entries:
+            normalized_email = self.normalize_email(entry.email)
+            if normalized_email in target_emails:
+                continue
+            if entry.is_active:
+                entry.is_active = False
+                deactivated_count += 1
+            if not entry.note:
+                entry.note = "已由一键同步质保邮箱列表移出"
+
+        has_changes = any([
+            update_sync_mode,
+            created_count,
+            reactivated_count,
+            deactivated_count,
+            source_updated_count,
+        ])
+        if has_changes:
+            await db_session.flush()
+            logger.info(
+                "邮箱白名单已一键同步质保邮箱列表: target=%s created=%s reactivated=%s deactivated=%s source_updated=%s",
+                len(target_emails),
+                created_count,
+                reactivated_count,
+                deactivated_count,
+                source_updated_count,
+            )
+            if commit:
+                await db_session.commit()
+
+        return {
+            "target_count": len(target_emails),
             "created_count": created_count,
             "reactivated_count": reactivated_count,
             "deactivated_count": deactivated_count,

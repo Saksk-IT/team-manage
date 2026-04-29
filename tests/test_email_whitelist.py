@@ -15,6 +15,7 @@ from app.routes.admin import (
     delete_email_whitelist_entry,
     email_whitelist_page,
     save_email_whitelist_entry,
+    sync_email_whitelist_from_warranty_emails,
 )
 from app.services.email_whitelist import email_whitelist_service
 from app.utils.time_utils import get_now
@@ -162,6 +163,9 @@ class EmailWhitelistTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('name="status_filter"', html)
         self.assertIn('name="source_filter"', html)
         self.assertIn('href="/admin/email-whitelist"', html)
+        self.assertIn("一键同步质保邮箱列表", html)
+        self.assertIn("function syncWhitelistFromWarrantyEmails()", html)
+        self.assertIn("/admin/email-whitelist/sync-warranty-emails", html)
 
     async def test_save_and_delete_whitelist_entry(self):
         async with self.Session() as session:
@@ -194,6 +198,65 @@ class EmailWhitelistTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(entry)
         self.assertFalse(entry.is_active)
         self.assertNotIn("manual@example.com", allowed_emails)
+
+    async def test_sync_whitelist_from_warranty_emails_keeps_only_effective_warranty_entries(self):
+        async with self.Session() as session:
+            session.add_all([
+                WarrantyEmailEntry(
+                    email="Active@Example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=3),
+                    source="auto_redeem",
+                    last_warranty_team_id=8,
+                ),
+                WarrantyEmailEntry(
+                    email="expired@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() - timedelta(days=1),
+                    source="auto_redeem",
+                ),
+                EmailWhitelistEntry(
+                    email="manual@example.com",
+                    source="manual",
+                    is_active=True,
+                    note="手动维护",
+                ),
+                EmailWhitelistEntry(
+                    email="console@example.com",
+                    source="console_team",
+                    is_active=True,
+                    note="控制台来源",
+                ),
+                RedemptionCode(
+                    code="BOUND-CODE-001",
+                    status="used",
+                    bound_team_id=1,
+                    used_team_id=1,
+                    used_by_email="console@example.com",
+                ),
+            ])
+            await session.commit()
+
+            response = await sync_email_whitelist_from_warranty_emails(
+                db=session,
+                current_user={"username": "admin"},
+            )
+            payload = json.loads(response.body.decode("utf-8"))
+            allowed_emails = await email_whitelist_service.get_allowed_emails(session)
+
+            entries_result = await session.execute(select(EmailWhitelistEntry))
+            entries = {entry.email: entry for entry in entries_result.scalars().all()}
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["target_count"], 1)
+        self.assertEqual(allowed_emails, {"active@example.com"})
+        self.assertEqual(entries["active@example.com"].source, "warranty_email")
+        self.assertEqual(entries["active@example.com"].last_warranty_team_id, 8)
+        self.assertTrue(entries["active@example.com"].is_active)
+        self.assertFalse(entries["manual@example.com"].is_active)
+        self.assertFalse(entries["console@example.com"].is_active)
+        self.assertNotIn("expired@example.com", entries)
 
 
 if __name__ == "__main__":
