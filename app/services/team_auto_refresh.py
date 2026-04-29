@@ -29,6 +29,7 @@ class TeamAutoRefreshService:
     def __init__(self):
         self._task: Optional[asyncio.Task] = None
         self._stop_event: Optional[asyncio.Event] = None
+        self._wake_event: Optional[asyncio.Event] = None
         self._run_lock = asyncio.Lock()
 
     async def start(self) -> None:
@@ -36,11 +37,18 @@ class TeamAutoRefreshService:
             return
 
         self._stop_event = asyncio.Event()
+        self._wake_event = asyncio.Event()
         self._task = asyncio.create_task(
             self._run_loop(),
             name="team-auto-refresh"
         )
         logger.info("Team 自动刷新服务已启动")
+
+    def wake(self) -> None:
+        """唤醒自动刷新循环，使后台设置变更尽快生效。"""
+        wake_event = self._wake_event
+        if wake_event:
+            wake_event.set()
 
     async def stop(self) -> None:
         task = self._task
@@ -48,6 +56,7 @@ class TeamAutoRefreshService:
 
         self._task = None
         self._stop_event = None
+        self._wake_event = None
 
         if stop_event:
             stop_event.set()
@@ -63,6 +72,38 @@ class TeamAutoRefreshService:
 
         logger.info("Team 自动刷新服务已停止")
 
+    async def _wait_until_next_cycle(self, interval_minutes: int) -> bool:
+        """等待下一轮执行；返回 False 表示收到停止信号。"""
+        stop_event = self._stop_event
+        if not stop_event:
+            return False
+
+        wait_tasks = {asyncio.create_task(stop_event.wait())}
+        wake_event = self._wake_event
+        if wake_event:
+            wait_tasks.add(asyncio.create_task(wake_event.wait()))
+
+        try:
+            await asyncio.wait(
+                wait_tasks,
+                timeout=max(interval_minutes, 1) * 60,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            for task in wait_tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*wait_tasks, return_exceptions=True)
+
+        if stop_event.is_set():
+            return False
+
+        if wake_event and wake_event.is_set():
+            wake_event.clear()
+            logger.info("Team 自动刷新循环已被唤醒，将重新读取配置")
+
+        return True
+
     async def _run_loop(self) -> None:
         while True:
             interval_minutes = settings_service.DEFAULT_TEAM_AUTO_REFRESH_INTERVAL_MINUTES
@@ -73,18 +114,13 @@ class TeamAutoRefreshService:
             except Exception as exc:
                 logger.exception("Team 自动刷新循环执行失败: %s", exc)
 
-            stop_event = self._stop_event
-            if not stop_event:
-                return
-
             try:
-                await asyncio.wait_for(
-                    stop_event.wait(),
-                    timeout=max(interval_minutes, 1) * 60
-                )
+                should_continue = await self._wait_until_next_cycle(interval_minutes)
+                if should_continue:
+                    continue
                 return
-            except asyncio.TimeoutError:
-                continue
+            except asyncio.CancelledError:
+                raise
 
     async def _get_runtime_config(self) -> dict:
         async with AsyncSessionLocal() as session:

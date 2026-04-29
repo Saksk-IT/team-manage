@@ -46,6 +46,7 @@ from app.services.team_refresh_record import (
     team_refresh_record_service,
 )
 from app.services.team_member_snapshot import team_member_snapshot_service
+from app.services.team_auto_refresh import team_auto_refresh_service
 from app.services.redemption import RedemptionService
 from app.services.settings import settings_service
 from app.services.admin_sidebar import (
@@ -4586,6 +4587,7 @@ async def update_team_auto_refresh_settings(
         )
 
         if success:
+            team_auto_refresh_service.wake()
             return JSONResponse(content={"success": True, "message": "Team 自动刷新配置已保存"})
 
         return JSONResponse(

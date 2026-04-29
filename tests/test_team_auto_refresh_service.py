@@ -1,5 +1,7 @@
+import asyncio
 import os
 import tempfile
+import time
 import unittest
 from datetime import timedelta
 from unittest.mock import AsyncMock, Mock, patch
@@ -27,6 +29,24 @@ class FakeSessionContext:
 
 
 class TeamAutoRefreshServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_wake_interrupts_next_cycle_wait(self):
+        service = TeamAutoRefreshService()
+        service._stop_event = asyncio.Event()
+        service._wake_event = asyncio.Event()
+
+        async def wake_soon():
+            await asyncio.sleep(0.01)
+            service.wake()
+
+        wake_task = asyncio.create_task(wake_soon())
+        start_time = time.monotonic()
+        should_continue = await service._wait_until_next_cycle(1)
+        elapsed = time.monotonic() - start_time
+        await wake_task
+
+        self.assertTrue(should_continue)
+        self.assertLess(elapsed, 0.5)
+
     async def test_run_once_syncs_only_one_due_team_when_enabled(self):
         service = TeamAutoRefreshService()
         fake_sessions = []

@@ -12,10 +12,13 @@ class AdminTeamAutoRefreshSettingsTests(unittest.IsolatedAsyncioTestCase):
     async def test_update_team_auto_refresh_settings_returns_success(self):
         db = AsyncMock()
 
-        with patch(
-            "app.routes.admin.settings_service.update_team_auto_refresh_config",
-            new=AsyncMock(return_value=True)
-        ) as mocked_update:
+        with (
+            patch(
+                "app.routes.admin.settings_service.update_team_auto_refresh_config",
+                new=AsyncMock(return_value=True)
+            ) as mocked_update,
+            patch("app.routes.admin.team_auto_refresh_service.wake") as mocked_wake,
+        ):
             response = await update_team_auto_refresh_settings(
                 refresh_data=TeamAutoRefreshSettingsRequest(enabled=True, interval_minutes=15),
                 db=db,
@@ -25,6 +28,7 @@ class AdminTeamAutoRefreshSettingsTests(unittest.IsolatedAsyncioTestCase):
         payload = json.loads(response.body.decode("utf-8"))
 
         mocked_update.assert_awaited_once_with(db, True, 15)
+        mocked_wake.assert_called_once_with()
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["success"])
 
