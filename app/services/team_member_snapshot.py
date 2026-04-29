@@ -48,6 +48,19 @@ class TeamMemberSnapshotService:
             raise ValueError("Team 状态筛选无效")
         return normalized_status
 
+    def normalize_team_statuses(self, team_statuses: Optional[Any]) -> list[str]:
+        if team_statuses is None:
+            return []
+
+        raw_values = [team_statuses] if isinstance(team_statuses, (str, bytes)) else list(team_statuses)
+        normalized_statuses: list[str] = []
+        for raw_value in raw_values:
+            normalized_status = self.normalize_team_status(str(raw_value or ""))
+            if normalized_status and normalized_status not in normalized_statuses:
+                normalized_statuses.append(normalized_status)
+
+        return normalized_statuses
+
     @staticmethod
     def normalize_search(search: Optional[str]) -> Optional[str]:
         normalized_search = (search or "").strip()
@@ -98,7 +111,7 @@ class TeamMemberSnapshotService:
         search: Optional[str] = None,
         team_id: Optional[int] = None,
         member_state: Optional[str] = None,
-        team_status: Optional[str] = None,
+        team_statuses: Optional[Any] = None,
         team_count_min: Optional[int] = None,
         team_count_max: Optional[int] = None,
         page: int = 1,
@@ -106,7 +119,7 @@ class TeamMemberSnapshotService:
     ) -> Dict[str, Any]:
         normalized_search = self.normalize_search(search)
         normalized_state = self.normalize_member_state(member_state)
-        normalized_team_status = self.normalize_team_status(team_status)
+        normalized_team_statuses = self.normalize_team_statuses(team_statuses)
         safe_page = max(int(page or 1), 1)
         safe_per_page = min(max(int(per_page or 100), 1), 100)
         normalized_snapshot_email = func.lower(func.trim(TeamMemberSnapshot.email))
@@ -146,8 +159,8 @@ class TeamMemberSnapshotService:
             filters.append(TeamMemberSnapshot.team_id == int(team_id))
         if normalized_state:
             filters.append(TeamMemberSnapshot.member_state == normalized_state)
-        if normalized_team_status:
-            filters.append(Team.status == normalized_team_status)
+        if normalized_team_statuses:
+            filters.append(Team.status.in_(normalized_team_statuses))
         if team_count_min is not None:
             filters.append(team_count_subquery.c.team_count >= int(team_count_min))
         if team_count_max is not None:

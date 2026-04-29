@@ -54,7 +54,17 @@ class AdminTeamMemberSnapshotsPageTests(unittest.IsolatedAsyncioTestCase):
             current_members=5,
             max_members=5,
         )
-        session.add_all([first_team, second_team])
+        third_team = Team(
+            email="owner-3@example.com",
+            access_token_encrypted="dummy-token-3",
+            account_id="acc-3",
+            team_type=TEAM_TYPE_STANDARD,
+            team_name="Error Snapshot Team",
+            status="error",
+            current_members=1,
+            max_members=5,
+        )
+        session.add_all([first_team, second_team, third_team])
         await session.flush()
 
         session.add_all([
@@ -71,6 +81,11 @@ class AdminTeamMemberSnapshotsPageTests(unittest.IsolatedAsyncioTestCase):
             TeamMemberSnapshot(
                 team_id=second_team.id,
                 email="other@example.com",
+                member_state="joined",
+            ),
+            TeamMemberSnapshot(
+                team_id=third_team.id,
+                email="error@example.com",
                 member_state="joined",
             ),
         ])
@@ -165,7 +180,7 @@ class AdminTeamMemberSnapshotsPageTests(unittest.IsolatedAsyncioTestCase):
                 search=None,
                 team_id=None,
                 member_state=None,
-                team_status="full",
+                team_status=["full"],
                 team_count_min=None,
                 team_count_max=None,
                 page="1",
@@ -181,6 +196,33 @@ class AdminTeamMemberSnapshotsPageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("member@example.com", html)
         self.assertIn("other@example.com", html)
         self.assertNotIn("First Snapshot Team", html)
+        self.assertNotIn("Error Snapshot Team", html)
+
+    async def test_page_filters_by_multiple_team_statuses(self):
+        async with self.Session() as session:
+            await self._seed_snapshots(session)
+
+            response = await team_member_snapshots_page(
+                request=self._build_request(),
+                search=None,
+                team_id=None,
+                member_state=None,
+                team_status=["active", "full"],
+                team_count_min=None,
+                team_count_max=None,
+                page="1",
+                per_page=20,
+                db=session,
+                current_user={"username": "admin"},
+            )
+
+        html = response.body.decode("utf-8")
+        self.assertIn("First Snapshot Team", html)
+        self.assertIn("Second Snapshot Team", html)
+        self.assertIn("member@example.com", html)
+        self.assertIn("other@example.com", html)
+        self.assertNotIn("Error Snapshot Team", html)
+        self.assertNotIn("error@example.com", html)
 
     async def test_remove_snapshot_entry_uses_delete_for_joined_member(self):
         async with self.Session() as session:

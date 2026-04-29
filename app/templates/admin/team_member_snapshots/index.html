@@ -95,12 +95,12 @@
         </div>
         <div class="form-group">
             <label for="team_status">Team 状态</label>
-            <select id="team_status" name="team_status" class="form-control">
-                <option value="">全部状态</option>
+            <select id="team_status" name="team_status" class="form-control" multiple size="5">
                 {% for option_value, option_label in team_status_options.items() %}
-                <option value="{{ option_value }}" {% if team_status == option_value %}selected{% endif %}>{{ option_label }}</option>
+                <option value="{{ option_value }}" {% if option_value in team_statuses %}selected{% endif %}>{{ option_label }}</option>
                 {% endfor %}
             </select>
+            <small class="form-text">按住 Command/Ctrl 可多选；不选表示全部状态。</small>
         </div>
         <div class="form-group">
             <label for="team_count_min">所在 Team 个数</label>
@@ -205,7 +205,9 @@
     {% if search %}{% set _ = query_params.append('search=' + search|urlencode) %}{% endif %}
     {% if team_id %}{% set _ = query_params.append('team_id=' + team_id|urlencode) %}{% endif %}
     {% if member_state %}{% set _ = query_params.append('member_state=' + member_state|urlencode) %}{% endif %}
-    {% if team_status %}{% set _ = query_params.append('team_status=' + team_status|urlencode) %}{% endif %}
+    {% for selected_team_status in team_statuses %}
+    {% set _ = query_params.append('team_status=' + selected_team_status|urlencode) %}
+    {% endfor %}
     {% if team_count_min %}{% set _ = query_params.append('team_count_min=' + team_count_min|urlencode) %}{% endif %}
     {% if team_count_max %}{% set _ = query_params.append('team_count_max=' + team_count_max|urlencode) %}{% endif %}
     {% if pagination.per_page != 100 %}{% set _ = query_params.append('per_page=' + pagination.per_page|string) %}{% endif %}
