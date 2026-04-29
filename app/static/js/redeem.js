@@ -618,11 +618,11 @@ function normalizeWarrantyStatusMessage(message) {
 
 function getWarrantyTeamStatusMessage(data, canClaim) {
     if (canClaim) {
-        return data?.message || '该邮箱在质保列表中有效，可以提交质保。';
+        return data?.message || '该质保订单最近加入的 Team 已封禁，可以提交质保。';
     }
 
     return normalizeWarrantyStatusMessage(data?.message)
-        || '该邮箱质保资格不可用，请确认剩余次数和剩余天数。';
+        || '只有该质保订单对应邮箱最近加入的 Team 为封禁状态时，才可以提交质保。';
 }
 
 function normalizeWarrantyOrders(data) {

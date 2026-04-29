@@ -471,7 +471,7 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([job.code for job in jobs], ["CODE-A", "CODE-B"])
         self.assertEqual(len({job.team_id for job in jobs}), 2)
 
-    async def test_warranty_submission_accepts_list_backed_code_without_usage_record(self):
+    async def test_warranty_submission_rejects_list_backed_code_without_latest_banned_team(self):
         service = InviteQueueService()
         service.warranty_service = WarrantyService()
 
@@ -505,8 +505,9 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
             )
             job = await session.scalar(select(InviteJob).where(InviteJob.email == "buyer@example.com"))
 
-        self.assertTrue(result["success"])
-        self.assertEqual(job.code, "LIST-CODE")
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "未找到该质保订单对应邮箱最近加入的 Team，暂不能提交质保。")
+        self.assertIsNone(job)
 
     async def test_warranty_processing_records_before_team_before_success_record(self):
         service = InviteQueueService()

@@ -138,7 +138,7 @@ async def validate_fake_warranty_success(
     db_session: AsyncSession = Depends(get_db)
 ):
     """
-    前台质保模拟成功模式下的基础输入校验。
+    前台质保模拟成功模式下的提交资格校验。
     """
     await ensure_warranty_service_enabled(db_session)
     config = await settings_service.get_warranty_fake_success_config(db_session)
@@ -148,7 +148,7 @@ async def validate_fake_warranty_success(
     result = await warranty_service.validate_warranty_claim_input(
         db_session=db_session,
         email=request.email,
-        require_latest_team_banned=False,
+        require_latest_team_banned=True,
         code=request.code,
         entry_id=request.entry_id
     )

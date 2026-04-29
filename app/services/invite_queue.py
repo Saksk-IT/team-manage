@@ -203,7 +203,7 @@ class InviteQueueService:
                 validation_result = await self.warranty_service.validate_warranty_claim_input(
                     db_session=db_session,
                     email=normalized_email,
-                    require_latest_team_banned=False,
+                    require_latest_team_banned=True,
                     code=normalized_code or None,
                     entry_id=entry_id,
                 )
