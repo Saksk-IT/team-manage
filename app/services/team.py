@@ -332,14 +332,62 @@ class TeamService:
                     )
                 )
 
-        if desired_emails:
-            warranty_entries_result = await db_session.execute(
-                select(WarrantyEmailEntry).where(WarrantyEmailEntry.email.in_(desired_emails))
-            )
-            for entry in warranty_entries_result.scalars().all():
-                entry.last_warranty_team_id = team.id
+        await self._sync_warranty_entry_team_links(
+            team=team,
+            desired_emails=desired_emails,
+            db_session=db_session,
+        )
 
         await db_session.flush()
+
+    async def _sync_warranty_entry_team_links(
+        self,
+        team: Team,
+        desired_emails: set[str],
+        db_session: AsyncSession,
+    ) -> None:
+        if not team or not desired_emails:
+            return
+
+        warranty_entries_result = await db_session.execute(
+            select(WarrantyEmailEntry).where(WarrantyEmailEntry.email.in_(desired_emails))
+        )
+        entries_by_email: Dict[str, List[WarrantyEmailEntry]] = {}
+        for entry in warranty_entries_result.scalars().all():
+            normalized_email = self._normalize_member_email(entry.email)
+            if normalized_email:
+                entries_by_email.setdefault(normalized_email, []).append(entry)
+
+        if not entries_by_email:
+            return
+
+        record_result = await db_session.execute(
+            select(RedemptionRecord.email, RedemptionRecord.code).where(
+                RedemptionRecord.team_id == team.id,
+                func.lower(RedemptionRecord.email).in_(list(entries_by_email.keys())),
+            )
+        )
+        codes_by_email: Dict[str, set[str]] = {}
+        for record_email, record_code in record_result.all():
+            normalized_email = self._normalize_member_email(record_email)
+            normalized_code = (record_code or "").strip()
+            if normalized_email and normalized_code:
+                codes_by_email.setdefault(normalized_email, set()).add(normalized_code)
+
+        for email, entries in entries_by_email.items():
+            if len(entries) == 1:
+                entries[0].last_warranty_team_id = team.id
+                continue
+
+            team_codes = codes_by_email.get(email, set())
+            for entry in entries:
+                if entry.last_warranty_team_id == team.id:
+                    continue
+                if entry.last_warranty_team_id:
+                    continue
+                entry_code = (entry.last_redeem_code or "").strip()
+                if entry_code and entry_code in team_codes:
+                    entry.last_warranty_team_id = team.id
 
     async def _get_bound_code_allowed_emails(
         self,

@@ -1237,6 +1237,67 @@ class WarrantyService:
 
         raise RuntimeError("实时刷新成功，但未找到最新 Team 状态，请稍后重试")
 
+    async def _refresh_warranty_entry_team_context(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        warranty_entry: Optional[WarrantyEmailEntry],
+    ) -> Optional[Dict[str, Any]]:
+        latest_context = await self._load_latest_team_context_from_warranty_entry(
+            db_session,
+            warranty_entry,
+        )
+        if not latest_context:
+            return None
+
+        latest_team = latest_context.get("team")
+        if not latest_team:
+            return latest_context
+
+        previous_team_status = (latest_team.status or "").strip().lower()
+        try:
+            sync_result = await self.team_service.refresh_team_state(
+                latest_team.id,
+                db_session,
+                source=SOURCE_USER_WARRANTY,
+            )
+            if not sync_result.get("success"):
+                latest_team_status = (latest_team.status or "").strip().lower()
+                team_became_banned_during_refresh = (
+                    previous_team_status != "banned"
+                    and latest_team_status == "banned"
+                )
+                if (
+                    sync_result.get("error_code") in self.team_service.BANNED_ERROR_CODES
+                    or team_became_banned_during_refresh
+                ):
+                    if latest_team_status != "banned":
+                        latest_team.status = "banned"
+                    await db_session.commit()
+                    refreshed_context = await self._load_latest_team_context_from_warranty_entry(
+                        db_session,
+                        warranty_entry,
+                    )
+                    return refreshed_context or latest_context
+
+                raise RuntimeError(sync_result.get("error") or "实时刷新订单 Team 状态失败，请稍后重试")
+            await db_session.commit()
+        except Exception as exc:
+            logger.warning(
+                "质保订单关联 Team 刷新异常 email=%s entry_id=%s team_id=%s error=%s",
+                self.normalize_email(email),
+                getattr(warranty_entry, "id", None),
+                latest_team.id,
+                exc,
+            )
+            raise RuntimeError(str(exc) or "实时刷新订单 Team 状态失败，请稍后重试") from exc
+
+        refreshed_context = await self._load_latest_team_context_from_warranty_entry(
+            db_session,
+            warranty_entry,
+        )
+        return refreshed_context or latest_context
+
     def _serialize_latest_team_info(
         self,
         record: RedemptionRecord,
@@ -1785,18 +1846,17 @@ class WarrantyService:
         latest_context = None
 
         try:
-            if selected_code:
+            latest_context = await self._refresh_warranty_entry_team_context(
+                db_session=db_session,
+                email=normalized_email,
+                warranty_entry=warranty_entry,
+            )
+
+            if not latest_context and selected_code:
                 latest_context = await self._refresh_warranty_order_context_for_email(
                     db_session=db_session,
                     email=normalized_email,
                     code=selected_code,
-                    warranty_entry=warranty_entry,
-                )
-
-            if not latest_context:
-                latest_context = await self._refresh_latest_team_context_for_email(
-                    db_session=db_session,
-                    email=normalized_email,
                     warranty_entry=warranty_entry,
                 )
         except Exception as exc:
@@ -2391,7 +2451,11 @@ class WarrantyService:
             selected_code = normalized_code or (warranty_entry.last_redeem_code or "").strip()
             latest_context = None
             try:
-                if selected_code:
+                latest_context = await self._load_latest_team_context_from_warranty_entry(
+                    db_session,
+                    warranty_entry,
+                )
+                if not latest_context and selected_code:
                     order_contexts = await self._load_warranty_order_contexts_for_email(
                         db_session,
                         normalized_email,
@@ -2400,11 +2464,16 @@ class WarrantyService:
                     )
                     latest_context = order_contexts[0] if order_contexts else None
                 if not latest_context:
-                    latest_context = await self._load_latest_team_context_for_email(
+                    email_entries = await self.get_warranty_email_entries_for_email(
                         db_session,
                         normalized_email,
-                        warranty_entry=warranty_entry
                     )
+                    if len(email_entries) <= 1:
+                        latest_context = await self._load_latest_team_context_for_email(
+                            db_session,
+                            normalized_email,
+                            warranty_entry=warranty_entry
+                        )
             except Exception as exc:
                 logger.warning(
                     "质保申请读取参考 Team 信息失败 email=%s entry_id=%s error=%s",

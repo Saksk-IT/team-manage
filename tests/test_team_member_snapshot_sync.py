@@ -101,6 +101,59 @@ class TeamMemberSnapshotSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(snapshots[1].member_state, "joined")
         self.assertEqual(warranty_entry.last_warranty_team_id, team.id)
 
+    async def test_member_snapshot_sync_preserves_multi_order_team_links(self):
+        async with self.Session() as session:
+            first_team = Team(
+                email="owner-1@example.com",
+                access_token_encrypted="dummy-1",
+                account_id="acc-1",
+                team_type=TEAM_TYPE_STANDARD,
+                team_name="First Team",
+                status="active",
+                current_members=0,
+                max_members=5,
+            )
+            second_team = Team(
+                email="owner-2@example.com",
+                access_token_encrypted="dummy-2",
+                account_id="acc-2",
+                team_type=TEAM_TYPE_STANDARD,
+                team_name="Second Team",
+                status="active",
+                current_members=0,
+                max_members=5,
+            )
+            session.add_all([first_team, second_team])
+            await session.flush()
+            first_entry = WarrantyEmailEntry(
+                email="member@example.com",
+                remaining_claims=2,
+                source="manual",
+                last_redeem_code="CODE-A",
+                last_warranty_team_id=first_team.id,
+            )
+            second_entry = WarrantyEmailEntry(
+                email="member@example.com",
+                remaining_claims=2,
+                source="manual",
+                last_redeem_code="CODE-B",
+                last_warranty_team_id=second_team.id,
+            )
+            session.add_all([first_entry, second_entry])
+            await session.commit()
+
+            service = TeamService()
+            await service._sync_team_member_snapshots(
+                team=first_team,
+                joined_member_emails={"member@example.com"},
+                invited_member_emails=set(),
+                db_session=session,
+            )
+            await session.commit()
+
+        self.assertEqual(first_entry.last_warranty_team_id, first_team.id)
+        self.assertEqual(second_entry.last_warranty_team_id, second_team.id)
+
 
 if __name__ == "__main__":
     unittest.main()

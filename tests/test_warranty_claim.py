@@ -1181,6 +1181,69 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["warranty_order"]["status_checked"])
         self.assertEqual(persisted_team.status, "banned")
 
+    async def test_refresh_warranty_order_status_uses_entry_linked_team_before_code_record(self):
+        async with self.Session() as session:
+            first_team, second_team = await self._seed_team_data(session)
+            first_team.status = "active"
+            second_team.status = "active"
+            now = get_now()
+            first_entry = WarrantyEmailEntry(
+                email="buyer@example.com",
+                remaining_claims=2,
+                expires_at=now + timedelta(days=5),
+                source="manual",
+                last_redeem_code="CODE-A",
+                last_warranty_team_id=first_team.id,
+            )
+            second_entry = WarrantyEmailEntry(
+                email="buyer@example.com",
+                remaining_claims=2,
+                expires_at=now + timedelta(days=5),
+                source="manual",
+                last_redeem_code="CODE-B",
+                last_warranty_team_id=second_team.id,
+            )
+            session.add_all([
+                first_entry,
+                second_entry,
+                RedemptionCode(
+                    code="CODE-A",
+                    status="used",
+                    has_warranty=True,
+                    warranty_days=30,
+                    warranty_claims=2,
+                    used_at=now - timedelta(days=1),
+                ),
+                RedemptionRecord(
+                    email="buyer@example.com",
+                    code="CODE-A",
+                    team_id=second_team.id,
+                    account_id=second_team.account_id,
+                    redeemed_at=now,
+                    is_warranty_redemption=False,
+                ),
+            ])
+            await session.commit()
+            first_entry_id = first_entry.id
+            first_team_id = first_team.id
+            second_team_id = second_team.id
+
+            service = WarrantyService()
+            service.team_service.refresh_team_state = AsyncMock(return_value={"success": True})
+
+            result = await service.refresh_warranty_order_status(
+                db_session=session,
+                email="buyer@example.com",
+                entry_id=first_entry_id,
+                code="CODE-A",
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["latest_team"]["id"], first_team_id)
+        self.assertNotEqual(result["latest_team"]["id"], second_team_id)
+        service.team_service.refresh_team_state.assert_awaited_once()
+        self.assertEqual(service.team_service.refresh_team_state.await_args.args[0], first_team_id)
+
     async def test_claim_warranty_uses_team_member_snapshot_when_no_redemption_record_exists(self):
         async with self.Session() as session:
             ordinary_team, warranty_team = await self._seed_team_data(session)

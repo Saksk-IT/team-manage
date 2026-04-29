@@ -76,6 +76,8 @@ class UserRedeemTransitionOverlayTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("warranty-order-refresh-btn", script)
         self.assertIn("warranty-order-claim-btn", script)
         self.assertIn("data-entry-id", script)
+        self.assertIn("return `entry:${entryId}`;", script)
+        self.assertIn(": (existingOrders.length > 0 ? existingOrders : [order]);", script)
         self.assertIn("refreshWarrantyOrderStatus(email, button.dataset.code || null, button, button.dataset.entryId || null)", script)
         self.assertIn("submitWarrantyClaim(email, button.dataset.code || null, button, button.dataset.entryId || null)", script)
         self.assertIn("...(code ? { code } : {})", script)

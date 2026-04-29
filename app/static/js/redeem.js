@@ -698,8 +698,16 @@ function resetWarrantyStatusResult() {
 
 function getWarrantyOrderKey(order) {
     const entryId = order?.entry_id || order?.warranty_info?.id || '';
+    if (entryId) {
+        return `entry:${entryId}`;
+    }
+
     const code = order?.code || order?.latest_team?.code || '';
-    return `${entryId || 'no-entry'}:${code || 'no-code'}`;
+    if (code) {
+        return `code:${code}`;
+    }
+
+    return `display:${order?.display_code || order?.source || 'unknown'}`;
 }
 
 function refreshWarrantyStatusWithOrder(order) {
@@ -710,7 +718,9 @@ function refreshWarrantyStatusWithOrder(order) {
         getWarrantyOrderKey(item) === orderKey ? { ...item, ...order } : item
     ));
     const hasExistingOrder = warrantyOrders.some((item) => getWarrantyOrderKey(item) === orderKey);
-    const nextOrders = hasExistingOrder ? warrantyOrders : [...warrantyOrders, order];
+    const nextOrders = hasExistingOrder
+        ? warrantyOrders
+        : (existingOrders.length > 0 ? existingOrders : [order]);
     const canClaim = nextOrders.some((item) => Boolean(item?.can_claim));
     const refreshableCount = nextOrders.filter((item) => Boolean(item?.can_refresh_status)).length;
     const checkedCount = nextOrders.filter((item) => Boolean(item?.status_checked)).length;
@@ -1348,14 +1358,16 @@ async function refreshWarrantyOrderStatus(email, code = null, triggerButton = nu
             advanceTransitionOverlay(2, {
                 message: '订单 Team 状态已刷新，正在更新页面。'
             });
-            refreshWarrantyStatusWithOrder(data.warranty_order || {
+            const refreshedOrder = data.warranty_order || {};
+            refreshWarrantyStatusWithOrder({
+                ...refreshedOrder,
                 entry_id: Number(entryId),
-                code: code || '',
-                latest_team: data.latest_team,
-                warranty_info: data.warranty_info || {},
-                can_claim: Boolean(data.can_claim),
+                code: refreshedOrder.code || code || '',
+                latest_team: refreshedOrder.latest_team || data.latest_team,
+                warranty_info: refreshedOrder.warranty_info || data.warranty_info || {},
+                can_claim: Boolean(refreshedOrder.can_claim ?? data.can_claim),
                 status_checked: true,
-                message: data.message || ''
+                message: refreshedOrder.message || data.message || ''
             });
         } else {
             let errorMessage = '订单状态查询失败';
