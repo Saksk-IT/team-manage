@@ -7,23 +7,68 @@
     <h2>成员快照</h2>
 </div>
 
+<div class="stats-container">
+    <div class="stat-card">
+        <div class="stat-icon"><i data-lucide="scan-search"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.total_records }}</div>
+            <div class="stat-label">快照总数</div>
+        </div>
+    </div>
+    <div class="stat-card stat-info">
+        <div class="stat-icon"><i data-lucide="mail"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.unique_members }}</div>
+            <div class="stat-label">成员邮箱数</div>
+        </div>
+    </div>
+    <div class="stat-card stat-success">
+        <div class="stat-icon"><i data-lucide="building-2"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.unique_teams }}</div>
+            <div class="stat-label">涉及 Team 数</div>
+        </div>
+    </div>
+    <div class="stat-card stat-warning">
+        <div class="stat-icon"><i data-lucide="git-merge"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.multi_team_members }}</div>
+            <div class="stat-label">跨 Team 成员邮箱</div>
+        </div>
+    </div>
+    <div class="stat-card stat-success">
+        <div class="stat-icon"><i data-lucide="user-check"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.joined_count }}</div>
+            <div class="stat-label">已加入记录</div>
+        </div>
+    </div>
+    <div class="stat-card stat-warning">
+        <div class="stat-icon"><i data-lucide="mail-plus"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.invited_count }}</div>
+            <div class="stat-label">待加入记录</div>
+        </div>
+    </div>
+</div>
+
 <div class="content-section sticky-toolbar-section">
     <div class="section-header">
         <div>
             <h3>搜索筛选</h3>
-            <p class="text-muted">只读查看实时刷新写入的 Team 成员快照，不会修改任何业务数据。</p>
+            <p class="text-muted">支持按成员邮箱、Team 账号、Account ID、Team 名称搜索，也可筛选成员邮箱所在 Team 个数范围。</p>
         </div>
     </div>
 
     <form method="get" action="/admin/team-member-snapshots" class="search-form-grid">
         <div class="form-group">
-            <label for="email">成员邮箱</label>
+            <label for="search">关键词</label>
             <input
-                type="email"
-                id="email"
-                name="email"
-                value="{{ email or '' }}"
-                placeholder="精确查询成员邮箱"
+                type="text"
+                id="search"
+                name="search"
+                value="{{ search or '' }}"
+                placeholder="成员邮箱 / Team 账号 / Team 名称 / Account ID"
                 class="form-control"
             >
         </div>
@@ -47,6 +92,30 @@
                 <option value="{{ option_value }}" {% if member_state == option_value %}selected{% endif %}>{{ option_label }}</option>
                 {% endfor %}
             </select>
+        </div>
+        <div class="form-group">
+            <label for="team_count_min">所在 Team 个数</label>
+            <div class="range-inline">
+                <input
+                    type="number"
+                    id="team_count_min"
+                    name="team_count_min"
+                    min="1"
+                    value="{{ team_count_min or '' }}"
+                    placeholder="最小"
+                    class="form-control"
+                >
+                <span class="range-separator">-</span>
+                <input
+                    type="number"
+                    id="team_count_max"
+                    name="team_count_max"
+                    min="1"
+                    value="{{ team_count_max or '' }}"
+                    placeholder="最大"
+                    class="form-control"
+                >
+            </div>
         </div>
         <div class="form-actions" style="display: flex; gap: 0.5rem;">
             <button type="submit" class="btn btn-primary" style="flex: 1;">
@@ -74,10 +143,12 @@
                 <tr>
                     <th>ID</th>
                     <th>成员邮箱</th>
+                    <th>所在 Team 个数</th>
                     <th>成员状态</th>
                     <th>Team</th>
                     <th>Team 状态</th>
                     <th>更新时间</th>
+                    <th style="text-align: right;">操作</th>
                 </tr>
             </thead>
             <tbody>
@@ -85,6 +156,7 @@
                 <tr>
                     <td><span class="text-muted">{{ record.id }}</span></td>
                     <td><strong>{{ record.member_email }}</strong></td>
+                    <td>{{ record.member_team_count }}</td>
                     <td>
                         <span class="status-badge {{ 'status-active' if record.member_state == 'joined' else 'status-warning' }}">
                             {{ record.member_state_label }}
@@ -104,6 +176,15 @@
                         </span>
                     </td>
                     <td>{{ record.updated_at|format_datetime }}</td>
+                    <td style="text-align: right;">
+                        <button
+                            type="button"
+                            class="btn btn-sm {% if record.member_state == 'joined' %}btn-danger{% else %}btn-secondary{% endif %}"
+                            onclick="removeSnapshotMember({{ record.id }}, '{{ record.member_email|escape_js }}', '{{ record.team_name|default('-', true)|escape_js }}', '{{ record.member_state_label|escape_js }}')"
+                        >
+                            {% if record.member_state == 'joined' %}踢出 Team{% else %}撤回邀请{% endif %}
+                        </button>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -112,9 +193,11 @@
 
     {% if pagination.total_pages > 1 %}
     {% set query_params = [] %}
-    {% if email %}{% set _ = query_params.append('email=' + email|urlencode) %}{% endif %}
+    {% if search %}{% set _ = query_params.append('search=' + search|urlencode) %}{% endif %}
     {% if team_id %}{% set _ = query_params.append('team_id=' + team_id|urlencode) %}{% endif %}
     {% if member_state %}{% set _ = query_params.append('member_state=' + member_state|urlencode) %}{% endif %}
+    {% if team_count_min %}{% set _ = query_params.append('team_count_min=' + team_count_min|urlencode) %}{% endif %}
+    {% if team_count_max %}{% set _ = query_params.append('team_count_max=' + team_count_max|urlencode) %}{% endif %}
     {% if pagination.per_page != 100 %}{% set _ = query_params.append('per_page=' + pagination.per_page|string) %}{% endif %}
     {% set base_query = '&' + query_params|join('&') if query_params else '' %}
 
@@ -197,6 +280,18 @@
         font-size: 0.8125rem;
         line-height: 1.4;
     }
+
+    .range-inline {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .range-separator {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+    }
 </style>
 {% endblock %}
 
@@ -207,6 +302,30 @@
         url.searchParams.set('per_page', value);
         url.searchParams.set('page', '1');
         window.location.href = url.toString();
+    }
+
+    async function removeSnapshotMember(snapshotId, memberEmail, teamName, memberStateLabel) {
+        const actionLabel = memberStateLabel === '已加入' ? '踢出 Team' : '撤回邀请';
+        const confirmed = confirm(`确定要对 ${memberEmail} 执行“${actionLabel}”吗？\nTeam：${teamName || '-'}`);
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/admin/team-member-snapshots/${snapshotId}/remove`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                showToast(data.message || '操作成功', 'success');
+                setTimeout(() => window.location.reload(), 600);
+            } else {
+                showToast(data.error || '操作失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
     }
 </script>
 {% endblock %}

@@ -21,6 +21,7 @@ from app.dependencies.auth import require_admin, require_team_import_admin, is_i
 from app.models import (
     EmailWhitelistEntry,
     Team,
+    TeamMemberSnapshot,
     TeamCleanupRecord,
     TeamRefreshRecord,
     RedemptionCode,
@@ -4051,9 +4052,12 @@ async def team_refresh_records_page(
 @router.get("/team-member-snapshots", response_class=HTMLResponse)
 async def team_member_snapshots_page(
     request: Request,
+    search: Optional[str] = None,
     email: Optional[str] = None,
     team_id: Optional[str] = None,
     member_state: Optional[str] = None,
+    team_count_min: Optional[str] = None,
+    team_count_max: Optional[str] = None,
     page: Optional[str] = "1",
     per_page: int = 100,
     db: AsyncSession = Depends(get_db),
@@ -4067,6 +4071,7 @@ async def team_member_snapshots_page(
         except (ValueError, TypeError):
             page_int = 1
 
+        search_keyword = (search or email or "").strip()
         parsed_team_id = _parse_optional_int_filter(
             team_id,
             label="Team ID",
@@ -4078,21 +4083,36 @@ async def team_member_snapshots_page(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="成员状态筛选无效"
             )
+        parsed_team_count_min = _parse_optional_int_filter(
+            team_count_min,
+            label="所在 Team 个数最小值",
+            min_value=1,
+        )
+        parsed_team_count_max = _parse_optional_int_filter(
+            team_count_max,
+            label="所在 Team 个数最大值",
+            min_value=1,
+        )
+        _validate_code_filter_range(parsed_team_count_min, parsed_team_count_max, "所在 Team 个数")
 
         logger.info(
-            "管理员访问成员快照页 email=%s team_id=%s member_state=%s page=%s per_page=%s",
-            email,
+            "管理员访问成员快照页 search=%s team_id=%s member_state=%s team_count=%s-%s page=%s per_page=%s",
+            search_keyword,
             parsed_team_id,
             normalized_member_state,
+            parsed_team_count_min,
+            parsed_team_count_max,
             page_int,
             per_page,
         )
 
         result = await team_member_snapshot_service.list_snapshots(
             db_session=db,
-            email=email,
+            search=search_keyword,
             team_id=parsed_team_id,
             member_state=normalized_member_state,
+            team_count_min=parsed_team_count_min,
+            team_count_max=parsed_team_count_max,
             page=page_int,
             per_page=per_page,
         )
@@ -4106,9 +4126,12 @@ async def team_member_snapshots_page(
                 current_user,
                 "team_member_snapshots",
                 records=result["records"],
-                email=(email or "").strip(),
+                stats=result["stats"],
+                search=search_keyword,
                 team_id=str(parsed_team_id) if parsed_team_id is not None else "",
                 member_state=normalized_member_state,
+                team_count_min=str(parsed_team_count_min) if parsed_team_count_min is not None else "",
+                team_count_max=str(parsed_team_count_max) if parsed_team_count_max is not None else "",
                 member_state_options=team_member_snapshot_service.MEMBER_STATE_LABELS,
                 pagination=result["pagination"],
             )
@@ -4125,6 +4148,91 @@ async def team_member_snapshots_page(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"加载成员快照页失败: {str(e)}"
+        )
+
+
+@router.post("/team-member-snapshots/{snapshot_id}/remove")
+async def remove_team_member_snapshot_entry(
+    snapshot_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        snapshot_result = await db.execute(
+            select(TeamMemberSnapshot).where(TeamMemberSnapshot.id == snapshot_id)
+        )
+        snapshot = snapshot_result.scalar_one_or_none()
+        if not snapshot:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"success": False, "error": "成员快照记录不存在"}
+            )
+
+        normalized_email = team_member_snapshot_service.normalize_email(snapshot.email)
+        if not normalized_email:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "成员邮箱无效"}
+            )
+
+        members_result = await team_service.get_team_members(snapshot.team_id, db)
+        if not members_result.get("success"):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": members_result.get("error") or "获取 Team 成员失败"}
+            )
+
+        matched_member = next(
+            (
+                member for member in (members_result.get("members") or [])
+                if team_member_snapshot_service.normalize_email(member.get("email")) == normalized_email
+            ),
+            None,
+        )
+
+        if matched_member and matched_member.get("status") == "joined":
+            user_id = matched_member.get("user_id")
+            if not user_id:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"success": False, "error": "未找到可用于踢出成员的用户 ID"}
+                )
+            result = await team_service.delete_team_member(
+                team_id=snapshot.team_id,
+                user_id=user_id,
+                db_session=db,
+                source=SOURCE_ADMIN_MEMBER,
+            )
+        elif matched_member and matched_member.get("status") == "invited":
+            result = await team_service.revoke_team_invite(
+                team_id=snapshot.team_id,
+                email=normalized_email,
+                db_session=db,
+            )
+        elif (snapshot.member_state or "").strip().lower() == "invited":
+            result = await team_service.revoke_team_invite(
+                team_id=snapshot.team_id,
+                email=normalized_email,
+                db_session=db,
+            )
+        else:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "当前 Team 最新成员列表中未找到该成员，建议先刷新 Team 再重试"}
+            )
+
+        if not result.get("success"):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=result
+            )
+
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error(f"成员快照踢出/撤回失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"操作失败: {str(e)}"}
         )
 
 
