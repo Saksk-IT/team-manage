@@ -86,6 +86,7 @@ class AdminTeamMemberSnapshotsPageTests(unittest.IsolatedAsyncioTestCase):
                 search=" MEMBER@example.com ",
                 team_id=None,
                 member_state=None,
+                team_status=None,
                 team_count_min=None,
                 team_count_max=None,
                 page="1",
@@ -110,6 +111,7 @@ class AdminTeamMemberSnapshotsPageTests(unittest.IsolatedAsyncioTestCase):
                 search=None,
                 team_id=str(second_team.id),
                 member_state="invited",
+                team_status=None,
                 team_count_min=None,
                 team_count_max=None,
                 page="1",
@@ -134,6 +136,7 @@ class AdminTeamMemberSnapshotsPageTests(unittest.IsolatedAsyncioTestCase):
                 search="owner-2@example.com",
                 team_id=None,
                 member_state=None,
+                team_status=None,
                 team_count_min="2",
                 team_count_max="2",
                 page="1",
@@ -152,6 +155,32 @@ class AdminTeamMemberSnapshotsPageTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("other@example.com", html)
         self.assertIn("撤回邀请", html)
         self.assertIn("removeSnapshotMember(", html)
+
+    async def test_page_filters_by_team_status(self):
+        async with self.Session() as session:
+            await self._seed_snapshots(session)
+
+            response = await team_member_snapshots_page(
+                request=self._build_request(),
+                search=None,
+                team_id=None,
+                member_state=None,
+                team_status="full",
+                team_count_min=None,
+                team_count_max=None,
+                page="1",
+                per_page=20,
+                db=session,
+                current_user={"username": "admin"},
+            )
+
+        html = response.body.decode("utf-8")
+        self.assertIn("Team 状态", html)
+        self.assertIn("Second Snapshot Team", html)
+        self.assertIn("已满", html)
+        self.assertIn("member@example.com", html)
+        self.assertIn("other@example.com", html)
+        self.assertNotIn("First Snapshot Team", html)
 
     async def test_remove_snapshot_entry_uses_delete_for_joined_member(self):
         async with self.Session() as session:

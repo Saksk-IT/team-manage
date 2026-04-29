@@ -4056,6 +4056,7 @@ async def team_member_snapshots_page(
     email: Optional[str] = None,
     team_id: Optional[str] = None,
     member_state: Optional[str] = None,
+    team_status: Optional[str] = None,
     team_count_min: Optional[str] = None,
     team_count_max: Optional[str] = None,
     page: Optional[str] = "1",
@@ -4083,6 +4084,12 @@ async def team_member_snapshots_page(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="成员状态筛选无效"
             )
+        normalized_team_status = (team_status or "").strip().lower()
+        if normalized_team_status and normalized_team_status not in team_member_snapshot_service.TEAM_STATUS_LABELS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Team 状态筛选无效"
+            )
         parsed_team_count_min = _parse_optional_int_filter(
             team_count_min,
             label="所在 Team 个数最小值",
@@ -4096,10 +4103,11 @@ async def team_member_snapshots_page(
         _validate_code_filter_range(parsed_team_count_min, parsed_team_count_max, "所在 Team 个数")
 
         logger.info(
-            "管理员访问成员快照页 search=%s team_id=%s member_state=%s team_count=%s-%s page=%s per_page=%s",
+            "管理员访问成员快照页 search=%s team_id=%s member_state=%s team_status=%s team_count=%s-%s page=%s per_page=%s",
             search_keyword,
             parsed_team_id,
             normalized_member_state,
+            normalized_team_status,
             parsed_team_count_min,
             parsed_team_count_max,
             page_int,
@@ -4111,6 +4119,7 @@ async def team_member_snapshots_page(
             search=search_keyword,
             team_id=parsed_team_id,
             member_state=normalized_member_state,
+            team_status=normalized_team_status,
             team_count_min=parsed_team_count_min,
             team_count_max=parsed_team_count_max,
             page=page_int,
@@ -4130,9 +4139,11 @@ async def team_member_snapshots_page(
                 search=search_keyword,
                 team_id=str(parsed_team_id) if parsed_team_id is not None else "",
                 member_state=normalized_member_state,
+                team_status=normalized_team_status,
                 team_count_min=str(parsed_team_count_min) if parsed_team_count_min is not None else "",
                 team_count_max=str(parsed_team_count_max) if parsed_team_count_max is not None else "",
                 member_state_options=team_member_snapshot_service.MEMBER_STATE_LABELS,
+                team_status_options=team_member_snapshot_service.TEAM_STATUS_LABELS,
                 pagination=result["pagination"],
             )
         )

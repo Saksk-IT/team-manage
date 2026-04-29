@@ -40,6 +40,14 @@ class TeamMemberSnapshotService:
             raise ValueError("成员状态筛选无效")
         return normalized_state
 
+    def normalize_team_status(self, team_status: Optional[str]) -> Optional[str]:
+        normalized_status = (team_status or "").strip().lower()
+        if not normalized_status:
+            return None
+        if normalized_status not in self.TEAM_STATUS_LABELS:
+            raise ValueError("Team 状态筛选无效")
+        return normalized_status
+
     @staticmethod
     def normalize_search(search: Optional[str]) -> Optional[str]:
         normalized_search = (search or "").strip()
@@ -90,6 +98,7 @@ class TeamMemberSnapshotService:
         search: Optional[str] = None,
         team_id: Optional[int] = None,
         member_state: Optional[str] = None,
+        team_status: Optional[str] = None,
         team_count_min: Optional[int] = None,
         team_count_max: Optional[int] = None,
         page: int = 1,
@@ -97,6 +106,7 @@ class TeamMemberSnapshotService:
     ) -> Dict[str, Any]:
         normalized_search = self.normalize_search(search)
         normalized_state = self.normalize_member_state(member_state)
+        normalized_team_status = self.normalize_team_status(team_status)
         safe_page = max(int(page or 1), 1)
         safe_per_page = min(max(int(per_page or 100), 1), 100)
         normalized_snapshot_email = func.lower(func.trim(TeamMemberSnapshot.email))
@@ -136,6 +146,8 @@ class TeamMemberSnapshotService:
             filters.append(TeamMemberSnapshot.team_id == int(team_id))
         if normalized_state:
             filters.append(TeamMemberSnapshot.member_state == normalized_state)
+        if normalized_team_status:
+            filters.append(Team.status == normalized_team_status)
         if team_count_min is not None:
             filters.append(team_count_subquery.c.team_count >= int(team_count_min))
         if team_count_max is not None:
