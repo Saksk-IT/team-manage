@@ -46,7 +46,7 @@
             <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i> 一键同步质保邮箱列表
         </button>
     </div>
-    <p class="form-help" style="margin-bottom: 1rem;">点击后邮箱白名单将仅保留当前有效的质保邮箱，其他来源会被移出；后续自动同步也以质保邮箱列表为准。</p>
+    <p class="form-help" style="margin-bottom: 1rem;">点击后邮箱白名单将仅保留当前有效的质保邮箱，其他来源会被移出；后续新增或更新的其他来源仍会照常保留。</p>
 
     <form method="get" action="/admin/email-whitelist" class="whitelist-filter-form">
         <label class="whitelist-filter-field whitelist-filter-field-wide">
@@ -324,7 +324,7 @@
     async function syncWhitelistFromWarrantyEmails() {
         const confirmed = await showSystemConfirm({
             title: '一键同步质保邮箱列表',
-            message: '同步后，邮箱白名单将仅保留当前有效的质保邮箱，控制台 Team、手动维护等其他来源会被移出；后续自动同步也以质保邮箱列表为准。确定继续吗？',
+            message: '同步后，邮箱白名单将仅保留当前有效的质保邮箱，控制台 Team、手动维护等其他来源会被移出；后续新增或更新的其他来源仍会照常保留。确定继续吗？',
             confirmText: '开始同步',
             danger: true,
         });

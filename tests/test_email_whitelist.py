@@ -199,7 +199,7 @@ class EmailWhitelistTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(entry.is_active)
         self.assertNotIn("manual@example.com", allowed_emails)
 
-    async def test_sync_whitelist_from_warranty_emails_keeps_only_effective_warranty_entries(self):
+    async def test_sync_whitelist_from_warranty_emails_keeps_only_current_warranty_entries(self):
         async with self.Session() as session:
             session.add_all([
                 WarrantyEmailEntry(
@@ -257,6 +257,48 @@ class EmailWhitelistTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(entries["manual@example.com"].is_active)
         self.assertFalse(entries["console@example.com"].is_active)
         self.assertNotIn("expired@example.com", entries)
+
+    async def test_sources_after_warranty_only_sync_continue_to_be_retained(self):
+        async with self.Session() as session:
+            session.add_all([
+                WarrantyEmailEntry(
+                    email="active@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=3),
+                    source="auto_redeem",
+                ),
+                RedemptionRecord(
+                    email="old-console@example.com",
+                    code="OLD-CODE-001",
+                    team_id=1,
+                    account_id="old-account",
+                    redeemed_at=get_now() - timedelta(days=1),
+                ),
+            ])
+            await session.commit()
+
+            await sync_email_whitelist_from_warranty_emails(
+                db=session,
+                current_user={"username": "admin"},
+            )
+            allowed_after_sync = await email_whitelist_service.get_allowed_emails(session)
+
+            session.add(
+                RedemptionRecord(
+                    email="new-console@example.com",
+                    code="NEW-CODE-001",
+                    team_id=2,
+                    account_id="new-account",
+                    redeemed_at=get_now() + timedelta(minutes=5),
+                )
+            )
+            await session.commit()
+            allowed_after_new_source = await email_whitelist_service.get_allowed_emails(session)
+
+        self.assertEqual(allowed_after_sync, {"active@example.com"})
+        self.assertIn("active@example.com", allowed_after_new_source)
+        self.assertIn("new-console@example.com", allowed_after_new_source)
+        self.assertNotIn("old-console@example.com", allowed_after_new_source)
 
 
 if __name__ == "__main__":

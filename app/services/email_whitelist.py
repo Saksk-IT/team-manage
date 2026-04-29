@@ -6,6 +6,7 @@
 并支持管理员手动维护/手动拉入的账号。
 """
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, or_, select
@@ -25,9 +26,9 @@ class EmailWhitelistService:
     SOURCE_MANUAL = "manual"
     SOURCE_MANUAL_PULL = "manual_pull"
 
-    SYNC_MODE_SETTING_KEY = "email_whitelist_sync_mode"
-    SYNC_MODE_ALL = "all"
-    SYNC_MODE_WARRANTY_ONLY = "warranty_only"
+    WARRANTY_ONLY_SYNCED_AT_SETTING_KEY = "email_whitelist_warranty_only_synced_at"
+    LEGACY_SYNC_MODE_SETTING_KEY = "email_whitelist_sync_mode"
+    LEGACY_SYNC_MODE_WARRANTY_ONLY = "warranty_only"
 
     SYSTEM_SOURCES = {SOURCE_CONSOLE_TEAM, SOURCE_WARRANTY_EMAIL}
 
@@ -46,32 +47,46 @@ class EmailWhitelistService:
     def normalize_email(self, email: Optional[str]) -> str:
         return (email or "").strip().lower()
 
-    async def get_sync_mode(self, db_session: AsyncSession) -> str:
+    async def get_warranty_only_synced_at(self, db_session: AsyncSession) -> Optional[datetime]:
         result = await db_session.execute(
-            select(Setting.value).where(Setting.key == self.SYNC_MODE_SETTING_KEY)
+            select(Setting.value).where(Setting.key == self.WARRANTY_ONLY_SYNCED_AT_SETTING_KEY)
         )
-        normalized_mode = (result.scalar_one_or_none() or self.SYNC_MODE_ALL).strip().lower()
-        if normalized_mode == self.SYNC_MODE_WARRANTY_ONLY:
-            return self.SYNC_MODE_WARRANTY_ONLY
-        return self.SYNC_MODE_ALL
+        value = (result.scalar_one_or_none() or "").strip()
+        if value:
+            try:
+                return datetime.fromisoformat(value)
+            except ValueError:
+                logger.warning("邮箱白名单质保同步时间配置无效: %s", value)
 
-    async def _set_sync_mode(self, db_session: AsyncSession, sync_mode: str) -> None:
-        normalized_mode = (sync_mode or self.SYNC_MODE_ALL).strip().lower()
-        if normalized_mode not in {self.SYNC_MODE_ALL, self.SYNC_MODE_WARRANTY_ONLY}:
-            normalized_mode = self.SYNC_MODE_ALL
+        legacy_result = await db_session.execute(
+            select(Setting).where(Setting.key == self.LEGACY_SYNC_MODE_SETTING_KEY)
+        )
+        legacy_setting = legacy_result.scalar_one_or_none()
+        if (
+            legacy_setting
+            and (legacy_setting.value or "").strip().lower() == self.LEGACY_SYNC_MODE_WARRANTY_ONLY
+        ):
+            return legacy_setting.updated_at or legacy_setting.created_at
+        return None
 
+    async def _set_warranty_only_synced_at(
+        self,
+        db_session: AsyncSession,
+        synced_at: datetime,
+    ) -> None:
         result = await db_session.execute(
-            select(Setting).where(Setting.key == self.SYNC_MODE_SETTING_KEY)
+            select(Setting).where(Setting.key == self.WARRANTY_ONLY_SYNCED_AT_SETTING_KEY)
         )
+        value = synced_at.isoformat()
         setting = result.scalar_one_or_none()
         if setting:
-            setting.value = normalized_mode
+            setting.value = value
         else:
             db_session.add(
                 Setting(
-                    key=self.SYNC_MODE_SETTING_KEY,
-                    value=normalized_mode,
-                    description="邮箱白名单自动同步模式",
+                    key=self.WARRANTY_ONLY_SYNCED_AT_SETTING_KEY,
+                    value=value,
+                    description="邮箱白名单最近一次仅保留质保邮箱来源的同步时间",
                 )
             )
 
@@ -102,15 +117,25 @@ class EmailWhitelistService:
             "updated_at": entry.updated_at.isoformat() if entry.updated_at else None,
         }
 
-    async def _collect_console_team_entries(self, db_session: AsyncSession) -> Dict[str, Optional[int]]:
+    async def _collect_console_team_entries(
+        self,
+        db_session: AsyncSession,
+        *,
+        changed_since: Optional[datetime] = None,
+    ) -> Dict[str, Optional[int]]:
         """收集控制台 Team 兑换绑定邮箱。"""
         console_entries: Dict[str, Optional[int]] = {}
 
+        code_filters = [
+            RedemptionCode.bound_team_id.is_not(None),
+            RedemptionCode.used_team_id == RedemptionCode.bound_team_id,
+            RedemptionCode.used_by_email.is_not(None),
+        ]
+        if changed_since:
+            code_filters.append(RedemptionCode.used_at > changed_since)
         code_result = await db_session.execute(
             select(RedemptionCode.used_by_email, RedemptionCode.used_team_id).where(
-                RedemptionCode.bound_team_id.is_not(None),
-                RedemptionCode.used_team_id == RedemptionCode.bound_team_id,
-                RedemptionCode.used_by_email.is_not(None),
+                and_(*code_filters)
             )
         )
         for email, team_id in code_result.all():
@@ -118,10 +143,15 @@ class EmailWhitelistService:
             if normalized_email:
                 console_entries[normalized_email] = team_id
 
+        record_filters = [
+            RedemptionRecord.team_id.is_not(None),
+            RedemptionRecord.email.is_not(None),
+        ]
+        if changed_since:
+            record_filters.append(RedemptionRecord.redeemed_at > changed_since)
         record_result = await db_session.execute(
             select(RedemptionRecord.email, RedemptionRecord.team_id).where(
-                RedemptionRecord.team_id.is_not(None),
-                RedemptionRecord.email.is_not(None),
+                and_(*record_filters)
             )
         )
         for email, team_id in record_result.all():
@@ -142,7 +172,12 @@ class EmailWhitelistService:
         active_warranty_entries.pop("", None)
         return active_warranty_entries
 
-    async def _collect_legacy_manual_pull_entries(self, db_session: AsyncSession) -> Dict[str, WarrantyEmailEntry]:
+    async def _collect_legacy_manual_pull_entries(
+        self,
+        db_session: AsyncSession,
+        *,
+        changed_since: Optional[datetime] = None,
+    ) -> Dict[str, WarrantyEmailEntry]:
         result = await db_session.execute(select(WarrantyEmailEntry))
         warranty_entries = result.scalars().all()
         legacy_manual_pull_entries = {
@@ -152,6 +187,10 @@ class EmailWhitelistService:
             and int(entry.remaining_claims or 0) <= 0
             and not entry.expires_at
             and entry.last_warranty_team_id
+            and (
+                not changed_since
+                or (entry.updated_at or entry.created_at or datetime.min) > changed_since
+            )
         }
         legacy_manual_pull_entries.pop("", None)
         return legacy_manual_pull_entries
@@ -163,17 +202,16 @@ class EmailWhitelistService:
         commit: bool = False,
     ) -> Dict[str, int]:
         """同步系统自动清理依赖的邮箱来源到邮箱白名单。"""
-        sync_mode = await self.get_sync_mode(db_session)
-        if sync_mode == self.SYNC_MODE_WARRANTY_ONLY:
-            return await self.sync_only_from_warranty_email_entries(
-                db_session,
-                commit=commit,
-                update_sync_mode=False,
-            )
-
-        console_entries = await self._collect_console_team_entries(db_session)
+        warranty_only_synced_at = await self.get_warranty_only_synced_at(db_session)
+        console_entries = await self._collect_console_team_entries(
+            db_session,
+            changed_since=warranty_only_synced_at,
+        )
         active_warranty_entries = await self._collect_warranty_email_entries(db_session)
-        legacy_manual_pull_entries = await self._collect_legacy_manual_pull_entries(db_session)
+        legacy_manual_pull_entries = await self._collect_legacy_manual_pull_entries(
+            db_session,
+            changed_since=warranty_only_synced_at,
+        )
 
         system_email_sources: Dict[str, str] = {
             email: self.SOURCE_WARRANTY_EMAIL
@@ -298,9 +336,9 @@ class EmailWhitelistService:
         db_session: AsyncSession,
         *,
         commit: bool = False,
-        update_sync_mode: bool = True,
     ) -> Dict[str, int]:
         """一键同步邮箱白名单：仅保留当前有效的质保邮箱来源。"""
+        synced_at = get_now()
         active_warranty_entries = await self._collect_warranty_email_entries(db_session)
 
         whitelist_result = await db_session.execute(select(EmailWhitelistEntry))
@@ -316,8 +354,7 @@ class EmailWhitelistService:
         deactivated_count = 0
         source_updated_count = 0
 
-        if update_sync_mode:
-            await self._set_sync_mode(db_session, self.SYNC_MODE_WARRANTY_ONLY)
+        await self._set_warranty_only_synced_at(db_session, synced_at)
 
         for email, warranty_entry in active_warranty_entries.items():
             existing_entry = whitelist_by_email.get(email)
@@ -355,25 +392,17 @@ class EmailWhitelistService:
             if not entry.note:
                 entry.note = "已由一键同步质保邮箱列表移出"
 
-        has_changes = any([
-            update_sync_mode,
+        await db_session.flush()
+        logger.info(
+            "邮箱白名单已一键同步质保邮箱列表: target=%s created=%s reactivated=%s deactivated=%s source_updated=%s",
+            len(target_emails),
             created_count,
             reactivated_count,
             deactivated_count,
             source_updated_count,
-        ])
-        if has_changes:
-            await db_session.flush()
-            logger.info(
-                "邮箱白名单已一键同步质保邮箱列表: target=%s created=%s reactivated=%s deactivated=%s source_updated=%s",
-                len(target_emails),
-                created_count,
-                reactivated_count,
-                deactivated_count,
-                source_updated_count,
-            )
-            if commit:
-                await db_session.commit()
+        )
+        if commit:
+            await db_session.commit()
 
         return {
             "target_count": len(target_emails),
