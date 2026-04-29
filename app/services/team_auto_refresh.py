@@ -17,7 +17,7 @@ from app.services.team import (
     IMPORT_STATUS_CLASSIFIED,
     team_service,
 )
-from app.services.team_refresh_record import SOURCE_AUTO
+from app.services.team_refresh_record import SOURCE_AUTO, team_refresh_record_service
 from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
@@ -139,6 +139,44 @@ class TeamAutoRefreshService:
             max(int(interval_minutes or 1), 1),
         )
 
+    async def _record_unhandled_refresh_failure(self, team_id: int, exc: Exception) -> None:
+        """
+        兜底记录自动刷新未捕获异常。
+
+        refresh_team_state 正常会写入刷新记录；但如果它自身抛出异常，
+        调度器仍需留下失败记录并重置该 Team 计时，避免后台看不到自动
+        刷新痕迹且下一轮反复撞同一个异常。
+        """
+        safe_error = f"自动刷新执行异常: {exc.__class__.__name__}，请查看服务日志获取详细堆栈"
+
+        try:
+            async with AsyncSessionLocal() as session:
+                team = await session.get(Team, team_id)
+                if not team:
+                    logger.warning("自动刷新异常记录跳过: Team %s 不存在", team_id)
+                    return
+
+                team.last_refresh_at = get_now()
+                await team_refresh_record_service.create_record(
+                    db_session=session,
+                    team=team,
+                    source=SOURCE_AUTO,
+                    force_refresh=False,
+                    refresh_result={
+                        "success": False,
+                        "message": None,
+                        "error": safe_error,
+                        "error_code": "auto_refresh_exception",
+                    },
+                )
+                await session.commit()
+        except Exception as record_error:
+            logger.exception(
+                "写入自动刷新异常记录失败: team_id=%s error=%s",
+                team_id,
+                record_error,
+            )
+
     async def run_once(self) -> int:
         """
         执行一轮自动刷新。
@@ -206,6 +244,7 @@ class TeamAutoRefreshService:
                 except Exception as exc:
                     failed_count += 1
                     logger.exception("自动刷新 Team %s 异常: %s", team_id, exc)
+                    await self._record_unhandled_refresh_failure(team_id, exc)
 
             logger.info(
                 "自动刷新 Team 轮次完成: 成功 %s，失败 %s",
