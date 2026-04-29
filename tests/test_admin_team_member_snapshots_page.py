@@ -191,6 +191,9 @@ class AdminTeamMemberSnapshotsPageTests(unittest.IsolatedAsyncioTestCase):
 
         html = response.body.decode("utf-8")
         self.assertIn("Team 状态", html)
+        self.assertIn("team-status-chip-group", html)
+        self.assertIn("可同时选择多个状态", html)
+        self.assertNotIn('name="team_status" class="form-control" multiple', html)
         self.assertIn("Second Snapshot Team", html)
         self.assertIn("已满", html)
         self.assertIn("member@example.com", html)

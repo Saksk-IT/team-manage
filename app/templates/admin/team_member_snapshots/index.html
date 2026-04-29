@@ -95,12 +95,20 @@
         </div>
         <div class="form-group">
             <label for="team_status">Team 状态</label>
-            <select id="team_status" name="team_status" class="form-control" multiple size="5">
+            <div id="team_status" class="team-status-chip-group" role="group" aria-label="Team 状态多选筛选">
                 {% for option_value, option_label in team_status_options.items() %}
-                <option value="{{ option_value }}" {% if option_value in team_statuses %}selected{% endif %}>{{ option_label }}</option>
+                <label class="team-status-chip team-status-chip--{{ option_value }}">
+                    <input
+                        type="checkbox"
+                        name="team_status"
+                        value="{{ option_value }}"
+                        {% if option_value in team_statuses %}checked{% endif %}
+                    >
+                    <span>{{ option_label }}</span>
+                </label>
                 {% endfor %}
-            </select>
-            <small class="form-text">按住 Command/Ctrl 可多选；不选表示全部状态。</small>
+            </div>
+            <small class="form-text">可同时选择多个状态；不选表示全部状态。</small>
         </div>
         <div class="form-group">
             <label for="team_count_min">所在 Team 个数</label>
@@ -303,6 +311,84 @@
     .range-separator {
         color: var(--text-muted);
         font-size: 0.875rem;
+    }
+
+    .team-status-chip-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        min-height: 40px;
+        align-items: center;
+    }
+
+    .team-status-chip {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        min-height: 34px;
+        border: 1px solid var(--border-color);
+        border-radius: 999px;
+        background: #fff;
+        color: var(--text-color);
+        cursor: pointer;
+        transition: all 0.16s ease;
+        user-select: none;
+    }
+
+    .team-status-chip:hover {
+        border-color: var(--primary-color);
+        color: var(--primary-color);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);
+    }
+
+    .team-status-chip input {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+    }
+
+    .team-status-chip span {
+        position: relative;
+        z-index: 1;
+        padding: 0.42rem 0.85rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        line-height: 1;
+    }
+
+    .team-status-chip:has(input:checked) {
+        border-color: var(--primary-color);
+        background: rgba(37, 99, 235, 0.1);
+        color: var(--primary-color);
+        box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.18);
+    }
+
+    .team-status-chip--full:has(input:checked),
+    .team-status-chip--expired:has(input:checked) {
+        border-color: #f59e0b;
+        background: rgba(245, 158, 11, 0.12);
+        color: #92400e;
+        box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.2);
+    }
+
+    .team-status-chip--error:has(input:checked),
+    .team-status-chip--banned:has(input:checked) {
+        border-color: #ef4444;
+        background: rgba(239, 68, 68, 0.1);
+        color: #b91c1c;
+        box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.18);
+    }
+
+    .team-status-chip:has(input:focus-visible) {
+        outline: 2px solid rgba(37, 99, 235, 0.35);
+        outline-offset: 2px;
+    }
+
+    @supports not selector(:has(*)) {
+        .team-status-chip input:checked + span {
+            color: var(--primary-color);
+        }
     }
 </style>
 {% endblock %}
