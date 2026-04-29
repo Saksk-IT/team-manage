@@ -54,13 +54,20 @@ class WarrantyCheckResponse(BaseModel):
     error: Optional[str]
 
 
+class WarrantyOrderStatusRequest(BaseModel):
+    """单个质保订单 Team 状态刷新请求"""
+    email: EmailStr
+    code: Optional[str] = None
+    entry_id: int = Field(..., gt=0)
+
+
 @router.post("/check", response_model=WarrantyCheckResponse)
 async def check_warranty(
     request: WarrantyCheckRequest,
     db_session: AsyncSession = Depends(get_db)
 ):
     """
-    查询质保邮箱最近加入的 Team 状态。
+    查询质保邮箱对应的质保订单列表。
     """
     await ensure_warranty_service_enabled(db_session)
     result = await warranty_service.get_warranty_claim_status(
@@ -79,6 +86,27 @@ async def check_warranty(
         "message": result.get("message"),
         "error": None,
     }
+
+
+@router.post("/order-status")
+async def refresh_warranty_order_status(
+    request: WarrantyOrderStatusRequest,
+    db_session: AsyncSession = Depends(get_db)
+):
+    """
+    按质保订单独立刷新其对应邮箱上次加入的 Team 状态。
+    """
+    await ensure_warranty_service_enabled(db_session)
+    result = await warranty_service.refresh_warranty_order_status(
+        db_session=db_session,
+        email=request.email,
+        entry_id=request.entry_id,
+        code=request.code,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "订单状态刷新失败")
+
+    return result
 
 
 class EnableDeviceAuthRequest(BaseModel):

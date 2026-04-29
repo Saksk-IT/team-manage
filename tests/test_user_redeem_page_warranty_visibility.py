@@ -110,7 +110,7 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("可查询当前绑定的完整邮箱。撤销请联系客服处理。", html)
         self.assertIn("质保说明", html)
         self.assertIn("如您购买了质保服务", html)
-        self.assertIn("查看状态", html)
+        self.assertIn("查询订单", html)
         self.assertIn("公告通知", html)
         self.assertIn("系统公告：今晚 10 点维护", html)
         announcement_index = html.index('id="frontAnnouncement"')

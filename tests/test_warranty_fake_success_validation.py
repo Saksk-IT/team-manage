@@ -149,7 +149,7 @@ class WarrantyFakeSuccessValidationTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertFalse(result["success"])
-        self.assertEqual(result["error"], "该质保订单最近加入的 Team 当前状态为「正常」，只有封禁状态才可以提交质保。")
+        self.assertEqual(result["error"], "该质保订单最近加入的 Team 当前状态为「可用」，只有封禁状态才可以提交质保。")
 
 
 if __name__ == "__main__":

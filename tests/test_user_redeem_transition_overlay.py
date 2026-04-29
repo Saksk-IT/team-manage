@@ -54,11 +54,12 @@ class UserRedeemTransitionOverlayTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="transitionOverlayTimeline"', html)
         self.assertIn('id="transitionOverlayHint"', html)
 
-    def test_redeem_js_defines_three_waiting_flow_configs(self):
+    def test_redeem_js_defines_waiting_flow_configs(self):
         script = Path("app/static/js/redeem.js").read_text(encoding="utf-8")
 
         self.assertIn("const REDEEM_LOADING_FLOW =", script)
         self.assertIn("const WARRANTY_STATUS_LOADING_FLOW =", script)
+        self.assertIn("const WARRANTY_ORDER_REFRESH_LOADING_FLOW =", script)
         self.assertIn("const WARRANTY_CLAIM_LOADING_FLOW =", script)
         self.assertIn("const customerServicePromptModal =", script)
         self.assertIn("function setCustomerServicePromptOpen(isOpen)", script)
@@ -72,8 +73,10 @@ class UserRedeemTransitionOverlayTests(unittest.IsolatedAsyncioTestCase):
         script = Path("app/static/js/redeem.js").read_text(encoding="utf-8")
 
         self.assertIn("data?.warranty_orders", script)
+        self.assertIn("warranty-order-refresh-btn", script)
         self.assertIn("warranty-order-claim-btn", script)
         self.assertIn("data-entry-id", script)
+        self.assertIn("refreshWarrantyOrderStatus(email, button.dataset.code || null, button, button.dataset.entryId || null)", script)
         self.assertIn("submitWarrantyClaim(email, button.dataset.code || null, button, button.dataset.entryId || null)", script)
         self.assertIn("...(code ? { code } : {})", script)
         self.assertIn("...(entryId ? { entry_id: Number(entryId) } : {})", script)
@@ -81,7 +84,7 @@ class UserRedeemTransitionOverlayTests(unittest.IsolatedAsyncioTestCase):
     def test_redeem_js_normalizes_non_banned_warranty_order_status(self):
         script = Path("app/static/js/redeem.js").read_text(encoding="utf-8")
 
-        self.assertIn("return { label: '正常', className: 'status-badge--success' };", script)
+        self.assertIn("return { label: '可用', className: 'status-badge--success' };", script)
         self.assertIn("normalizeWarrantyStatusMessage", script)
         self.assertIn("${escapeHtml(badge.label)}</span>", script)
         self.assertNotIn("latestTeam.status_label || badge.label", script)

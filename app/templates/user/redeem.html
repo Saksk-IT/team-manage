@@ -121,16 +121,16 @@
                             <div id="warrantyPane" class="service-pane" style="display: none;" role="tabpanel" aria-labelledby="warrantyModeBtn" aria-hidden="true">
                                 <div class="service-notice">
                                     <i data-lucide="info"></i>
-                                    <span><strong>质保说明</strong>：如您购买了质保服务（包含多个质保订单），系统会按兑换码订单分别查询最近加入的 Team。只有状态为“封禁”的订单，才可以继续提交质保。</span>
+                                    <span><strong>质保说明</strong>：如您购买了质保服务（包含多个质保订单），先按邮箱查询订单，再对每个仍有剩余次数和天数的订单单独刷新 Team 状态。只有状态为“封禁”的订单，才可以提交质保。</span>
                                 </div>
                                 <form id="warrantyClaimForm" class="action-form">
                                     <label class="form-group" for="warrantyEmail">
                                         <span>质保邮箱</span>
                                         <input type="email" id="warrantyEmail" name="email" required placeholder="请输入质保邮箱" class="form-input" autocomplete="email">
-                                        <small class="form-help">查询结果会展示每个质保订单对应的最近 Team、剩余次数和剩余天数。</small>
+                                        <small class="form-help">查询结果会展示每个质保订单对应的兑换码、剩余次数和剩余天数。</small>
                                     </label>
                                     <button type="submit" class="btn btn-primary" id="claimBtn">
-                                        <i data-lucide="search"></i> 查看状态
+                                        <i data-lucide="search"></i> 查询订单
                                     </button>
                                 </form>
                                 <div id="warrantyStatusResult" class="status-result" style="display: none;"></div>

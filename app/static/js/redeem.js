@@ -84,27 +84,54 @@ const REDEEM_LOADING_FLOW = Object.freeze({
 
 const WARRANTY_STATUS_LOADING_FLOW = Object.freeze({
     icon: 'search',
-    eyebrow: '质保状态查询',
-    title: '正在查询最近 Team 状态',
-    message: '系统正在为您核对质保资格与最近加入记录。',
+    eyebrow: '质保订单查询',
+    title: '正在查询质保订单',
+    message: '系统正在按邮箱读取质保订单与剩余额度。',
     stages: Object.freeze([
         Object.freeze({
-            label: '核对质保资格',
-            message: '正在验证邮箱与当前质保条件。'
+            label: '核对质保邮箱',
+            message: '正在验证邮箱是否在质保邮箱列表中。'
         }),
         Object.freeze({
-            label: '查询最近记录',
-            message: '正在读取最近一次加入的 Team 信息。'
+            label: '查询订单列表',
+            message: '正在读取该邮箱对应的质保订单。'
         }),
         Object.freeze({
-            label: '同步当前状态',
-            message: '正在同步最新 Team 状态并整理结果。'
+            label: '整理剩余额度',
+            message: '正在整理兑换码、剩余次数和剩余天数。'
         })
     ]),
     hints: Object.freeze([
-        '如果等待稍久，多半是在同步最新 Team 状态。',
+        '查询订单不会自动判断 Team 状态，需要在订单卡片中单独刷新。',
         '完成后会自动展示结果，无需重复点击。',
         '请保持页面开启，避免中途中断查询流程。'
+    ]),
+    autoStageDelayMs: 1800
+});
+
+const WARRANTY_ORDER_REFRESH_LOADING_FLOW = Object.freeze({
+    icon: 'refresh-cw',
+    eyebrow: '订单 Team 刷新',
+    title: '正在刷新订单 Team 状态',
+    message: '系统会针对该订单对应的 Team 执行一次实时刷新。',
+    stages: Object.freeze([
+        Object.freeze({
+            label: '锁定质保订单',
+            message: '正在核对该订单的剩余次数和剩余天数。'
+        }),
+        Object.freeze({
+            label: '执行 Team 刷新',
+            message: '正在刷新该订单对应邮箱上次加入的 Team。'
+        }),
+        Object.freeze({
+            label: '返回实时状态',
+            message: '正在整理最新 Team 状态和提交权限。'
+        })
+    ]),
+    hints: Object.freeze([
+        '只有刷新结果为“封禁”的订单可以提交质保。',
+        '如果同一邮箱有多个订单，请分别刷新各订单状态。',
+        '刷新过程可能需要几秒，请保持页面开启。'
     ]),
     autoStageDelayMs: 1800
 });
@@ -601,11 +628,16 @@ function isWarrantyTeamBannedStatus(status) {
 }
 
 function getWarrantyTeamStatusBadge(status) {
+    const normalizedStatus = String(status || '').trim().toLowerCase();
+    if (!normalizedStatus || normalizedStatus === 'pending') {
+        return { label: '待查询', className: 'status-badge--warning' };
+    }
+
     if (isWarrantyTeamBannedStatus(status)) {
         return { label: '封禁', className: 'status-badge--danger' };
     }
 
-    return { label: '正常', className: 'status-badge--success' };
+    return { label: '可用', className: 'status-badge--success' };
 }
 
 function normalizeWarrantyStatusMessage(message) {
@@ -613,7 +645,7 @@ function normalizeWarrantyStatusMessage(message) {
         return '';
     }
 
-    return String(message).replace(/当前状态为「[^」]*」/g, '当前状态为「正常」');
+    return String(message).replace(/当前状态为「[^」]*」/g, '当前状态为「可用」');
 }
 
 function getWarrantyTeamStatusMessage(data, canClaim) {
@@ -664,6 +696,43 @@ function resetWarrantyStatusResult() {
     }
 }
 
+function getWarrantyOrderKey(order) {
+    const entryId = order?.entry_id || order?.warranty_info?.id || '';
+    const code = order?.code || order?.latest_team?.code || '';
+    return `${entryId || 'no-entry'}:${code || 'no-code'}`;
+}
+
+function refreshWarrantyStatusWithOrder(order) {
+    const existingStatus = currentWarrantyStatus || {};
+    const existingOrders = normalizeWarrantyOrders(existingStatus);
+    const orderKey = getWarrantyOrderKey(order);
+    const warrantyOrders = existingOrders.map((item) => (
+        getWarrantyOrderKey(item) === orderKey ? { ...item, ...order } : item
+    ));
+    const hasExistingOrder = warrantyOrders.some((item) => getWarrantyOrderKey(item) === orderKey);
+    const nextOrders = hasExistingOrder ? warrantyOrders : [...warrantyOrders, order];
+    const canClaim = nextOrders.some((item) => Boolean(item?.can_claim));
+    const refreshableCount = nextOrders.filter((item) => Boolean(item?.can_refresh_status)).length;
+    const checkedCount = nextOrders.filter((item) => Boolean(item?.status_checked)).length;
+
+    currentWarrantyStatus = {
+        ...existingStatus,
+        can_claim: canClaim,
+        latest_team: order?.latest_team || existingStatus.latest_team || null,
+        warranty_info: order?.warranty_info || existingStatus.warranty_info || null,
+        warranty_orders: nextOrders,
+        message: canClaim
+            ? '已刷新到封禁订单，可以提交对应订单质保。'
+            : (checkedCount > 0
+                ? '已刷新订单 Team 状态；只有封禁订单可以提交质保。'
+                : `已查询到 ${nextOrders.length} 个质保订单，请对仍有剩余次数和天数的订单单独查询 Team 状态。`),
+        refreshable_count: refreshableCount,
+        checked_count: checkedCount
+    };
+
+    renderWarrantyStatusResult(currentWarrantyStatus, currentWarrantyEmail);
+}
+
 function renderWarrantyStatusResult(data, email) {
     currentWarrantyEmail = email;
     currentWarrantyStatus = data;
@@ -672,23 +741,28 @@ function renderWarrantyStatusResult(data, email) {
     if (!statusContainer) return;
 
     const warrantyOrders = normalizeWarrantyOrders(data);
-    const summaryMessage = data?.message || '查询完成，请选择需要提交质保的订单。';
+    const summaryMessage = data?.message || '查询完成，请选择需要刷新 Team 状态的订单。';
     const orderCards = warrantyOrders.map((order, index) => {
         const latestTeam = order?.latest_team || {};
         const warrantyInfo = order?.warranty_info || {};
-        const badge = getWarrantyTeamStatusBadge(latestTeam.status || latestTeam.status_label);
+        const statusChecked = Boolean(order?.status_checked || latestTeam.id);
+        const badge = getWarrantyTeamStatusBadge(statusChecked ? (latestTeam.status || latestTeam.status_label) : 'pending');
         const canClaim = Boolean(order?.can_claim);
+        const canRefreshStatus = Boolean(order?.can_refresh_status);
         const statusMessage = getWarrantyOrderStatusMessage(order, canClaim);
         const messageClass = canClaim ? 'status-panel__message--success' : 'status-panel__message--warning';
         const code = order?.code || latestTeam.code || '';
+        const displayCode = order?.display_code || code || (order?.source === 'manual' ? '管理员手动维护' : `订单 ${index + 1}`);
         const entryId = order?.entry_id || warrantyInfo.id || '';
         const remainingClaims = order?.remaining_claims ?? warrantyInfo.remaining_claims ?? '-';
         const remainingDays = order?.remaining_days ?? warrantyInfo.remaining_days ?? '-';
+        const teamStatusText = statusChecked ? badge.label : '待查询';
         const detailItems = [
-            ['质保订单', code || `订单 ${index + 1}`],
-            ['Team 名称', latestTeam.team_name || '-'],
-            ['Team 账号', latestTeam.email || '-'],
-            ['最近加入时间', formatDateTime(latestTeam.redeemed_at)],
+            ['质保订单', displayCode],
+            ['Team 状态', teamStatusText],
+            ['Team 名称', statusChecked ? (latestTeam.team_name || '-') : '待查询'],
+            ['Team 账号', statusChecked ? (latestTeam.email || '-') : '待查询'],
+            ['最近加入时间', statusChecked ? formatDateTime(latestTeam.redeemed_at) : '待查询'],
             ['剩余质保次数', String(remainingClaims)],
             ['剩余质保天数', String(remainingDays)]
         ].map(([label, value]) => `
@@ -698,6 +772,23 @@ function renderWarrantyStatusResult(data, email) {
             </div>
         `).join('');
 
+        const refreshButtonHtml = (!canClaim && canRefreshStatus) ? `
+            <button type="button" class="btn btn-secondary warranty-order-refresh-btn" data-entry-id="${escapeHtml(String(entryId))}" data-code="${escapeHtml(code)}">
+                <i data-lucide="refresh-cw"></i> 查询该订单 Team 状态
+            </button>
+        ` : '';
+        const claimButtonHtml = canClaim ? `
+            <button type="button" class="btn btn-primary warranty-order-claim-btn" data-entry-id="${escapeHtml(String(entryId))}" data-code="${escapeHtml(code)}">
+                <i data-lucide="shield"></i> 提交此订单质保
+            </button>
+        ` : '';
+        const actionHtml = (refreshButtonHtml || claimButtonHtml) ? `
+            <div class="status-panel__actions">
+                ${refreshButtonHtml}
+                ${claimButtonHtml}
+            </div>
+        ` : '';
+
         return `
             <div class="status-panel status-panel--order">
                 <div class="status-panel__header">
@@ -706,13 +797,7 @@ function renderWarrantyStatusResult(data, email) {
                 </div>
                 <div class="status-panel__list">${detailItems}</div>
                 <div class="status-panel__message ${messageClass}">${escapeHtml(statusMessage)}</div>
-                ${canClaim ? `
-                    <div class="status-panel__actions">
-                        <button type="button" class="btn btn-primary warranty-order-claim-btn" data-entry-id="${escapeHtml(String(entryId))}" data-code="${escapeHtml(code)}">
-                            <i data-lucide="shield"></i> 提交此订单质保
-                        </button>
-                    </div>
-                ` : ''}
+                ${actionHtml}
             </div>
         `;
     }).join('');
@@ -723,7 +808,7 @@ function renderWarrantyStatusResult(data, email) {
             <div class="status-panel__header">
                 <div class="status-panel__title">质保订单查询结果</div>
                 <span class="status-badge ${data?.can_claim ? 'status-badge--danger' : 'status-badge--success'}">
-                    ${escapeHtml(data?.can_claim ? '有可提交订单' : '暂无可提交订单')}
+                    ${escapeHtml(data?.can_claim ? '有可提交订单' : '待刷新订单状态')}
                 </span>
             </div>
             <div class="status-panel__list">
@@ -746,6 +831,12 @@ function renderWarrantyStatusResult(data, email) {
     if (window.lucide) {
         lucide.createIcons();
     }
+
+    statusContainer.querySelectorAll('.warranty-order-refresh-btn').forEach((button) => {
+        button.addEventListener('click', () => {
+            refreshWarrantyOrderStatus(email, button.dataset.code || null, button, button.dataset.entryId || null);
+        });
+    });
 
     statusContainer.querySelectorAll('.warranty-order-claim-btn').forEach((button) => {
         button.addEventListener('click', () => {
@@ -1199,22 +1290,95 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
             });
             renderWarrantyStatusResult(data, email);
         } else {
-            let errorMessage = '状态查询失败';
+            let errorMessage = '订单查询失败';
             if (typeof data.detail === 'string') {
                 errorMessage = data.detail;
             } else if (typeof data.error === 'string') {
                 errorMessage = data.error;
             }
-            showErrorResult(errorMessage, '状态查询失败');
+            showErrorResult(errorMessage, '订单查询失败');
         }
     } catch (error) {
-        showErrorResult(error.message || '网络错误,请稍后重试', '状态查询失败');
+        showErrorResult(error.message || '网络错误,请稍后重试', '订单查询失败');
     } finally {
         closeTransitionOverlay();
         if (claimBtn) claimBtn.disabled = false;
-        setClaimButtonContent('查看状态');
+        setClaimButtonContent('查询订单');
     }
 });
+
+async function refreshWarrantyOrderStatus(email, code = null, triggerButton = null, entryId = null) {
+    if (!entryId) {
+        showToast('缺少质保订单 ID，请重新查询订单', 'error');
+        return;
+    }
+
+    if (triggerButton) {
+        triggerButton.disabled = true;
+        triggerButton.innerHTML = '<i data-lucide="loader" class="spinning"></i> 查询中...';
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+    }
+
+    openTransitionOverlay(WARRANTY_ORDER_REFRESH_LOADING_FLOW, { stageIndex: 0 });
+
+    try {
+        const response = await fetch('/warranty/order-status', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                email,
+                entry_id: Number(entryId),
+                ...(code ? { code } : {})
+            })
+        });
+
+        const text = await response.text();
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (error) {
+            throw new Error('服务器响应格式错误');
+        }
+
+        if (response.ok && data.success) {
+            advanceTransitionOverlay(2, {
+                message: '订单 Team 状态已刷新，正在更新页面。'
+            });
+            refreshWarrantyStatusWithOrder(data.warranty_order || {
+                entry_id: Number(entryId),
+                code: code || '',
+                latest_team: data.latest_team,
+                warranty_info: data.warranty_info || {},
+                can_claim: Boolean(data.can_claim),
+                status_checked: true,
+                message: data.message || ''
+            });
+        } else {
+            let errorMessage = '订单状态查询失败';
+            if (typeof data.detail === 'string') {
+                errorMessage = data.detail;
+            } else if (typeof data.error === 'string') {
+                errorMessage = data.error;
+            }
+            showErrorResult(errorMessage, '订单状态查询失败');
+        }
+    } catch (error) {
+        showErrorResult(error.message || '网络错误,请稍后重试', '订单状态查询失败');
+    } finally {
+        closeTransitionOverlay();
+        if (triggerButton) {
+            triggerButton.disabled = false;
+            triggerButton.innerHTML = '<i data-lucide="refresh-cw"></i> 查询该订单 Team 状态';
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+        }
+    }
+}
 
 async function submitWarrantyClaim(email, code = null, triggerButton = null, entryId = null) {
     const continueBtn = triggerButton || document.getElementById('continueWarrantyClaimBtn');

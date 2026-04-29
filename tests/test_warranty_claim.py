@@ -616,7 +616,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             entry = await service.get_warranty_email_entry(session, "buyer@example.com")
 
         self.assertFalse(result["success"])
-        self.assertEqual(result["error"], "该质保订单最近加入的 Team 当前状态为「正常」，只有封禁状态才可以提交质保。")
+        self.assertEqual(result["error"], "该质保订单最近加入的 Team 当前状态为「可用」，只有封禁状态才可以提交质保。")
         self.assertEqual(entry.remaining_claims, 2)
         service.team_service.add_team_member.assert_not_awaited()
 
@@ -658,7 +658,9 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result["success"])
         self.assertFalse(result["can_claim"])
-        self.assertEqual(result["latest_team"]["status"], "active")
+        self.assertIsNone(result["latest_team"])
+        self.assertFalse(result["warranty_orders"][0]["status_checked"])
+        self.assertTrue(result["warranty_orders"][0]["can_refresh_status"])
         service.team_service.refresh_team_state.assert_not_awaited()
 
     async def test_get_warranty_claim_status_returns_multiple_warranty_orders(self):
@@ -737,13 +739,14 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertTrue(result["success"])
-        self.assertTrue(result["can_claim"])
+        self.assertFalse(result["can_claim"])
         self.assertEqual(len(result["warranty_orders"]), 2)
         orders_by_code = {order["code"]: order for order in result["warranty_orders"]}
-        self.assertTrue(orders_by_code["CODE-ORDER-A"]["can_claim"])
+        self.assertFalse(orders_by_code["CODE-ORDER-A"]["can_claim"])
         self.assertFalse(orders_by_code["CODE-ORDER-B"]["can_claim"])
         self.assertEqual(orders_by_code["CODE-ORDER-A"]["remaining_claims"], 3)
-        self.assertEqual(orders_by_code["CODE-ORDER-B"]["latest_team"]["id"], second_team.id)
+        self.assertIsNone(orders_by_code["CODE-ORDER-B"]["latest_team"])
+        self.assertTrue(orders_by_code["CODE-ORDER-B"]["can_refresh_status"])
 
     async def test_warranty_order_rejects_when_list_entry_quota_is_empty(self):
         async with self.Session() as session:
@@ -831,9 +834,9 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["success"])
         self.assertEqual(len(result["warranty_orders"]), 1)
         self.assertEqual(result["warranty_orders"][0]["code"], "CODE-HISTORY")
-        self.assertTrue(result["warranty_orders"][0]["can_claim"])
-        self.assertEqual(result["warranty_orders"][0]["latest_team"]["id"], ordinary_team.id)
-        self.assertEqual(result["warranty_orders"][0]["latest_team"]["status"], "banned")
+        self.assertFalse(result["warranty_orders"][0]["can_claim"])
+        self.assertIsNone(result["warranty_orders"][0]["latest_team"])
+        self.assertFalse(result["warranty_orders"][0]["status_checked"])
 
     async def test_claim_warranty_with_code_consumes_only_selected_order(self):
         async with self.Session() as session:
@@ -952,7 +955,8 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertTrue(result["success"])
-        self.assertTrue(result["can_claim"])
+        self.assertFalse(result["can_claim"])
+        self.assertIsNone(result["latest_team"])
         service.team_service.refresh_team_state.assert_not_awaited()
 
     async def test_get_warranty_claim_status_treats_deactivated_workspace_as_banned(self):
@@ -1001,7 +1005,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result["success"])
         self.assertFalse(result["can_claim"])
-        self.assertEqual(result["latest_team"]["status"], "active")
+        self.assertIsNone(result["latest_team"])
         self.assertEqual(persisted_team.status, "active")
 
     async def test_get_warranty_claim_status_accepts_banned_team_even_when_sync_error_code_is_missing(self):
@@ -1051,7 +1055,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result["success"])
         self.assertFalse(result["can_claim"])
-        self.assertEqual(result["latest_team"]["status"], "active")
+        self.assertIsNone(result["latest_team"])
         self.assertEqual(persisted_team.status, "active")
 
     async def test_get_warranty_claim_status_prefers_latest_team_from_warranty_entry(self):
@@ -1087,9 +1091,9 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertTrue(result["success"])
-        self.assertTrue(result["can_claim"])
-        self.assertEqual(result["latest_team"]["id"], warranty_team.id)
-        self.assertEqual(result["latest_team"]["email"], warranty_team.email)
+        self.assertFalse(result["can_claim"])
+        self.assertIsNone(result["latest_team"])
+        self.assertFalse(result["warranty_orders"][0]["status_checked"])
         service.team_service.refresh_team_state.assert_not_awaited()
 
     async def test_get_warranty_claim_status_uses_team_member_snapshot_after_live_refresh(self):
@@ -1123,10 +1127,59 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertTrue(result["success"])
+        self.assertFalse(result["can_claim"])
+        self.assertIsNone(result["latest_team"])
+        self.assertFalse(result["warranty_orders"][0]["status_checked"])
+        service.team_service.refresh_team_state.assert_not_awaited()
+
+    async def test_refresh_warranty_order_status_refreshes_selected_order_team(self):
+        async with self.Session() as session:
+            ordinary_team, _ = await self._seed_team_data(session)
+            ordinary_team.status = "active"
+            entry = WarrantyEmailEntry(
+                email="buyer@example.com",
+                remaining_claims=2,
+                expires_at=get_now() + timedelta(days=5),
+                source="manual",
+                last_redeem_code="CODE-REFRESH",
+            )
+            session.add(entry)
+            await self._add_latest_team_record(
+                session=session,
+                team=ordinary_team,
+                email="buyer@example.com",
+                code="CODE-REFRESH",
+            )
+            await session.commit()
+            entry_id = entry.id
+            team_id = ordinary_team.id
+
+            service = WarrantyService()
+
+            async def fake_sync(team_id, db_session, force_refresh=False, progress_callback=None, source=None):
+                team = await db_session.get(Team, team_id)
+                team.status = "banned"
+                await db_session.commit()
+                return {"success": True}
+
+            service.team_service.refresh_team_state = AsyncMock(side_effect=fake_sync)
+
+            result = await service.refresh_warranty_order_status(
+                db_session=session,
+                email="buyer@example.com",
+                entry_id=entry_id,
+                code="CODE-REFRESH",
+            )
+
+        async with self.Session() as verify_session:
+            persisted_team = await verify_session.get(Team, team_id)
+
+        self.assertTrue(result["success"])
         self.assertTrue(result["can_claim"])
         self.assertEqual(result["latest_team"]["status"], "banned")
-        self.assertEqual(result["latest_team"]["code"], None)
-        service.team_service.refresh_team_state.assert_not_awaited()
+        self.assertEqual(result["warranty_order"]["entry_id"], entry_id)
+        self.assertTrue(result["warranty_order"]["status_checked"])
+        self.assertEqual(persisted_team.status, "banned")
 
     async def test_claim_warranty_uses_team_member_snapshot_when_no_redemption_record_exists(self):
         async with self.Session() as session:
