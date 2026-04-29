@@ -10,6 +10,7 @@ from typing import Optional, List
 
 from sqlalchemy import case, or_, select
 
+from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import Team
 from app.services.settings import settings_service
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 TEAM_AUTO_REFRESH_DUE_BATCH_SIZE = 20
 TEAM_AUTO_REFRESH_CONCURRENCY = 5
+TEAM_AUTO_REFRESH_SQLITE_CONCURRENCY = 1
 TEAM_AUTO_REFRESH_CATCH_UP_DELAY_MINUTES = 1
 
 
@@ -224,6 +226,25 @@ class TeamAutoRefreshService:
                 record_error,
             )
 
+    def _get_batch_concurrency(self, team_count: int) -> int:
+        """
+        获取自动刷新批次并发数。
+
+        SQLite 只有单写者能力；Team 刷新过程中会写成员快照、白名单、
+        清理记录与刷新记录，因此 SQLite 部署下必须串行写，避免
+        database is locked。
+        """
+        database_url = str(settings.database_url or "").strip().lower()
+        configured_concurrency = (
+            TEAM_AUTO_REFRESH_SQLITE_CONCURRENCY
+            if database_url.startswith("sqlite")
+            else TEAM_AUTO_REFRESH_CONCURRENCY
+        )
+        return min(
+            max(int(configured_concurrency), 1),
+            max(int(team_count or 1), 1),
+        )
+
     async def _refresh_one_due_team(self, team_id: int) -> Optional[bool]:
         """刷新单个到期 Team；True=成功，False=失败，None=停止前跳过。"""
         if self._stop_event and self._stop_event.is_set():
@@ -258,10 +279,7 @@ class TeamAutoRefreshService:
 
     async def _refresh_due_team_batch(self, team_ids: List[int]) -> tuple[int, int]:
         """按固定并发数刷新一批到期 Team。"""
-        concurrency = min(
-            max(int(TEAM_AUTO_REFRESH_CONCURRENCY), 1),
-            max(len(team_ids), 1),
-        )
+        concurrency = self._get_batch_concurrency(len(team_ids))
         semaphore = asyncio.Semaphore(concurrency)
 
         async def refresh_with_limit(team_id: int) -> Optional[bool]:
@@ -307,7 +325,7 @@ class TeamAutoRefreshService:
             logger.info(
                 "开始自动刷新到期 Team 状态: 本轮最多 %s 个账号，并发 %s，间隔 %s 分钟",
                 len(team_ids),
-                min(TEAM_AUTO_REFRESH_CONCURRENCY, len(team_ids)),
+                self._get_batch_concurrency(len(team_ids)),
                 interval_minutes
             )
 

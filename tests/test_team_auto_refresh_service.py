@@ -16,6 +16,7 @@ from app.services.team import TeamService
 from app.services.team_auto_refresh import (
     TEAM_AUTO_REFRESH_CONCURRENCY,
     TEAM_AUTO_REFRESH_DUE_BATCH_SIZE,
+    TEAM_AUTO_REFRESH_SQLITE_CONCURRENCY,
     TeamAutoRefreshService,
 )
 from app.utils.time_utils import get_now
@@ -136,6 +137,11 @@ class TeamAutoRefreshServiceTests(unittest.IsolatedAsyncioTestCase):
                 "_get_next_due_delay_minutes",
                 new=AsyncMock(return_value=1)
             ),
+            patch.object(
+                service,
+                "_get_batch_concurrency",
+                return_value=TEAM_AUTO_REFRESH_CONCURRENCY,
+            ),
             patch("app.services.team_auto_refresh.AsyncSessionLocal", side_effect=session_factory),
             patch(
                 "app.services.team_auto_refresh.team_service.refresh_team_state",
@@ -149,6 +155,18 @@ class TeamAutoRefreshServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(fake_sessions), 6)
         self.assertGreater(max_in_flight, 1)
         self.assertLessEqual(max_in_flight, TEAM_AUTO_REFRESH_CONCURRENCY)
+
+    async def test_sqlite_database_uses_serial_auto_refresh_concurrency(self):
+        service = TeamAutoRefreshService()
+
+        with patch("app.services.team_auto_refresh.settings.database_url", "sqlite+aiosqlite:///team_manage.db"):
+            sqlite_concurrency = service._get_batch_concurrency(10)
+
+        with patch("app.services.team_auto_refresh.settings.database_url", "postgresql+asyncpg://example/db"):
+            non_sqlite_concurrency = service._get_batch_concurrency(10)
+
+        self.assertEqual(sqlite_concurrency, TEAM_AUTO_REFRESH_SQLITE_CONCURRENCY)
+        self.assertEqual(non_sqlite_concurrency, TEAM_AUTO_REFRESH_CONCURRENCY)
 
     async def test_run_once_skips_sync_when_disabled(self):
         service = TeamAutoRefreshService()
