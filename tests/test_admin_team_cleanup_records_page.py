@@ -79,6 +79,9 @@ class AdminTeamCleanupRecordsPageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("invite@example.com", html)
         self.assertIn("failed@example.com", html)
         self.assertIn("部分失败", html)
+        self.assertIn("清理总数", html)
+        self.assertIn("清理成功", html)
+        self.assertIn("清理失败", html)
         self.assertIn("搜索 Team、邮箱、Account ID、失败原因", html)
 
 

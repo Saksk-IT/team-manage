@@ -12,13 +12,20 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, RedirectResponse
 import json
-from sqlalchemy import select, func
+from sqlalchemy import or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field, EmailStr
 
 from app.database import get_db
 from app.dependencies.auth import require_admin, require_team_import_admin, is_import_admin_user
-from app.models import Team, RedemptionCode
+from app.models import (
+    EmailWhitelistEntry,
+    Team,
+    TeamCleanupRecord,
+    TeamRefreshRecord,
+    RedemptionCode,
+    WarrantyClaimRecord,
+)
 from app.services.team import (
     TeamService,
     TEAM_TYPE_STANDARD,
@@ -132,6 +139,87 @@ async def _get_import_admin_sidebar_stats(
         "available_teams": int(stats.get("available") or 0),
         "total_seats": int(stats.get("total_seats") or 0),
         "remaining_seats": int(stats.get("remaining_seats") or 0),
+    }
+
+
+async def _count_rows(
+    db: AsyncSession,
+    model: Any,
+    *filters: Any,
+) -> int:
+    stmt = select(func.count(model.id))
+    if filters:
+        stmt = stmt.where(*filters)
+    result = await db.execute(stmt)
+    return int(result.scalar() or 0)
+
+
+async def _get_email_whitelist_stats(db: AsyncSession) -> Dict[str, int]:
+    manual_sources = [
+        email_whitelist_service.SOURCE_MANUAL,
+        email_whitelist_service.SOURCE_MANUAL_PULL,
+    ]
+    return {
+        "total": await _count_rows(db, EmailWhitelistEntry),
+        "active": await _count_rows(db, EmailWhitelistEntry, EmailWhitelistEntry.is_active.is_(True)),
+        "inactive": await _count_rows(db, EmailWhitelistEntry, EmailWhitelistEntry.is_active.is_(False)),
+        "manual": await _count_rows(db, EmailWhitelistEntry, EmailWhitelistEntry.source.in_(manual_sources)),
+    }
+
+
+async def _get_warranty_email_stats(db: AsyncSession) -> Dict[str, int]:
+    entries = await warranty_service.list_warranty_email_entries(db)
+    status_counts = {
+        "active": 0,
+        "claims_exhausted": 0,
+        "expired": 0,
+        "inactive": 0,
+    }
+    for entry in entries:
+        status_value = (entry.get("status") or "").strip().lower()
+        if status_value in status_counts:
+            status_counts[status_value] += 1
+    return {"total": len(entries), **status_counts}
+
+
+async def _get_warranty_claim_record_stats(db: AsyncSession) -> Dict[str, int]:
+    today_start = get_now().replace(hour=0, minute=0, second=0, microsecond=0)
+    return {
+        "total": await _count_rows(db, WarrantyClaimRecord),
+        "success": await _count_rows(db, WarrantyClaimRecord, WarrantyClaimRecord.claim_status == "success"),
+        "failed": await _count_rows(db, WarrantyClaimRecord, WarrantyClaimRecord.claim_status == "failed"),
+        "today": await _count_rows(db, WarrantyClaimRecord, WarrantyClaimRecord.submitted_at >= today_start),
+    }
+
+
+async def _get_team_cleanup_record_stats(db: AsyncSession) -> Dict[str, int]:
+    return {
+        "total": await _count_rows(db, TeamCleanupRecord),
+        "success": await _count_rows(db, TeamCleanupRecord, TeamCleanupRecord.cleanup_status == "success"),
+        "partial_failed": await _count_rows(
+            db,
+            TeamCleanupRecord,
+            TeamCleanupRecord.cleanup_status == "partial_failed",
+        ),
+        "failed": await _count_rows(db, TeamCleanupRecord, TeamCleanupRecord.cleanup_status == "failed"),
+    }
+
+
+async def _get_team_refresh_record_stats(db: AsyncSession) -> Dict[str, int]:
+    cleanup_total = (
+        func.coalesce(TeamRefreshRecord.cleanup_removed_member_count, 0)
+        + func.coalesce(TeamRefreshRecord.cleanup_revoked_invite_count, 0)
+        + func.coalesce(TeamRefreshRecord.cleanup_failed_count, 0)
+    )
+    return {
+        "total": await _count_rows(db, TeamRefreshRecord),
+        "success": await _count_rows(db, TeamRefreshRecord, TeamRefreshRecord.refresh_status == "success"),
+        "failed": await _count_rows(db, TeamRefreshRecord, TeamRefreshRecord.refresh_status == "failed"),
+        "with_cleanup": await _count_rows(
+            db,
+            TeamRefreshRecord,
+            or_(TeamRefreshRecord.cleanup_record_id.is_not(None), cleanup_total > 0),
+        ),
     }
 
 
@@ -3523,6 +3611,7 @@ async def warranty_emails_page(
             page_int = total_pages
         offset = (page_int - 1) * safe_per_page
         entries = all_entries[offset:offset + safe_per_page]
+        stats = await _get_warranty_email_stats(db)
         return templates.TemplateResponse(
             request,
             "admin/warranty_emails/index.html",
@@ -3532,6 +3621,7 @@ async def warranty_emails_page(
                 current_user,
                 "warranty_emails",
                 entries=entries,
+                stats=stats,
                 search=search or "",
                 warranty_email_filters={
                     "status_filter": normalized_status or "",
@@ -3629,6 +3719,7 @@ async def email_whitelist_page(
             status_filter=normalized_status,
             source_filter=normalized_source,
         )
+        stats = await _get_email_whitelist_stats(db)
         return templates.TemplateResponse(
             request,
             "admin/email_whitelist/index.html",
@@ -3638,6 +3729,7 @@ async def email_whitelist_page(
                 current_user,
                 "email_whitelist",
                 entries=entries,
+                stats=stats,
                 search=search or "",
                 whitelist_filters={
                     "status_filter": normalized_status or "",
@@ -3793,6 +3885,7 @@ async def warranty_claim_records_page(
             page=page_int,
             per_page=per_page,
         )
+        stats = await _get_warranty_claim_record_stats(db)
 
         return templates.TemplateResponse(
             request,
@@ -3803,6 +3896,7 @@ async def warranty_claim_records_page(
                 current_user,
                 "warranty_claim_records",
                 records=result["records"],
+                stats=stats,
                 search=search or "",
                 claim_status=(claim_status or "").strip().lower(),
                 pagination=result["pagination"],
@@ -3849,6 +3943,7 @@ async def team_cleanup_records_page(
             page=page_int,
             per_page=per_page,
         )
+        stats = await _get_team_cleanup_record_stats(db)
 
         return templates.TemplateResponse(
             request,
@@ -3859,6 +3954,7 @@ async def team_cleanup_records_page(
                 current_user,
                 "team_cleanup_records",
                 records=result["records"],
+                stats=stats,
                 search=search or "",
                 cleanup_status=(cleanup_status or "").strip().lower(),
                 pagination=result["pagination"],
@@ -3918,6 +4014,7 @@ async def team_refresh_records_page(
             page=page_int,
             per_page=per_page,
         )
+        stats = await _get_team_refresh_record_stats(db)
 
         return templates.TemplateResponse(
             request,
@@ -3928,6 +4025,7 @@ async def team_refresh_records_page(
                 current_user,
                 "team_refresh_records",
                 records=result["records"],
+                stats=stats,
                 search=search or "",
                 source=(source or "").strip().lower(),
                 refresh_status=(refresh_status or "").strip().lower(),

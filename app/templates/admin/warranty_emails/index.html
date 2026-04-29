@@ -5,35 +5,48 @@
 {% block content %}
 <div class="page-header">
     <h2>质保邮箱列表</h2>
+    <button type="button" class="btn btn-primary" onclick="openWarrantyEmailCreateModal()">
+        <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 新增质保邮箱
+    </button>
 </div>
 
-<div class="content-section" id="warrantyEmailEditorCard">
-    <div class="section-header">
-        <h3 id="warrantyEditorTitle">新增 / 编辑质保邮箱</h3>
+<!-- 统计卡片 -->
+<div class="stats-container">
+    <div class="stat-card">
+        <div class="stat-icon"><i data-lucide="key-round"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.total }}</div>
+            <div class="stat-label">总质保邮箱</div>
+        </div>
     </div>
-
-    <form id="warrantyEmailForm" class="settings-form">
-        <input type="hidden" id="warrantyEntryId" value="">
-        <input type="hidden" id="warrantyRedeemCode" value="">
-        <div id="warrantyEditorNotice" class="editor-notice" style="display: none;"></div>
-        <div class="form-group">
-            <label for="warrantyEmail">邮箱</label>
-            <input type="email" id="warrantyEmail" class="form-control" placeholder="user@example.com" required>
+    <div class="stat-card stat-success">
+        <div class="stat-icon"><i data-lucide="check-circle"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.active }}</div>
+            <div class="stat-label">有效邮箱</div>
         </div>
-        <div class="form-group">
-            <label for="warrantyRemainingDays">剩余天数</label>
-            <input type="number" id="warrantyRemainingDays" class="form-control" min="0" value="30" placeholder="0 表示立即过期；留空表示未启用">
-            <p class="form-help">系统按“剩余天数 + 剩余次数”同时满足时才允许质保。</p>
+    </div>
+    <div class="stat-card stat-warning">
+        <div class="stat-icon"><i data-lucide="battery-warning"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.claims_exhausted }}</div>
+            <div class="stat-label">次数耗尽</div>
         </div>
-        <div class="form-group">
-            <label for="warrantyRemainingClaims">剩余次数</label>
-            <input type="number" id="warrantyRemainingClaims" class="form-control" min="0" value="10" required>
+    </div>
+    <div class="stat-card stat-danger">
+        <div class="stat-icon"><i data-lucide="calendar-x"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.expired }}</div>
+            <div class="stat-label">已过期</div>
         </div>
-        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-            <button type="submit" class="btn btn-primary" id="warrantyEditorSubmitBtn">保存质保邮箱</button>
-            <button type="button" class="btn btn-secondary" onclick="resetWarrantyEmailForm()">清空表单</button>
+    </div>
+    <div class="stat-card stat-info">
+        <div class="stat-icon"><i data-lucide="pause-circle"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.inactive }}</div>
+            <div class="stat-label">未启用</div>
         </div>
-    </form>
+    </div>
 </div>
 
 <div class="content-section">
@@ -264,6 +277,39 @@
     </div>
 </div>
 
+<div id="warrantyEmailEditorModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="warrantyEditorTitle">新增质保邮箱</h3>
+            <button class="modal-close" type="button" onclick="closeWarrantyEmailEditorModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="warrantyEmailForm" class="settings-form">
+                <input type="hidden" id="warrantyEntryId" value="">
+                <input type="hidden" id="warrantyRedeemCode" value="">
+                <div id="warrantyEditorNotice" class="editor-notice" style="display: none;"></div>
+                <div class="form-group">
+                    <label for="warrantyEmail">邮箱</label>
+                    <input type="email" id="warrantyEmail" class="form-control" placeholder="user@example.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="warrantyRemainingDays">剩余天数</label>
+                    <input type="number" id="warrantyRemainingDays" class="form-control" min="0" value="30" placeholder="0 表示立即过期；留空表示未启用">
+                    <p class="form-help">系统按“剩余天数 + 剩余次数”同时满足时才允许质保。</p>
+                </div>
+                <div class="form-group">
+                    <label for="warrantyRemainingClaims">剩余次数</label>
+                    <input type="number" id="warrantyRemainingClaims" class="form-control" min="0" value="10" required>
+                </div>
+                <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                    <button type="submit" class="btn btn-primary" id="warrantyEditorSubmitBtn">保存质保邮箱</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeWarrantyEmailEditorModal()">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <div id="bulkUpdateWarrantyEmailModal" class="modal-overlay">
     <div class="modal">
         <div class="modal-header">
@@ -440,6 +486,15 @@
         .bulk-actions .btn {
             width: 100%;
         }
+
+        .page-header {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .page-header .btn {
+            width: 100%;
+        }
     }
 </style>
 {% endblock %}
@@ -447,7 +502,6 @@
 {% block extra_js %}
 <script>
     function setWarrantyEditorMode(isEditing, entry = null) {
-        const card = document.getElementById('warrantyEmailEditorCard');
         const title = document.getElementById('warrantyEditorTitle');
         const notice = document.getElementById('warrantyEditorNotice');
         const submitBtn = document.getElementById('warrantyEditorSubmitBtn');
@@ -473,9 +527,6 @@
             }
         }
 
-        if (card) {
-            card.classList.toggle('editor-active', Boolean(isEditing));
-        }
     }
 
     function resetWarrantyEmailForm() {
@@ -490,6 +541,17 @@
         setWarrantyEditorMode(false);
     }
 
+    function openWarrantyEmailCreateModal() {
+        resetWarrantyEmailForm();
+        showModal('warrantyEmailEditorModal');
+        requestAnimationFrame(() => document.getElementById('warrantyEmail')?.focus());
+    }
+
+    function closeWarrantyEmailEditorModal() {
+        hideModal('warrantyEmailEditorModal');
+        resetWarrantyEmailForm();
+    }
+
     function fillWarrantyEmailForm(entry) {
         const remainingDaysInput = document.getElementById('warrantyRemainingDays');
         const remainingClaimsInput = document.getElementById('warrantyRemainingClaims');
@@ -500,8 +562,8 @@
         remainingDaysInput.value = entry.remaining_days === null || entry.remaining_days === undefined ? '' : String(entry.remaining_days);
         remainingClaimsInput.value = entry.remaining_claims === null || entry.remaining_claims === undefined ? '0' : String(entry.remaining_claims);
         setWarrantyEditorMode(true, entry);
-        document.getElementById('warrantyEmail')?.focus();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        showModal('warrantyEmailEditorModal');
+        requestAnimationFrame(() => document.getElementById('warrantyEmail')?.focus());
     }
 
     document.getElementById('warrantyEmailForm').addEventListener('submit', async (e) => {

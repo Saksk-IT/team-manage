@@ -88,6 +88,10 @@ class AdminTeamRefreshRecordsPageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("刷新失败", html)
         self.assertIn("Token 已过期", html)
         self.assertIn("自动清理：1", html)
+        self.assertIn("刷新总数", html)
+        self.assertIn("刷新成功", html)
+        self.assertIn("刷新失败", html)
+        self.assertIn("含自动清理", html)
         self.assertIn("数据来源", html)
 
 

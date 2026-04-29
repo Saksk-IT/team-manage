@@ -94,6 +94,9 @@ class AdminWarrantyClaimRecordsPageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Before Warranty Team", html)
         self.assertIn("After Warranty Team", html)
         self.assertIn("质保成功", html)
+        self.assertIn("提交总数", html)
+        self.assertIn("质保失败", html)
+        self.assertIn("今日提交", html)
         self.assertIn("搜索邮箱、Team、Account ID、失败原因", html)
 
     async def test_warranty_claim_records_page_repairs_legacy_before_team_display(self):

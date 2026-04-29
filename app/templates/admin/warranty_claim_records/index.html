@@ -7,6 +7,38 @@
     <h2>质保提交记录</h2>
 </div>
 
+<!-- 统计卡片 -->
+<div class="stats-container">
+    <div class="stat-card">
+        <div class="stat-icon"><i data-lucide="clipboard-list"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.total }}</div>
+            <div class="stat-label">提交总数</div>
+        </div>
+    </div>
+    <div class="stat-card stat-success">
+        <div class="stat-icon"><i data-lucide="check-circle"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.success }}</div>
+            <div class="stat-label">质保成功</div>
+        </div>
+    </div>
+    <div class="stat-card stat-warning">
+        <div class="stat-icon"><i data-lucide="x-circle"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.failed }}</div>
+            <div class="stat-label">质保失败</div>
+        </div>
+    </div>
+    <div class="stat-card stat-info">
+        <div class="stat-icon"><i data-lucide="calendar-days"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.today }}</div>
+            <div class="stat-label">今日提交</div>
+        </div>
+    </div>
+</div>
+
 <div class="content-section sticky-toolbar-section">
     <div class="section-header">
         <h3>搜索筛选</h3>

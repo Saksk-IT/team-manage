@@ -164,6 +164,10 @@ class EmailWhitelistTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('name="source_filter"', html)
         self.assertIn('href="/admin/email-whitelist"', html)
         self.assertIn("一键同步质保邮箱列表", html)
+        self.assertIn("总白名单", html)
+        self.assertIn("启用保护", html)
+        self.assertIn("whitelistEditorModal", html)
+        self.assertIn("openWhitelistCreateModal", html)
         self.assertIn("function syncWhitelistFromWarrantyEmails()", html)
         self.assertIn("/admin/email-whitelist/sync-warranty-emails", html)
 

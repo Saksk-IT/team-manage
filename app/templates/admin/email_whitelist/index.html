@@ -4,39 +4,45 @@
 
 {% block content %}
 <div class="page-header">
-    <h2>邮箱白名单</h2>
-    <p class="page-subtitle">白名单账号不会被系统自动清理机制移除；可一键同步为仅保留质保邮箱列表有效账号。</p>
+    <div class="page-title-stack">
+        <h2>邮箱白名单</h2>
+        <p class="page-subtitle">白名单账号不会被系统自动清理机制移除；可一键同步为仅保留质保邮箱列表有效账号。</p>
+    </div>
+    <button type="button" class="btn btn-primary" onclick="openWhitelistCreateModal()">
+        <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 新增白名单
+    </button>
 </div>
 
-<div class="content-section" id="whitelistEditorCard">
-    <div class="section-header">
-        <h3 id="whitelistEditorTitle">新增 / 编辑白名单账号</h3>
+<!-- 统计卡片 -->
+<div class="stats-container">
+    <div class="stat-card">
+        <div class="stat-icon"><i data-lucide="shield-check"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.total }}</div>
+            <div class="stat-label">总白名单</div>
+        </div>
     </div>
-
-    <form id="whitelistForm" class="settings-form">
-        <input type="hidden" id="whitelistEntryId" value="">
-        <div id="whitelistEditorNotice" class="editor-notice" style="display: none;"></div>
-        <div class="form-group">
-            <label for="whitelistEmail">邮箱</label>
-            <input type="email" id="whitelistEmail" class="form-control" placeholder="user@example.com" required>
+    <div class="stat-card stat-success">
+        <div class="stat-icon"><i data-lucide="check-circle"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.active }}</div>
+            <div class="stat-label">启用保护</div>
         </div>
-        <div class="form-group">
-            <label for="whitelistIsActive">白名单状态</label>
-            <select id="whitelistIsActive" class="form-control">
-                <option value="true">启用</option>
-                <option value="false">停用</option>
-            </select>
-            <p class="form-help">停用后不会保护该邮箱；如果该邮箱仍来自控制台 Team 兑换绑定或质保邮箱列表，系统会自动重新启用。</p>
+    </div>
+    <div class="stat-card stat-warning">
+        <div class="stat-icon"><i data-lucide="pause-circle"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.inactive }}</div>
+            <div class="stat-label">已停用</div>
         </div>
-        <div class="form-group">
-            <label for="whitelistNote">备注</label>
-            <input type="text" id="whitelistNote" class="form-control" maxlength="500" placeholder="可选，例如手动拉入、客服备注">
+    </div>
+    <div class="stat-card stat-info">
+        <div class="stat-icon"><i data-lucide="user-cog"></i></div>
+        <div class="stat-info-group">
+            <div class="stat-value">{{ stats.manual }}</div>
+            <div class="stat-label">手动来源</div>
         </div>
-        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-            <button type="submit" class="btn btn-primary" id="whitelistSubmitBtn">保存白名单</button>
-            <button type="button" class="btn btn-secondary" onclick="resetWhitelistForm()">清空表单</button>
-        </div>
-    </form>
+    </div>
 </div>
 
 <div class="content-section">
@@ -125,6 +131,41 @@
         </table>
     </div>
 </div>
+
+<div id="whitelistEditorModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="whitelistEditorTitle">新增白名单账号</h3>
+            <button class="modal-close" type="button" onclick="closeWhitelistEditorModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="whitelistForm" class="settings-form">
+                <input type="hidden" id="whitelistEntryId" value="">
+                <div id="whitelistEditorNotice" class="editor-notice" style="display: none;"></div>
+                <div class="form-group">
+                    <label for="whitelistEmail">邮箱</label>
+                    <input type="email" id="whitelistEmail" class="form-control" placeholder="user@example.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="whitelistIsActive">白名单状态</label>
+                    <select id="whitelistIsActive" class="form-control">
+                        <option value="true">启用</option>
+                        <option value="false">停用</option>
+                    </select>
+                    <p class="form-help">停用后不会保护该邮箱；如果该邮箱仍来自控制台 Team 兑换绑定或质保邮箱列表，系统会自动重新启用。</p>
+                </div>
+                <div class="form-group">
+                    <label for="whitelistNote">备注</label>
+                    <input type="text" id="whitelistNote" class="form-control" maxlength="500" placeholder="可选，例如手动拉入、客服备注">
+                </div>
+                <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                    <button type="submit" class="btn btn-primary" id="whitelistSubmitBtn">保存白名单</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeWhitelistEditorModal()">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_css %}
@@ -133,6 +174,10 @@
         margin: 0.35rem 0 0;
         color: var(--text-muted);
         font-size: 0.9rem;
+    }
+
+    .page-title-stack {
+        min-width: 0;
     }
 
     .form-help {
@@ -208,6 +253,15 @@
         .whitelist-list-header .btn {
             width: 100%;
         }
+
+        .page-header {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .page-header .btn {
+            width: 100%;
+        }
     }
 </style>
 {% endblock %}
@@ -215,7 +269,6 @@
 {% block extra_js %}
 <script>
     function setWhitelistEditorMode(isEditing, entry = null) {
-        const card = document.getElementById('whitelistEditorCard');
         const title = document.getElementById('whitelistEditorTitle');
         const notice = document.getElementById('whitelistEditorNotice');
         const submitBtn = document.getElementById('whitelistSubmitBtn');
@@ -235,9 +288,6 @@
                 notice.textContent = '';
             }
         }
-        if (card) {
-            card.classList.toggle('editor-active', Boolean(isEditing));
-        }
     }
 
     function resetWhitelistForm() {
@@ -248,14 +298,25 @@
         setWhitelistEditorMode(false);
     }
 
+    function openWhitelistCreateModal() {
+        resetWhitelistForm();
+        showModal('whitelistEditorModal');
+        requestAnimationFrame(() => document.getElementById('whitelistEmail')?.focus());
+    }
+
+    function closeWhitelistEditorModal() {
+        hideModal('whitelistEditorModal');
+        resetWhitelistForm();
+    }
+
     function fillWhitelistForm(entry) {
         document.getElementById('whitelistEntryId').value = entry.id || '';
         document.getElementById('whitelistEmail').value = entry.email || '';
         document.getElementById('whitelistIsActive').value = entry.is_active ? 'true' : 'false';
         document.getElementById('whitelistNote').value = entry.note || '';
         setWhitelistEditorMode(true, entry);
-        document.getElementById('whitelistEmail')?.focus();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        showModal('whitelistEditorModal');
+        requestAnimationFrame(() => document.getElementById('whitelistEmail')?.focus());
     }
 
     document.getElementById('whitelistForm').addEventListener('submit', async (event) => {
