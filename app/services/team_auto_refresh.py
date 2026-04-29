@@ -22,6 +22,10 @@ from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
 
+TEAM_AUTO_REFRESH_DUE_BATCH_SIZE = 20
+TEAM_AUTO_REFRESH_CONCURRENCY = 5
+TEAM_AUTO_REFRESH_CATCH_UP_DELAY_MINUTES = 1
+
 
 class TeamAutoRefreshService:
     """后台 Team 自动刷新服务"""
@@ -153,23 +157,30 @@ class TeamAutoRefreshService:
         now = get_now()
         async with AsyncSessionLocal() as session:
             stmt = (
-                select(Team.last_refresh_at)
+                select(Team.id, Team.last_refresh_at)
                 .where(Team.status != "banned")
                 .where(Team.import_status == IMPORT_STATUS_CLASSIFIED)
-                .where(Team.last_refresh_at.is_not(None))
-                .order_by(Team.last_refresh_at.asc(), Team.id.asc())
+                .order_by(
+                    case((Team.last_refresh_at.is_(None), 0), else_=1).asc(),
+                    Team.last_refresh_at.asc(),
+                    Team.id.asc(),
+                )
                 .limit(1)
             )
             result = await session.execute(stmt)
-            oldest_refresh_at = result.scalar_one_or_none()
+            oldest_row = result.first()
 
-        if not oldest_refresh_at:
+        if not oldest_row:
             return interval_minutes
+
+        oldest_refresh_at = oldest_row.last_refresh_at
+        if not oldest_refresh_at:
+            return TEAM_AUTO_REFRESH_CATCH_UP_DELAY_MINUTES
 
         next_due_at = oldest_refresh_at + timedelta(minutes=max(int(interval_minutes or 1), 1))
         delay_seconds = (next_due_at - now).total_seconds()
         if delay_seconds <= 0:
-            return 1
+            return TEAM_AUTO_REFRESH_CATCH_UP_DELAY_MINUTES
         return min(
             max(math.ceil(delay_seconds / 60), 1),
             max(int(interval_minutes or 1), 1),
@@ -213,6 +224,57 @@ class TeamAutoRefreshService:
                 record_error,
             )
 
+    async def _refresh_one_due_team(self, team_id: int) -> Optional[bool]:
+        """刷新单个到期 Team；True=成功，False=失败，None=停止前跳过。"""
+        if self._stop_event and self._stop_event.is_set():
+            logger.info("Team 自动刷新收到停止信号，跳过 Team %s", team_id)
+            return None
+
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await team_service.refresh_team_state(
+                    team_id,
+                    session,
+                    force_refresh=False,
+                    source=SOURCE_AUTO,
+                )
+                await session.commit()
+
+            if result.get("success"):
+                return True
+
+            logger.warning(
+                "自动刷新 Team %s 失败: %s",
+                team_id,
+                result.get("error") or "未知错误"
+            )
+            return False
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception("自动刷新 Team %s 异常: %s", team_id, exc)
+            await self._record_unhandled_refresh_failure(team_id, exc)
+            return False
+
+    async def _refresh_due_team_batch(self, team_ids: List[int]) -> tuple[int, int]:
+        """按固定并发数刷新一批到期 Team。"""
+        concurrency = min(
+            max(int(TEAM_AUTO_REFRESH_CONCURRENCY), 1),
+            max(len(team_ids), 1),
+        )
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def refresh_with_limit(team_id: int) -> Optional[bool]:
+            async with semaphore:
+                return await self._refresh_one_due_team(team_id)
+
+        results = await asyncio.gather(
+            *(refresh_with_limit(team_id) for team_id in team_ids)
+        )
+        success_count = sum(1 for result in results if result is True)
+        failed_count = sum(1 for result in results if result is False)
+        return success_count, failed_count
+
     async def run_once(self) -> int:
         """
         执行一轮自动刷新。
@@ -230,7 +292,7 @@ class TeamAutoRefreshService:
 
             team_ids = await self._get_refreshable_team_ids(
                 interval_minutes=interval_minutes,
-                limit=1,
+                limit=TEAM_AUTO_REFRESH_DUE_BATCH_SIZE,
             )
             if not team_ids:
                 next_delay_minutes = await self._get_next_due_delay_minutes(
@@ -243,51 +305,20 @@ class TeamAutoRefreshService:
                 return next_delay_minutes
 
             logger.info(
-                "开始自动刷新到期 Team 状态: 本轮 %s 个账号，间隔 %s 分钟",
+                "开始自动刷新到期 Team 状态: 本轮最多 %s 个账号，并发 %s，间隔 %s 分钟",
                 len(team_ids),
+                min(TEAM_AUTO_REFRESH_CONCURRENCY, len(team_ids)),
                 interval_minutes
             )
 
-            success_count = 0
-            failed_count = 0
-
-            for team_id in team_ids:
-                if self._stop_event and self._stop_event.is_set():
-                    logger.info("Team 自动刷新收到停止信号，中断当前轮次")
-                    break
-
-                try:
-                    async with AsyncSessionLocal() as session:
-                        result = await team_service.refresh_team_state(
-                            team_id,
-                            session,
-                            force_refresh=False,
-                            source=SOURCE_AUTO,
-                        )
-                        await session.commit()
-
-                    if result.get("success"):
-                        success_count += 1
-                    else:
-                        failed_count += 1
-                        logger.warning(
-                            "自动刷新 Team %s 失败: %s",
-                            team_id,
-                            result.get("error") or "未知错误"
-                        )
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    failed_count += 1
-                    logger.exception("自动刷新 Team %s 异常: %s", team_id, exc)
-                    await self._record_unhandled_refresh_failure(team_id, exc)
+            success_count, failed_count = await self._refresh_due_team_batch(team_ids)
 
             logger.info(
                 "自动刷新 Team 轮次完成: 成功 %s，失败 %s",
                 success_count,
                 failed_count
             )
-            return interval_minutes
+            return await self._get_next_due_delay_minutes(interval_minutes=interval_minutes)
 
 
 team_auto_refresh_service = TeamAutoRefreshService()

@@ -13,7 +13,11 @@ from app.database import Base
 from app.models import Team, TeamRefreshRecord
 from app.services.settings import settings_service
 from app.services.team import TeamService
-from app.services.team_auto_refresh import TeamAutoRefreshService
+from app.services.team_auto_refresh import (
+    TEAM_AUTO_REFRESH_CONCURRENCY,
+    TEAM_AUTO_REFRESH_DUE_BATCH_SIZE,
+    TeamAutoRefreshService,
+)
 from app.utils.time_utils import get_now
 
 
@@ -47,7 +51,7 @@ class TeamAutoRefreshServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(should_continue)
         self.assertLess(elapsed, 0.5)
 
-    async def test_run_once_syncs_only_one_due_team_when_enabled(self):
+    async def test_run_once_syncs_due_team_batch_when_enabled(self):
         service = TeamAutoRefreshService()
         fake_sessions = []
 
@@ -65,8 +69,13 @@ class TeamAutoRefreshServiceTests(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 service,
                 "_get_refreshable_team_ids",
-                new=AsyncMock(return_value=[11])
+                new=AsyncMock(return_value=[11, 12])
             ) as mocked_ids,
+            patch.object(
+                service,
+                "_get_next_due_delay_minutes",
+                new=AsyncMock(return_value=1)
+            ) as mocked_next_delay,
             patch("app.services.team_auto_refresh.AsyncSessionLocal", side_effect=session_factory),
             patch(
                 "app.services.team_auto_refresh.team_service.refresh_team_state",
@@ -75,14 +84,71 @@ class TeamAutoRefreshServiceTests(unittest.IsolatedAsyncioTestCase):
         ):
             interval = await service.run_once()
 
-        self.assertEqual(interval, 5)
-        mocked_ids.assert_awaited_once_with(interval_minutes=5, limit=1)
-        self.assertEqual(len(fake_sessions), 1)
+        self.assertEqual(interval, 1)
+        mocked_ids.assert_awaited_once_with(
+            interval_minutes=5,
+            limit=TEAM_AUTO_REFRESH_DUE_BATCH_SIZE,
+        )
+        mocked_next_delay.assert_awaited_once_with(interval_minutes=5)
+        self.assertEqual(len(fake_sessions), 2)
         fake_sessions[0].commit.assert_awaited_once()
-        self.assertEqual(mocked_refresh.await_count, 1)
+        fake_sessions[1].commit.assert_awaited_once()
+        self.assertEqual(mocked_refresh.await_count, 2)
         self.assertEqual(mocked_refresh.await_args_list[0].args[0], 11)
+        self.assertEqual(mocked_refresh.await_args_list[1].args[0], 12)
         self.assertFalse(mocked_refresh.await_args_list[0].kwargs["force_refresh"])
         self.assertEqual(mocked_refresh.await_args_list[0].kwargs["source"], "auto")
+
+    async def test_run_once_refreshes_due_teams_with_bounded_concurrency(self):
+        service = TeamAutoRefreshService()
+        fake_sessions = []
+        in_flight = 0
+        max_in_flight = 0
+
+        def session_factory():
+            session = AsyncMock()
+            fake_sessions.append(session)
+            return FakeSessionContext(session)
+
+        async def fake_refresh(*args, **kwargs):
+            nonlocal in_flight, max_in_flight
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+            try:
+                await asyncio.sleep(0.02)
+                return {"success": True, "message": "同步成功", "error": None}
+            finally:
+                in_flight -= 1
+
+        with (
+            patch.object(
+                service,
+                "_get_runtime_config",
+                new=AsyncMock(return_value={"enabled": True, "interval_minutes": 5})
+            ),
+            patch.object(
+                service,
+                "_get_refreshable_team_ids",
+                new=AsyncMock(return_value=[11, 12, 13, 14, 15, 16])
+            ),
+            patch.object(
+                service,
+                "_get_next_due_delay_minutes",
+                new=AsyncMock(return_value=1)
+            ),
+            patch("app.services.team_auto_refresh.AsyncSessionLocal", side_effect=session_factory),
+            patch(
+                "app.services.team_auto_refresh.team_service.refresh_team_state",
+                new=AsyncMock(side_effect=fake_refresh)
+            ) as mocked_refresh,
+        ):
+            interval = await service.run_once()
+
+        self.assertEqual(interval, 1)
+        self.assertEqual(mocked_refresh.await_count, 6)
+        self.assertEqual(len(fake_sessions), 6)
+        self.assertGreater(max_in_flight, 1)
+        self.assertLessEqual(max_in_flight, TEAM_AUTO_REFRESH_CONCURRENCY)
 
     async def test_run_once_skips_sync_when_disabled(self):
         service = TeamAutoRefreshService()
@@ -211,6 +277,41 @@ class TeamAutoRefreshServiceTests(unittest.IsolatedAsyncioTestCase):
                 )
 
             self.assertEqual(refreshable_ids, [never_id])
+        finally:
+            await engine.dispose()
+            if os.path.exists(db_path):
+                os.remove(db_path)
+
+    async def test_get_next_due_delay_returns_catch_up_delay_for_never_refreshed_team(self):
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", future=True)
+        Session = async_sessionmaker(engine, expire_on_commit=False)
+
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+
+            async with Session() as session:
+                session.add(
+                    Team(
+                        email="never-next@example.com",
+                        access_token_encrypted="enc-never-next",
+                        account_id="acc-never-next",
+                        team_type="standard",
+                        status="active",
+                        current_members=1,
+                        max_members=5,
+                        last_refresh_at=None,
+                    )
+                )
+                await session.commit()
+
+            service = TeamAutoRefreshService()
+            with patch("app.services.team_auto_refresh.AsyncSessionLocal", Session):
+                next_delay = await service._get_next_due_delay_minutes(interval_minutes=30)
+
+            self.assertEqual(next_delay, 1)
         finally:
             await engine.dispose()
             if os.path.exists(db_path):
