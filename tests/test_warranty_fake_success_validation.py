@@ -124,7 +124,7 @@ class WarrantyFakeSuccessValidationTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result["success"])
         self.assertEqual(result["error"], "该邮箱质保资格未启用")
 
-    async def test_validate_warranty_claim_input_requires_latest_team_banned(self):
+    async def test_validate_warranty_claim_input_allows_active_latest_team_when_entry_valid(self):
         async with self.Session() as session:
             session.add(
                 WarrantyEmailEntry(
@@ -148,8 +148,7 @@ class WarrantyFakeSuccessValidationTests(unittest.IsolatedAsyncioTestCase):
                 require_latest_team_banned=True
             )
 
-        self.assertFalse(result["success"])
-        self.assertEqual(result["error"], "该邮箱最近加入的 Team 当前状态为「正常」，仅封禁后可提交质保")
+        self.assertTrue(result["success"])
 
 
 if __name__ == "__main__":

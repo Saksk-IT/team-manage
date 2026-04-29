@@ -139,6 +139,12 @@ class RedemptionBoundEmailLookupTests(unittest.IsolatedAsyncioTestCase):
                     remaining_claims=10,
                     source="auto_redeem",
                     last_redeem_code=code.code,
+                ),
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=2,
+                    source="manual",
+                    last_redeem_code="MANUAL-ORDER-KEEP",
                 )
             ])
             await session.commit()
@@ -152,10 +158,11 @@ class RedemptionBoundEmailLookupTests(unittest.IsolatedAsyncioTestCase):
             warranty_result = await session.execute(
                 select(WarrantyEmailEntry).where(WarrantyEmailEntry.email == "buyer@example.com")
             )
-            warranty_entry = warranty_result.scalar_one_or_none()
+            warranty_entries = warranty_result.scalars().all()
 
         self.assertTrue(result["success"])
-        self.assertIsNone(warranty_entry)
+        self.assertEqual(len(warranty_entries), 1)
+        self.assertEqual(warranty_entries[0].last_redeem_code, "MANUAL-ORDER-KEEP")
 
     async def test_withdraw_record_keeps_warranty_email_entry_for_non_warranty_code(self):
         async with self.Session() as session:

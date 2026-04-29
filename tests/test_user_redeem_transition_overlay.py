@@ -73,8 +73,10 @@ class UserRedeemTransitionOverlayTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("data?.warranty_orders", script)
         self.assertIn("warranty-order-claim-btn", script)
-        self.assertIn("submitWarrantyClaim(email, button.dataset.code || null, button)", script)
+        self.assertIn("data-entry-id", script)
+        self.assertIn("submitWarrantyClaim(email, button.dataset.code || null, button, button.dataset.entryId || null)", script)
         self.assertIn("...(code ? { code } : {})", script)
+        self.assertIn("...(entryId ? { entry_id: Number(entryId) } : {})", script)
 
     def test_redeem_js_normalizes_non_banned_warranty_order_status(self):
         script = Path("app/static/js/redeem.js").read_text(encoding="utf-8")

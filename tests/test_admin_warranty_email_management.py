@@ -128,7 +128,7 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("other@example.com", html)
         self.assertIn('placeholder="搜索邮箱或兑换码"', html)
 
-    async def test_warranty_emails_page_supports_search_by_historical_redeem_code(self):
+    async def test_warranty_emails_page_searches_only_list_order_code(self):
         async with self.Session() as session:
             session.add_all(
                 [
@@ -146,27 +146,13 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
                         source="manual",
                         last_redeem_code="OTHER-456"
                     ),
-                    RedemptionCode(
-                        code="HISTORY-123",
-                        status="used",
-                        has_warranty=True,
-                        used_by_email="buyer@example.com",
-                        used_at=get_now(),
-                    ),
-                    RedemptionRecord(
-                        email="buyer@example.com",
-                        code="HISTORY-123",
-                        team_id=1,
-                        account_id="account-1",
-                        redeemed_at=get_now(),
-                    ),
                 ]
             )
             await session.commit()
 
             response = await warranty_emails_page(
                 request=self._build_request(),
-                search="HISTORY-123",
+                search="LATEST-999",
                 db=session,
                 current_user={"username": "admin"}
             )
@@ -201,7 +187,14 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
             session.add_all([
                 WarrantyEmailEntry(
                     email="buyer@example.com",
-                    remaining_claims=10,
+                    remaining_claims=3,
+                    expires_at=now + timedelta(days=30),
+                    source="auto_redeem",
+                    last_redeem_code="CODE-A"
+                ),
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=1,
                     expires_at=now + timedelta(days=30),
                     source="auto_redeem",
                     last_redeem_code="CODE-B"
@@ -576,13 +569,13 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["success"])
         self.assertEqual(payload["entry"]["last_redeem_code"], "CODE-A")
-        self.assertEqual(refreshed_code_a.warranty_claims, 6)
-        self.assertEqual(warranty_service._calculate_remaining_days(refreshed_code_a.warranty_expires_at), 8)
+        self.assertEqual(refreshed_code_a.warranty_claims, 3)
+        self.assertIsNone(refreshed_code_a.warranty_expires_at)
         self.assertEqual(refreshed_code_b.warranty_claims, 2)
         self.assertIsNone(refreshed_code_b.warranty_expires_at)
         self.assertEqual(entries_by_code["CODE-A"]["remaining_claims"], 5)
         self.assertEqual(entries_by_code["CODE-A"]["remaining_days"], 8)
-        self.assertEqual(entries_by_code["CODE-B"]["remaining_claims"], 2)
+        self.assertNotIn("CODE-B", entries_by_code)
 
 
 if __name__ == "__main__":

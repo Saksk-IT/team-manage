@@ -26,6 +26,7 @@ from app.services.invite_queue import (
     InviteQueueService,
 )
 from app.services.team import TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY
+from app.services.warranty import WarrantyService
 from app.utils.time_utils import get_now
 
 
@@ -419,7 +420,7 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_warranty_submission_is_idempotent_by_email_and_code(self):
         service = InviteQueueService()
 
-        async def fake_validate(db_session, email, require_latest_team_banned=False, code=None):
+        async def fake_validate(db_session, email, require_latest_team_banned=False, code=None, entry_id=None):
             return {
                 "success": True,
                 "normalized_email": email,
@@ -469,6 +470,43 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(job_count, 2)
         self.assertEqual([job.code for job in jobs], ["CODE-A", "CODE-B"])
         self.assertEqual(len({job.team_id for job in jobs}), 2)
+
+    async def test_warranty_submission_accepts_list_backed_code_without_usage_record(self):
+        service = InviteQueueService()
+        service.warranty_service = WarrantyService()
+
+        async with self.Session() as session:
+            session.add_all([
+                Team(
+                    email="owner@example.com",
+                    access_token_encrypted="dummy",
+                    account_id="acc-1",
+                    team_type=TEAM_TYPE_STANDARD,
+                    team_name="Team 1",
+                    status="active",
+                    current_members=1,
+                    reserved_members=0,
+                    max_members=3,
+                ),
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=5),
+                    source="manual",
+                    last_redeem_code="LIST-CODE",
+                ),
+            ])
+            await session.commit()
+
+            result = await service.submit_warranty_job(
+                session,
+                "buyer@example.com",
+                code="LIST-CODE",
+            )
+            job = await session.scalar(select(InviteJob).where(InviteJob.email == "buyer@example.com"))
+
+        self.assertTrue(result["success"])
+        self.assertEqual(job.code, "LIST-CODE")
 
     async def test_warranty_processing_records_before_team_before_success_record(self):
         service = InviteQueueService()

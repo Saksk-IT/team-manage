@@ -190,6 +190,7 @@ class InviteQueueService:
         db_session: AsyncSession,
         email: str,
         code: Optional[str] = None,
+        entry_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         submitted_at = get_now()
         normalized_email = self._normalize_email(email)
@@ -199,15 +200,12 @@ class InviteQueueService:
 
         async with self._submit_lock:
             try:
-                existing_job = await self._find_active_warranty_job(db_session, normalized_email, normalized_code or None)
-                if existing_job:
-                    return self.serialize_job(existing_job)
-
                 validation_result = await self.warranty_service.validate_warranty_claim_input(
                     db_session=db_session,
                     email=normalized_email,
-                    require_latest_team_banned=True,
+                    require_latest_team_banned=False,
                     code=normalized_code or None,
+                    entry_id=entry_id,
                 )
                 if not validation_result.get("success"):
                     await self.warranty_service._record_warranty_claim_result(
@@ -219,6 +217,27 @@ class InviteQueueService:
                         failure_reason=validation_result.get("error"),
                     )
                     return validation_result
+
+                warranty_entry: Optional[WarrantyEmailEntry] = validation_result.get("warranty_entry")
+                selected_code = (
+                    validation_result.get("warranty_code")
+                    or (warranty_entry.last_redeem_code if warranty_entry else None)
+                    or normalized_code
+                )
+                selected_entry_id = (
+                    int(getattr(warranty_entry, "id"))
+                    if warranty_entry and getattr(warranty_entry, "id", None)
+                    else None
+                )
+
+                existing_job = await self._find_active_warranty_job(
+                    db_session,
+                    normalized_email,
+                    selected_code or normalized_code or None,
+                    entry_id=selected_entry_id,
+                )
+                if existing_job:
+                    return self.serialize_job(existing_job)
 
                 email_team_ids = await self._get_warranty_email_team_ids(db_session, normalized_email)
                 team = await self._reserve_next_available_team(db_session, email_team_ids)
@@ -234,19 +253,14 @@ class InviteQueueService:
                     )
                     return {"success": False, "error": "当前没有可用的不同 Team，请稍后再试"}
 
-                warranty_entry: Optional[WarrantyEmailEntry] = validation_result.get("warranty_entry")
-                selected_code = (
-                    validation_result.get("warranty_code")
-                    or (warranty_entry.last_redeem_code if warranty_entry else None)
-                    or normalized_code
-                )
                 job = InviteJob(
                     job_type=JOB_TYPE_WARRANTY,
                     status=JOB_STATUS_QUEUED,
                     email=normalized_email,
                     code=selected_code,
+                    warranty_entry_id=selected_entry_id,
                     team_id=team.id,
-                    idempotency_key=f"{JOB_TYPE_WARRANTY}:{normalized_email}:{selected_code or 'legacy'}",
+                    idempotency_key=f"{JOB_TYPE_WARRANTY}:{normalized_email}:entry:{selected_entry_id or selected_code or 'legacy'}",
                     max_attempts=self._get_default_max_attempts(),
                     reservation_released=False,
                     created_at=submitted_at,
@@ -620,27 +634,22 @@ class InviteQueueService:
         db_session: AsyncSession,
         job: InviteJob,
     ) -> Optional[Dict[str, Any]]:
-        warranty_entry = await self.warranty_service.get_warranty_email_entry(db_session, job.email)
+        warranty_entry = await self.warranty_service.get_warranty_email_entry_by_id(
+            db_session,
+            job.warranty_entry_id,
+            email=job.email,
+        )
+        if not warranty_entry:
+            warranty_entry = await self.warranty_service.find_warranty_email_entry_for_order(
+                db_session,
+                job.email,
+                code=job.code,
+            )
         selected_code = (job.code or "").strip()
         if not warranty_entry and not selected_code:
             return None
 
-        if selected_code:
-            existing_team = await self.warranty_service._find_existing_warranty_team_from_records(
-                db_session,
-                selected_code,
-                job.email,
-            )
-        else:
-            existing_team = await self.warranty_service._find_existing_warranty_team_from_entry(db_session, warranty_entry)
-            if not existing_team:
-                existing_team = await self.warranty_service._find_existing_full_warranty_team_for_email_from_records(
-                    db_session,
-                    job.email,
-                )
-            if not existing_team:
-                return None
-
+        existing_team = await self.warranty_service._find_existing_warranty_team_from_entry(db_session, warranty_entry)
         if not existing_team:
             return None
 
@@ -683,7 +692,17 @@ class InviteQueueService:
         team: Team,
     ) -> Dict[str, Any]:
         if job.job_type == JOB_TYPE_WARRANTY:
-            warranty_entry = await self.warranty_service.get_warranty_email_entry(db_session, job.email)
+            warranty_entry = await self.warranty_service.get_warranty_email_entry_by_id(
+                db_session,
+                job.warranty_entry_id,
+                email=job.email,
+            )
+            if not warranty_entry:
+                warranty_entry = await self.warranty_service.find_warranty_email_entry_for_order(
+                    db_session,
+                    job.email,
+                    code=job.code,
+                )
             selected_code = (job.code or "").strip()
             if not warranty_entry and not selected_code:
                 return {"success": False, "error": "质保邮箱记录不存在"}
@@ -911,12 +930,21 @@ class InviteQueueService:
         db_session: AsyncSession,
         email: str,
         code: Optional[str] = None,
+        entry_id: Optional[int] = None,
     ) -> Optional[InviteJob]:
         stmt = select(InviteJob).where(
             InviteJob.job_type == JOB_TYPE_WARRANTY,
             InviteJob.email == email,
             InviteJob.status.in_(ACTIVE_JOB_STATUSES),
         )
+        try:
+            safe_entry_id = int(entry_id or 0)
+        except (TypeError, ValueError):
+            safe_entry_id = 0
+        if safe_entry_id > 0:
+            stmt = stmt.where(InviteJob.warranty_entry_id == safe_entry_id)
+        else:
+            stmt = stmt.where(InviteJob.warranty_entry_id.is_(None))
         normalized_code = (code or "").strip()
         if normalized_code:
             stmt = stmt.where(InviteJob.code == normalized_code)

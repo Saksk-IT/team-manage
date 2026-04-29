@@ -176,6 +176,7 @@ class InviteJob(Base):
     status = Column(String(20), nullable=False, default="queued", comment="状态: queued/processing/success/failed")
     email = Column(String(255), nullable=False, comment="用户邮箱（统一小写）")
     code = Column(String(32), comment="兑换码；质保任务为最近普通兑换码")
+    warranty_entry_id = Column(Integer, ForeignKey("warranty_email_entries.id"), comment="质保邮箱列表订单 ID")
     team_id = Column(Integer, ForeignKey("teams.id"), comment="当前预占/处理的 Team ID")
     idempotency_key = Column(String(255), nullable=False, comment="幂等键")
     attempt_count = Column(Integer, default=0, nullable=False, comment="处理尝试次数")
@@ -192,6 +193,7 @@ class InviteJob(Base):
         Index("idx_invite_jobs_status_created_at", "status", "created_at"),
         Index("idx_invite_jobs_type_email", "job_type", "email"),
         Index("idx_invite_jobs_code", "code"),
+        Index("idx_invite_jobs_warranty_entry", "warranty_entry_id"),
         Index("idx_invite_jobs_team_status", "team_id", "status"),
         Index("idx_invite_jobs_idempotency", "idempotency_key"),
     )
@@ -219,7 +221,7 @@ class WarrantyEmailEntry(Base):
     __tablename__ = "warranty_email_entries"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    email = Column(String(255), unique=True, nullable=False, comment="质保邮箱（统一小写）")
+    email = Column(String(255), nullable=False, comment="质保邮箱（统一小写）")
     remaining_claims = Column(Integer, default=0, nullable=False, comment="剩余质保次数")
     expires_at = Column(DateTime, comment="质保资格到期时间")
     source = Column(String(20), nullable=False, default="auto_redeem", comment="来源: auto_redeem/manual")
@@ -229,6 +231,7 @@ class WarrantyEmailEntry(Base):
     updated_at = Column(DateTime, default=get_now, onupdate=get_now, comment="更新时间")
 
     __table_args__ = (
+        Index("idx_warranty_email_entries_email", "email"),
         Index("idx_warranty_email_entries_expires_at", "expires_at"),
         Index("idx_warranty_email_entries_source", "source"),
     )

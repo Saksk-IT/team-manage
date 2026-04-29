@@ -91,6 +91,7 @@ class EnableDeviceAuthRequest(BaseModel):
 class WarrantyClaimRequest(BaseModel):
     email: EmailStr
     code: Optional[str] = None
+    entry_id: Optional[int] = Field(None, gt=0)
 
 
 @router.post("/claim")
@@ -102,7 +103,8 @@ async def claim_warranty(
     result = await invite_queue_service.submit_warranty_job(
         db_session=db_session,
         email=request.email,
-        code=request.code
+        code=request.code,
+        entry_id=request.entry_id
     )
 
     if not result.get("success"):
@@ -146,8 +148,9 @@ async def validate_fake_warranty_success(
     result = await warranty_service.validate_warranty_claim_input(
         db_session=db_session,
         email=request.email,
-        require_latest_team_banned=True,
-        code=request.code
+        require_latest_team_banned=False,
+        code=request.code,
+        entry_id=request.entry_id
     )
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error") or "校验失败")

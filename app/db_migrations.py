@@ -34,6 +34,84 @@ def table_exists(cursor, table_name):
     return cursor.fetchone() is not None
 
 
+def _index_columns(cursor, index_name: str) -> list[str]:
+    cursor.execute(f"PRAGMA index_info({index_name})")
+    return [row[2] for row in cursor.fetchall()]
+
+
+def migrate_warranty_email_entries_duplicate_emails(cursor) -> list[str]:
+    """质保邮箱列表升级为订单列表：允许同一邮箱存在多条来源/订单。"""
+    if not table_exists(cursor, "warranty_email_entries"):
+        return []
+
+    cursor.execute("PRAGMA index_list(warranty_email_entries)")
+    unique_email_indexes = [
+        row[1]
+        for row in cursor.fetchall()
+        if row[2] and _index_columns(cursor, row[1]) == ["email"]
+    ]
+
+    migrations: list[str] = []
+    if unique_email_indexes:
+        logger.info("重建 warranty_email_entries 表，移除 email 唯一约束")
+        cursor.execute("PRAGMA foreign_keys=OFF")
+        cursor.execute("""
+            CREATE TABLE warranty_email_entries_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email VARCHAR(255) NOT NULL,
+                remaining_claims INTEGER NOT NULL DEFAULT 0,
+                expires_at DATETIME,
+                source VARCHAR(20) NOT NULL DEFAULT 'auto_redeem',
+                last_redeem_code VARCHAR(32),
+                last_warranty_team_id INTEGER,
+                created_at DATETIME,
+                updated_at DATETIME,
+                FOREIGN KEY(last_redeem_code) REFERENCES redemption_codes(code),
+                FOREIGN KEY(last_warranty_team_id) REFERENCES teams(id)
+            )
+        """)
+        cursor.execute("""
+            INSERT INTO warranty_email_entries_new (
+                id, email, remaining_claims, expires_at, source,
+                last_redeem_code, last_warranty_team_id, created_at, updated_at
+            )
+            SELECT
+                id,
+                LOWER(TRIM(email)),
+                COALESCE(remaining_claims, 0),
+                expires_at,
+                COALESCE(NULLIF(TRIM(source), ''), 'auto_redeem'),
+                last_redeem_code,
+                last_warranty_team_id,
+                created_at,
+                updated_at
+            FROM warranty_email_entries
+        """)
+        cursor.execute("DROP TABLE warranty_email_entries")
+        cursor.execute("ALTER TABLE warranty_email_entries_new RENAME TO warranty_email_entries")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        migrations.append("warranty_email_entries.email_unique_removed")
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_warranty_email_entries_email
+        ON warranty_email_entries (email)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_warranty_email_entries_expires_at
+        ON warranty_email_entries (expires_at)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_warranty_email_entries_source
+        ON warranty_email_entries (source)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_warranty_email_entries_email_code_source
+        ON warranty_email_entries (email, last_redeem_code, source)
+    """)
+
+    return migrations
+
+
 def migrate_customer_service_upload_assets(cursor) -> list[str]:
     """
     将旧版客服二维码图片迁移到持久化目录，并更新配置地址。
@@ -158,6 +236,7 @@ def run_auto_migration():
         cursor = conn.cursor()
         
         migrations_applied = []
+        migrations_applied.extend(migrate_warranty_email_entries_duplicate_emails(cursor))
         
         # 检查并添加质保相关字段
         if not column_exists(cursor, "redemption_codes", "has_warranty"):
@@ -473,6 +552,15 @@ def run_auto_migration():
                 ON invite_jobs (idempotency_key)
             """)
             migrations_applied.append("invite_jobs")
+
+        if table_exists(cursor, "invite_jobs") and not column_exists(cursor, "invite_jobs", "warranty_entry_id"):
+            logger.info("添加 invite_jobs.warranty_entry_id 字段")
+            cursor.execute("ALTER TABLE invite_jobs ADD COLUMN warranty_entry_id INTEGER")
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_invite_jobs_warranty_entry
+                ON invite_jobs (warranty_entry_id)
+            """)
+            migrations_applied.append("invite_jobs.warranty_entry_id")
 
         if not table_exists(cursor, "warranty_team_whitelist_entries"):
             logger.info("创建邮箱白名单表 warranty_team_whitelist_entries")

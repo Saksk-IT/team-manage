@@ -28,8 +28,9 @@ class WarrantyFakeSuccessValidateRouteTests(unittest.IsolatedAsyncioTestCase):
         mocked_validate.assert_awaited_once_with(
             db_session=db,
             email="buyer@example.com",
-            require_latest_team_banned=True,
-            code=None
+            require_latest_team_banned=False,
+            code=None,
+            entry_id=None
         )
         self.assertEqual(result, {"success": True, "message": "校验通过"})
 

@@ -49,6 +49,15 @@ class RedemptionWarrantyCodeListingTests(unittest.IsolatedAsyncioTestCase):
                     last_redeem_code="WARRANTY-CODE-001",
                 )
             )
+            session.add(
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=1,
+                    expires_at=get_now() + timedelta(days=3),
+                    source="manual",
+                    last_redeem_code="OTHER-WARRANTY-ORDER",
+                )
+            )
             await session.commit()
 
             result = await self.service.get_all_codes(
@@ -58,6 +67,7 @@ class RedemptionWarrantyCodeListingTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertTrue(result["success"])
+        self.assertEqual(result["total"], 1)
         self.assertEqual(len(result["codes"]), 1)
         code = result["codes"][0]
         self.assertTrue(code["has_warranty"])

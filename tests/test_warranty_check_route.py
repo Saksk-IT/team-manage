@@ -101,6 +101,7 @@ class WarrantyCheckRouteTests(unittest.IsolatedAsyncioTestCase):
             db_session=db,
             email="buyer@example.com",
             code="CODE-123",
+            entry_id=None,
         )
         self.assertTrue(result["success"])
 

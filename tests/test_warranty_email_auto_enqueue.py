@@ -100,7 +100,7 @@ class WarrantyEmailAutoEnqueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entry.remaining_claims, 10)
         self.assertEqual(serialized_entry["remaining_days"], 30)
 
-    async def test_sync_warranty_email_entry_after_redeem_does_not_override_manual_limits(self):
+    async def test_sync_warranty_email_entry_after_redeem_keeps_manual_and_adds_auto_order(self):
         async with self.Session() as session:
             session.add(
                 WarrantyEmailEntry(
@@ -122,14 +122,16 @@ class WarrantyEmailAutoEnqueueTests(unittest.IsolatedAsyncioTestCase):
             )
             await session.commit()
 
-            entry = await service.get_warranty_email_entry(session, "buyer@example.com")
+            entries = await service.get_warranty_email_entries_for_email(session, "buyer@example.com")
 
-        self.assertEqual(entry.remaining_claims, 3)
-        self.assertIsNotNone(entry.expires_at)
-        self.assertEqual(entry.last_redeem_code, "NEW-CODE")
-        self.assertEqual(entry.source, "manual")
+        entries_by_source = {entry.source: entry for entry in entries}
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries_by_source["manual"].remaining_claims, 3)
+        self.assertEqual(entries_by_source["manual"].last_redeem_code, "OLD-CODE")
+        self.assertEqual(entries_by_source["auto_redeem"].remaining_claims, 10)
+        self.assertEqual(entries_by_source["auto_redeem"].last_redeem_code, "NEW-CODE")
 
-    async def test_sync_warranty_email_entry_after_redeem_refreshes_auto_limits_for_new_warranty_code(self):
+    async def test_sync_warranty_email_entry_after_redeem_keeps_old_auto_and_adds_new_code_order(self):
         async with self.Session() as session:
             session.add(
                 WarrantyEmailEntry(
@@ -151,13 +153,15 @@ class WarrantyEmailAutoEnqueueTests(unittest.IsolatedAsyncioTestCase):
             )
             await session.commit()
 
-            entry = await service.get_warranty_email_entry(session, "buyer@example.com")
-            serialized_entry = service.serialize_warranty_email_entry(entry)
+            entries = await service.get_warranty_email_entries_for_email(session, "buyer@example.com")
+            entries_by_code = {entry.last_redeem_code: entry for entry in entries}
+            serialized_entry = service.serialize_warranty_email_entry(entries_by_code["NEW-CODE"])
 
-        self.assertEqual(entry.remaining_claims, 10)
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries_by_code["OLD-CODE"].remaining_claims, 1)
+        self.assertEqual(entries_by_code["NEW-CODE"].remaining_claims, 10)
         self.assertEqual(serialized_entry["remaining_days"], 30)
-        self.assertEqual(entry.last_redeem_code, "NEW-CODE")
-        self.assertEqual(entry.source, "auto_redeem")
+        self.assertEqual(entries_by_code["NEW-CODE"].source, "auto_redeem")
 
 
 if __name__ == "__main__":

@@ -618,11 +618,11 @@ function normalizeWarrantyStatusMessage(message) {
 
 function getWarrantyTeamStatusMessage(data, canClaim) {
     if (canClaim) {
-        return data?.message || '该邮箱最近加入的 Team 已封禁，可以继续提交质保。';
+        return data?.message || '该邮箱在质保列表中有效，可以提交质保。';
     }
 
     return normalizeWarrantyStatusMessage(data?.message)
-        || '该邮箱最近加入的 Team 当前状态为「正常」，只有当状态为封禁时才可以提交质保';
+        || '该邮箱质保资格不可用，请确认剩余次数和剩余天数。';
 }
 
 function normalizeWarrantyOrders(data) {
@@ -632,6 +632,7 @@ function normalizeWarrantyOrders(data) {
 
     if (data?.latest_team) {
         return [{
+            entry_id: data?.warranty_info?.id || null,
             code: data.latest_team.code || data?.warranty_info?.last_redeem_code || '',
             latest_team: data.latest_team,
             warranty_info: data.warranty_info || {},
@@ -680,6 +681,7 @@ function renderWarrantyStatusResult(data, email) {
         const statusMessage = getWarrantyOrderStatusMessage(order, canClaim);
         const messageClass = canClaim ? 'status-panel__message--success' : 'status-panel__message--warning';
         const code = order?.code || latestTeam.code || '';
+        const entryId = order?.entry_id || warrantyInfo.id || '';
         const remainingClaims = order?.remaining_claims ?? warrantyInfo.remaining_claims ?? '-';
         const remainingDays = order?.remaining_days ?? warrantyInfo.remaining_days ?? '-';
         const detailItems = [
@@ -706,7 +708,7 @@ function renderWarrantyStatusResult(data, email) {
                 <div class="status-panel__message ${messageClass}">${escapeHtml(statusMessage)}</div>
                 ${canClaim ? `
                     <div class="status-panel__actions">
-                        <button type="button" class="btn btn-primary warranty-order-claim-btn" data-code="${escapeHtml(code)}">
+                        <button type="button" class="btn btn-primary warranty-order-claim-btn" data-entry-id="${escapeHtml(String(entryId))}" data-code="${escapeHtml(code)}">
                             <i data-lucide="shield"></i> 提交此订单质保
                         </button>
                     </div>
@@ -747,7 +749,7 @@ function renderWarrantyStatusResult(data, email) {
 
     statusContainer.querySelectorAll('.warranty-order-claim-btn').forEach((button) => {
         button.addEventListener('click', () => {
-            submitWarrantyClaim(email, button.dataset.code || null, button);
+            submitWarrantyClaim(email, button.dataset.code || null, button, button.dataset.entryId || null);
         });
     });
 }
@@ -1214,7 +1216,7 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
     }
 });
 
-async function submitWarrantyClaim(email, code = null, triggerButton = null) {
+async function submitWarrantyClaim(email, code = null, triggerButton = null, entryId = null) {
     const continueBtn = triggerButton || document.getElementById('continueWarrantyClaimBtn');
     if (continueBtn) {
         continueBtn.disabled = true;
@@ -1238,7 +1240,8 @@ async function submitWarrantyClaim(email, code = null, triggerButton = null) {
                 },
                 body: JSON.stringify({
                     email,
-                    ...(code ? { code } : {})
+                    ...(code ? { code } : {}),
+                    ...(entryId ? { entry_id: Number(entryId) } : {})
                 })
             });
 
@@ -1285,7 +1288,8 @@ async function submitWarrantyClaim(email, code = null, triggerButton = null) {
             },
             body: JSON.stringify({
                 email,
-                ...(code ? { code } : {})
+                ...(code ? { code } : {}),
+                ...(entryId ? { entry_id: Number(entryId) } : {})
             })
         });
 

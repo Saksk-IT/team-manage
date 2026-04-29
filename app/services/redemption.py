@@ -536,11 +536,13 @@ class RedemptionService:
             )
             needs_warranty_entry_filter = has_remaining_day_filter or has_remaining_claim_filter
             if needs_warranty_entry_filter:
-                warranty_entry_join = (
-                    WarrantyEmailEntry.email == func.lower(func.trim(RedemptionCode.used_by_email))
+                warranty_entry_join = and_(
+                    WarrantyEmailEntry.email == func.lower(func.trim(RedemptionCode.used_by_email)),
+                    WarrantyEmailEntry.last_redeem_code == RedemptionCode.code,
                 )
+                count_stmt = select(func.count(func.distinct(RedemptionCode.id))).select_from(RedemptionCode)
                 count_stmt = count_stmt.outerjoin(WarrantyEmailEntry, warranty_entry_join)
-                stmt = stmt.outerjoin(WarrantyEmailEntry, warranty_entry_join)
+                stmt = stmt.outerjoin(WarrantyEmailEntry, warranty_entry_join).distinct()
                 filters.append(RedemptionCode.has_warranty.is_(True))
 
             if search:
@@ -690,7 +692,8 @@ class RedemptionService:
                 team_result = await db_session.execute(team_stmt)
                 team_map = {team.id: team for team in team_result.scalars().all()}
 
-            warranty_entry_map = {}
+            warranty_entry_by_email_code = {}
+            warranty_entries_by_email = {}
             used_emails = set()
             for code in codes:
                 latest_record = latest_usage_record_map.get(code.code)
@@ -699,13 +702,21 @@ class RedemptionService:
                 if normalized_email:
                     used_emails.add(normalized_email)
             if used_emails:
-                warranty_stmt = select(WarrantyEmailEntry).where(
-                    WarrantyEmailEntry.email.in_(used_emails)
+                warranty_stmt = (
+                    select(WarrantyEmailEntry)
+                    .where(WarrantyEmailEntry.email.in_(used_emails))
+                    .order_by(WarrantyEmailEntry.updated_at.desc(), WarrantyEmailEntry.id.desc())
                 )
                 warranty_result = await db_session.execute(warranty_stmt)
-                warranty_entry_map = {
-                    entry.email: entry for entry in warranty_result.scalars().all()
-                }
+                for entry in warranty_result.scalars().all():
+                    normalized_entry_email = (entry.email or "").strip().lower()
+                    normalized_entry_code = (entry.last_redeem_code or "").strip()
+                    if normalized_entry_code:
+                        warranty_entry_by_email_code.setdefault(
+                            (normalized_entry_email, normalized_entry_code),
+                            entry,
+                        )
+                    warranty_entries_by_email.setdefault(normalized_entry_email, []).append(entry)
 
             from app.services.warranty import warranty_service
 
@@ -722,7 +733,10 @@ class RedemptionService:
                 display_used_team_id = latest_record.team_id if latest_record else code.used_team_id
                 display_used_at = latest_record.redeemed_at if latest_record else code.used_at
                 normalized_used_email = (display_used_email or "").strip().lower()
-                warranty_entry = warranty_entry_map.get(normalized_used_email)
+                warranty_entry = warranty_entry_by_email_code.get((normalized_used_email, code.code))
+                email_warranty_entries = warranty_entries_by_email.get(normalized_used_email, [])
+                if not warranty_entry and len(email_warranty_entries) == 1:
+                    warranty_entry = email_warranty_entries[0]
                 serialized_warranty_entry = (
                     warranty_service.serialize_warranty_email_entry(warranty_entry)
                     if warranty_entry and code.has_warranty
@@ -1234,11 +1248,12 @@ class RedemptionService:
                     if normalized_email:
                         warranty_entry_result = await db_session.execute(
                             select(WarrantyEmailEntry).where(
-                                WarrantyEmailEntry.email == normalized_email
+                                WarrantyEmailEntry.email == normalized_email,
+                                WarrantyEmailEntry.last_redeem_code == code.code,
+                                func.coalesce(WarrantyEmailEntry.source, "auto_redeem") == "auto_redeem",
                             )
                         )
-                        warranty_entry = warranty_entry_result.scalar_one_or_none()
-                        if warranty_entry:
+                        for warranty_entry in warranty_entry_result.scalars().all():
                             await db_session.delete(warranty_entry)
 
             # 4. 删除使用记录
