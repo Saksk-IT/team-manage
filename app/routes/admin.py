@@ -44,6 +44,7 @@ from app.services.team_refresh_record import (
     SOURCE_ADMIN_MEMBER,
     team_refresh_record_service,
 )
+from app.services.team_member_snapshot import team_member_snapshot_service
 from app.services.redemption import RedemptionService
 from app.services.settings import settings_service
 from app.services.admin_sidebar import (
@@ -4044,6 +4045,86 @@ async def team_refresh_records_page(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"加载 Team 刷新记录页失败: {str(e)}"
+        )
+
+
+@router.get("/team-member-snapshots", response_class=HTMLResponse)
+async def team_member_snapshots_page(
+    request: Request,
+    email: Optional[str] = None,
+    team_id: Optional[str] = None,
+    member_state: Optional[str] = None,
+    page: Optional[str] = "1",
+    per_page: int = 100,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        from app.main import templates
+
+        try:
+            page_int = int(page) if page and page.strip() else 1
+        except (ValueError, TypeError):
+            page_int = 1
+
+        parsed_team_id = _parse_optional_int_filter(
+            team_id,
+            label="Team ID",
+            min_value=1,
+        )
+        normalized_member_state = (member_state or "").strip().lower()
+        if normalized_member_state and normalized_member_state not in team_member_snapshot_service.MEMBER_STATE_LABELS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="成员状态筛选无效"
+            )
+
+        logger.info(
+            "管理员访问成员快照页 email=%s team_id=%s member_state=%s page=%s per_page=%s",
+            email,
+            parsed_team_id,
+            normalized_member_state,
+            page_int,
+            per_page,
+        )
+
+        result = await team_member_snapshot_service.list_snapshots(
+            db_session=db,
+            email=email,
+            team_id=parsed_team_id,
+            member_state=normalized_member_state,
+            page=page_int,
+            per_page=per_page,
+        )
+
+        return templates.TemplateResponse(
+            request,
+            "admin/team_member_snapshots/index.html",
+            await _build_admin_template_context(
+                request,
+                db,
+                current_user,
+                "team_member_snapshots",
+                records=result["records"],
+                email=(email or "").strip(),
+                team_id=str(parsed_team_id) if parsed_team_id is not None else "",
+                member_state=normalized_member_state,
+                member_state_options=team_member_snapshot_service.MEMBER_STATE_LABELS,
+                pagination=result["pagination"],
+            )
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        ) from e
+    except Exception as e:
+        logger.error(f"加载成员快照页失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"加载成员快照页失败: {str(e)}"
         )
 
 

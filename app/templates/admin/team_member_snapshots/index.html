@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}成员快照 - GPT Team 管理系统{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>成员快照</h2>
+</div>
+
+<div class="content-section sticky-toolbar-section">
+    <div class="section-header">
+        <div>
+            <h3>搜索筛选</h3>
+            <p class="text-muted">只读查看实时刷新写入的 Team 成员快照，不会修改任何业务数据。</p>
+        </div>
+    </div>
+
+    <form method="get" action="/admin/team-member-snapshots" class="search-form-grid">
+        <div class="form-group">
+            <label for="email">成员邮箱</label>
+            <input
+                type="email"
+                id="email"
+                name="email"
+                value="{{ email or '' }}"
+                placeholder="精确查询成员邮箱"
+                class="form-control"
+            >
+        </div>
+        <div class="form-group">
+            <label for="team_id">Team ID</label>
+            <input
+                type="number"
+                id="team_id"
+                name="team_id"
+                min="1"
+                value="{{ team_id or '' }}"
+                placeholder="精确查询 Team ID"
+                class="form-control"
+            >
+        </div>
+        <div class="form-group">
+            <label for="member_state">成员状态</label>
+            <select id="member_state" name="member_state" class="form-control">
+                <option value="">全部状态</option>
+                {% for option_value, option_label in member_state_options.items() %}
+                <option value="{{ option_value }}" {% if member_state == option_value %}selected{% endif %}>{{ option_label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-actions" style="display: flex; gap: 0.5rem;">
+            <button type="submit" class="btn btn-primary" style="flex: 1;">
+                <i data-lucide="search" style="width: 16px; height: 16px;"></i> 搜索
+            </button>
+            <a href="/admin/team-member-snapshots" class="btn btn-secondary">
+                <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i> 重置
+            </a>
+        </div>
+    </form>
+</div>
+
+<div class="content-section sticky-toolbar-section">
+    <div class="section-header">
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <h3>快照列表</h3>
+            <span class="badge badge-info">{{ pagination.total }} 条快照</span>
+        </div>
+    </div>
+
+    {% if records %}
+    <div class="table-container table-sticky-edges">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>成员邮箱</th>
+                    <th>成员状态</th>
+                    <th>Team</th>
+                    <th>Team 状态</th>
+                    <th>更新时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in records %}
+                <tr>
+                    <td><span class="text-muted">{{ record.id }}</span></td>
+                    <td><strong>{{ record.member_email }}</strong></td>
+                    <td>
+                        <span class="status-badge {{ 'status-active' if record.member_state == 'joined' else 'status-warning' }}">
+                            {{ record.member_state_label }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="snapshot-stack">
+                            <div><strong>{{ record.team_name or '-' }}</strong></div>
+                            <div class="snapshot-muted">Team ID：{{ record.team_id }}</div>
+                            <div class="snapshot-muted">账号：{{ record.team_email or '-' }}</div>
+                            <div class="snapshot-muted">Account ID：{{ record.team_account_id or '-' }}</div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="status-badge status-{{ record.team_status or 'unknown' }}">
+                            {{ record.team_status_label }}
+                        </span>
+                    </td>
+                    <td>{{ record.updated_at|format_datetime }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if pagination.total_pages > 1 %}
+    {% set query_params = [] %}
+    {% if email %}{% set _ = query_params.append('email=' + email|urlencode) %}{% endif %}
+    {% if team_id %}{% set _ = query_params.append('team_id=' + team_id|urlencode) %}{% endif %}
+    {% if member_state %}{% set _ = query_params.append('member_state=' + member_state|urlencode) %}{% endif %}
+    {% if pagination.per_page != 100 %}{% set _ = query_params.append('per_page=' + pagination.per_page|string) %}{% endif %}
+    {% set base_query = '&' + query_params|join('&') if query_params else '' %}
+
+    <div class="pagination">
+        <div class="per-page-selector">
+            每页
+            <select class="per-page-select" onchange="changePerPage(this.value)">
+                <option value="20" {% if pagination.per_page == 20 %}selected{% endif %}>20</option>
+                <option value="50" {% if pagination.per_page == 50 %}selected{% endif %}>50</option>
+                <option value="100" {% if pagination.per_page == 100 %}selected{% endif %}>100</option>
+            </select>
+        </div>
+
+        <div class="pagination-controls">
+            <a href="?page=1{{ base_query }}"
+                class="btn btn-sm btn-secondary {% if pagination.current_page == 1 %}disabled{% endif %}">
+                <i data-lucide="chevrons-left" style="width: 14px; height: 14px;"></i>
+            </a>
+
+            {% if pagination.current_page > 1 %}
+            <a href="?page={{ pagination.current_page - 1 }}{{ base_query }}" class="btn btn-sm btn-secondary">
+                <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+            </a>
+            {% else %}
+            <button class="btn btn-sm btn-secondary" disabled>
+                <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+            </button>
+            {% endif %}
+
+            <div class="pagination-numbers">
+                {% for p in range(1, pagination.total_pages + 1) %}
+                    {% if p == pagination.current_page %}
+                    <span class="page-number active">{{ p }}</span>
+                    {% elif p <= 2 or p > pagination.total_pages - 2 or (p >= pagination.current_page - 1 and p <= pagination.current_page + 1) %}
+                    <a href="?page={{ p }}{{ base_query }}" class="page-number">{{ p }}</a>
+                    {% elif p == 3 and pagination.current_page > 4 %}
+                    <span class="page-dots">...</span>
+                    {% elif p == pagination.total_pages - 2 and pagination.current_page < pagination.total_pages - 3 %}
+                    <span class="page-dots">...</span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+
+            {% if pagination.current_page < pagination.total_pages %}
+            <a href="?page={{ pagination.current_page + 1 }}{{ base_query }}" class="btn btn-sm btn-secondary">
+                <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+            </a>
+            {% else %}
+            <button class="btn btn-sm btn-secondary" disabled>
+                <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
+            </button>
+            {% endif %}
+
+            <a href="?page={{ pagination.total_pages }}{{ base_query }}"
+                class="btn btn-sm btn-secondary {% if pagination.current_page == pagination.total_pages %}disabled{% endif %}">
+                <i data-lucide="chevrons-right" style="width: 14px; height: 14px;"></i>
+            </a>
+        </div>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="empty-state">
+        <i data-lucide="users-round" style="width: 48px; height: 48px; margin-bottom: 1rem; opacity: 0.2;"></i>
+        <p>暂无成员快照</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .snapshot-stack {
+        display: grid;
+        gap: 0.2rem;
+        min-width: 180px;
+    }
+
+    .snapshot-muted {
+        color: var(--text-muted);
+        font-size: 0.8125rem;
+        line-height: 1.4;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function changePerPage(value) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('per_page', value);
+        url.searchParams.set('page', '1');
+        window.location.href = url.toString();
+    }
+</script>
+{% endblock %}

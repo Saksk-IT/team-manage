@@ -32,6 +32,7 @@ class AdminSidebarOrderSettingsTests(unittest.IsolatedAsyncioTestCase):
             order = await settings_service.get_admin_sidebar_order(session)
 
         self.assertEqual(order, get_default_admin_sidebar_order())
+        self.assertIn("team_member_snapshots", order)
 
 
     async def test_get_admin_sidebar_order_drops_legacy_warranty_team_item(self):
@@ -59,6 +60,7 @@ class AdminSidebarOrderSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved_order[:2], ["settings", "dashboard"])
         self.assertEqual(loaded_order, saved_order)
         self.assertEqual(set(loaded_order), set(get_default_admin_sidebar_order()))
+        self.assertIn("team_member_snapshots", loaded_order)
 
     async def test_update_admin_sidebar_order_rejects_unknown_item(self):
         async with self.Session() as session:
