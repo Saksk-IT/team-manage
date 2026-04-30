@@ -41,11 +41,13 @@ class SettingsService:
     WARRANTY_FAKE_SUCCESS_ENABLED_KEY = "warranty_fake_success_enabled"
     WARRANTY_FAKE_SUCCESS_REMAINING_SPOTS_KEY = "warranty_fake_success_remaining_spots"
     ADMIN_SIDEBAR_ORDER_KEY = "admin_sidebar_order"
+    NUMBER_POOL_ENABLED_KEY = "number_pool_enabled"
     WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT = "usage_limit"
     WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT = "time_limit"
     DEFAULT_WARRANTY_SERVICE_ENABLED = True
     DEFAULT_WARRANTY_FAKE_SUCCESS_ENABLED = False
     DEFAULT_TEAM_MAX_MEMBERS = 5
+    DEFAULT_NUMBER_POOL_ENABLED = False
     DEFAULT_FRONT_ANNOUNCEMENT_ENABLED = False
     DEFAULT_CUSTOMER_SERVICE_ENABLED = False
     DEFAULT_PURCHASE_LINK_ENABLED = False
@@ -440,6 +442,33 @@ class SettingsService:
             session,
             self.DEFAULT_TEAM_MAX_MEMBERS_KEY,
             str(normalized_value)
+        )
+
+
+    async def get_number_pool_config(self, session: AsyncSession) -> Dict[str, bool]:
+        """获取独立号池开关配置。"""
+        enabled_raw = await self.get_setting(
+            session,
+            self.NUMBER_POOL_ENABLED_KEY,
+            str(self.DEFAULT_NUMBER_POOL_ENABLED).lower()
+        )
+        return {
+            "enabled": self._parse_bool(
+                enabled_raw,
+                self.DEFAULT_NUMBER_POOL_ENABLED
+            )
+        }
+
+    async def update_number_pool_config(
+        self,
+        session: AsyncSession,
+        enabled: bool
+    ) -> bool:
+        """更新独立号池开关配置。"""
+        return await self.update_setting(
+            session,
+            self.NUMBER_POOL_ENABLED_KEY,
+            str(bool(enabled)).lower()
         )
 
     async def get_warranty_service_config(self, session: AsyncSession) -> Dict[str, bool]:

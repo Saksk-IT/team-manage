@@ -15,9 +15,10 @@ from app.database import AsyncSessionLocal
 from app.models import RedemptionCode, RedemptionRecord, Team
 from app.services.redemption import RedemptionService
 from app.services.email_whitelist import email_whitelist_service
-from app.services.team import IMPORT_STATUS_CLASSIFIED, TeamService
+from app.services.team import IMPORT_STATUS_CLASSIFIED, TEAM_TYPE_NUMBER_POOL, TEAM_TYPE_STANDARD, TeamService
 from app.services.team_refresh_record import SOURCE_USER_REDEEM
 from app.services.warranty import warranty_service
+from app.services.settings import settings_service
 from app.services.notification import notification_service
 from app.utils.time_utils import get_now
 
@@ -128,8 +129,9 @@ class RedeemFlowService:
                     "error": None
                 }
 
-            # 2. 获取统一池可用 Team 列表；兑换码不再决定 Team 归属
-            teams_result = await self.team_service.get_available_teams(db_session)
+            # 2. 获取当前兑换池可用 Team 列表；兑换码不再决定 Team 归属
+            redeem_team_type = await self._get_redeem_team_type(db_session)
+            teams_result = await self.team_service.get_available_teams(db_session, team_type=redeem_team_type)
 
             if not teams_result["success"]:
                 return {
@@ -146,7 +148,7 @@ class RedeemFlowService:
             return {
                 "success": True,
                 "valid": has_available_team,
-                "reason": "兑换码有效" if has_available_team else "当前没有可用 Team，请稍后再试",
+                "reason": "兑换码有效" if has_available_team else f"当前没有可用{self._get_team_pool_label(redeem_team_type)}，请稍后再试",
                 "teams": teams_result["teams"],
                 "error": None
             }
@@ -162,10 +164,19 @@ class RedeemFlowService:
                 "error": f"验证失败: {str(e)}"
             }
 
+    async def _get_redeem_team_type(self, db_session: AsyncSession) -> str:
+        config = await settings_service.get_number_pool_config(db_session)
+        return TEAM_TYPE_NUMBER_POOL if config.get("enabled") else TEAM_TYPE_STANDARD
+
+    @staticmethod
+    def _get_team_pool_label(team_type: Optional[str]) -> str:
+        return "号池 Team" if team_type == TEAM_TYPE_NUMBER_POOL else "控制台 Team"
+
     async def select_team_auto(
         self,
         db_session: AsyncSession,
-        exclude_team_ids: Optional[List[int]] = None
+        exclude_team_ids: Optional[List[int]] = None,
+        team_type: Optional[str] = TEAM_TYPE_STANDARD,
     ) -> Dict[str, Any]:
         """
         自动选择一个可用的 Team
@@ -179,6 +190,8 @@ class RedeemFlowService:
                 Team.import_status == IMPORT_STATUS_CLASSIFIED,
                 or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
             )
+            if team_type:
+                stmt = stmt.where(Team.team_type == team_type)
             
             if exclude_team_ids:
                 stmt = stmt.where(Team.id.not_in(exclude_team_ids))
@@ -190,9 +203,10 @@ class RedeemFlowService:
             team = result.scalars().first()
 
             if not team:
-                reason = "没有可用的 Team"
+                pool_label = self._get_team_pool_label(team_type)
+                reason = f"没有可用的{pool_label}"
                 if exclude_team_ids:
-                    reason = "您已加入所有可用 Team"
+                    reason = f"您已加入所有可用{pool_label}"
                 return {
                     "success": False,
                     "team_id": None,
@@ -249,7 +263,8 @@ class RedeemFlowService:
                     # 兑换码不再绑定固定 Team，客户端传入 team_id 仅作旧版兼容忽略
                     team_id_final = current_target_team_id
                     if not team_id_final:
-                        select_res = await self.select_team_auto(db_session, exclude_team_ids=excluded_team_ids)
+                        redeem_team_type = await self._get_redeem_team_type(db_session)
+                        select_res = await self.select_team_auto(db_session, exclude_team_ids=excluded_team_ids, team_type=redeem_team_type)
                         if not select_res["success"]:
                             return {"success": False, "error": select_res["error"]}
                         team_id_final = select_res["team_id"]

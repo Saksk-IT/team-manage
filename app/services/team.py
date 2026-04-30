@@ -33,6 +33,7 @@ TEAM_OWNER_RESERVED_SEATS = 1
 STANDARD_TRANSFER_CODE_COUNT = 4
 TEAM_TYPE_STANDARD = "standard"
 TEAM_TYPE_WARRANTY = "warranty"
+TEAM_TYPE_NUMBER_POOL = "number_pool"
 IMPORT_STATUS_PENDING = "pending"
 IMPORT_STATUS_CLASSIFIED = "classified"
 IMPORT_TAG_OTHER_PAID = "other_paid"
@@ -1617,7 +1618,7 @@ class TeamService:
         target_team_type: str,
         db_session: AsyncSession
     ) -> Dict[str, Any]:
-        """兼容旧接口：统一 Team 池后只允许归一到控制台 Team。"""
+        """在控制台 Team 与独立号池之间转移 Team；兼容旧质保 Team 转回控制台。"""
         try:
             stmt = select(Team).where(Team.id == team_id)
             result = await db_session.execute(stmt)
@@ -1629,11 +1630,20 @@ class TeamService:
             current_team_type = (team.team_type or TEAM_TYPE_STANDARD).strip().lower()
             normalized_target_type = (target_team_type or "").strip().lower()
 
-            if normalized_target_type != TEAM_TYPE_STANDARD:
+            if normalized_target_type not in {TEAM_TYPE_STANDARD, TEAM_TYPE_NUMBER_POOL}:
                 return {"success": False, "error": "目标 Team 类型无效"}
 
-            cleanup_result = await self._clear_bound_codes_for_team(team.id, db_session)
-            team.team_type = TEAM_TYPE_STANDARD
+            should_cleanup_legacy_bound_codes = current_team_type not in {TEAM_TYPE_STANDARD, TEAM_TYPE_NUMBER_POOL}
+            cleanup_result = (
+                await self._clear_bound_codes_for_team(team.id, db_session)
+                if should_cleanup_legacy_bound_codes
+                else {
+                    "total_cleared": 0,
+                    "deleted_unused_count": 0,
+                    "detached_history_count": 0,
+                }
+            )
+            team.team_type = normalized_target_type
             team.bound_code_type = TEAM_TYPE_STANDARD
             team.bound_code_warranty_days = None
 
@@ -1642,13 +1652,14 @@ class TeamService:
 
             await db_session.commit()
 
-            message = f"账号已归一到控制台 Team，已清理 {cleanup_result['total_cleared']} 个历史 Team 绑定"
+            target_label = "号池 Team" if normalized_target_type == TEAM_TYPE_NUMBER_POOL else "控制台 Team"
+            message = f"账号已转入{target_label}，已清理 {cleanup_result['total_cleared']} 个历史 Team 绑定"
 
             logger.info(
                 "Team 类型转移成功: team_id=%s, from=%s, to=%s, cleaned=%s, generated=%s",
                 team.id,
                 current_team_type,
-                TEAM_TYPE_STANDARD,
+                normalized_target_type,
                 cleanup_result["total_cleared"],
                 generated_code_count
             )
@@ -1656,7 +1667,7 @@ class TeamService:
             return {
                 "success": True,
                 "team_id": team.id,
-                "team_type": TEAM_TYPE_STANDARD,
+                "team_type": normalized_target_type,
                 "cleaned_code_count": cleanup_result["total_cleared"],
                 "deleted_unused_code_count": cleanup_result["deleted_unused_count"],
                 "detached_history_code_count": cleanup_result["detached_history_count"],

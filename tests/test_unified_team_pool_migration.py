@@ -21,7 +21,7 @@ def test_migrate_unified_team_pool_normalizes_legacy_team_and_unbinds_codes():
                 bound_team_id INTEGER
             );
             INSERT INTO teams (id, team_type, bound_code_type, bound_code_warranty_days)
-            VALUES (1, 'warranty', 'warranty', 45), (2, 'standard', 'standard', NULL);
+            VALUES (1, 'warranty', 'warranty', 45), (2, 'standard', 'standard', NULL), (3, 'number_pool', 'standard', NULL);
             INSERT INTO redemption_codes (id, code, bound_team_id)
             VALUES (1, 'LEGACY-BOUND', 1), (2, 'PLAIN', NULL);
             """
@@ -39,7 +39,7 @@ def test_migrate_unified_team_pool_normalizes_legacy_team_and_unbinds_codes():
         assert any(item.startswith("teams.team_type_unified") for item in migrations)
         assert any(item.startswith("teams.bound_code_metadata_cleared") for item in migrations)
         assert any(item.startswith("redemption_codes.bound_team_id_cleared") for item in migrations)
-        assert teams == [(1, "standard", "standard", None), (2, "standard", "standard", None)]
+        assert teams == [(1, "standard", "standard", None), (2, "standard", "standard", None), (3, "number_pool", "standard", None)]
         assert codes == [("LEGACY-BOUND", None), ("PLAIN", None)]
     finally:
         conn.close()

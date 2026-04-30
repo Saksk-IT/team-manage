@@ -19,9 +19,10 @@ from app.database import AsyncSessionLocal
 from app.models import InviteJob, RedemptionCode, RedemptionRecord, Team, TeamMemberSnapshot, WarrantyEmailEntry
 from app.services.email_whitelist import email_whitelist_service
 from app.services.redemption import RedemptionService
-from app.services.team import IMPORT_STATUS_CLASSIFIED, TeamService
+from app.services.team import IMPORT_STATUS_CLASSIFIED, TEAM_TYPE_NUMBER_POOL, TEAM_TYPE_STANDARD, TeamService
 from app.services.team_refresh_record import SOURCE_USER_REDEEM, SOURCE_USER_WARRANTY
 from app.services.warranty import warranty_service
+from app.services.settings import settings_service
 from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,14 @@ class InviteQueueService:
         result = await db_session.execute(select(InviteJob).where(InviteJob.id == job_id))
         return result.scalar_one_or_none()
 
+    async def _get_redeem_team_type(self, db_session: AsyncSession) -> str:
+        config = await settings_service.get_number_pool_config(db_session)
+        return TEAM_TYPE_NUMBER_POOL if config.get("enabled") else TEAM_TYPE_STANDARD
+
+    @staticmethod
+    def _get_team_pool_label(team_type: Optional[str]) -> str:
+        return "号池 Team" if team_type == TEAM_TYPE_NUMBER_POOL else "控制台 Team"
+
     async def submit_redeem_job(
         self,
         db_session: AsyncSession,
@@ -151,12 +160,14 @@ class InviteQueueService:
                     return {"success": False, "error": validate_result.get("reason") or "兑换码不可用"}
 
                 excluded_team_ids = await self._get_redeem_email_team_ids(db_session, normalized_email)
-                team = await self._reserve_next_available_team(db_session, excluded_team_ids)
+                redeem_team_type = await self._get_redeem_team_type(db_session)
+                team = await self._reserve_next_available_team(db_session, excluded_team_ids, team_type=redeem_team_type)
                 if not team:
                     await db_session.rollback()
+                    pool_name = self._get_team_pool_label(redeem_team_type)
                     if excluded_team_ids:
-                        return {"success": False, "error": "该邮箱已加入所有可用 Team，请使用其他邮箱或稍后再试"}
-                    return {"success": False, "error": "当前没有可用 Team，请稍后再试"}
+                        return {"success": False, "error": f"该邮箱已加入所有可用{pool_name}，请使用其他邮箱或稍后再试"}
+                    return {"success": False, "error": f"当前没有可用{pool_name}，请稍后再试"}
 
                 redemption_code = await self._get_redemption_code(db_session, normalized_code)
                 if not redemption_code or redemption_code.status != "unused":
@@ -240,7 +251,7 @@ class InviteQueueService:
                     return self.serialize_job(existing_job)
 
                 email_team_ids = await self._get_warranty_email_team_ids(db_session, normalized_email)
-                team = await self._reserve_next_available_team(db_session, email_team_ids)
+                team = await self._reserve_next_available_team(db_session, email_team_ids, team_type=TEAM_TYPE_STANDARD)
                 if not team:
                     await db_session.rollback()
                     await self.warranty_service._record_warranty_claim_result(
@@ -374,6 +385,7 @@ class InviteQueueService:
                             exclude_job_id=job.id,
                         )
                         reservation_exclusions = [*excluded_team_ids, *email_team_ids]
+                        target_team_type = await self._get_redeem_team_type(db_session)
                     else:
                         email_team_ids = await self._get_warranty_email_team_ids(
                             db_session,
@@ -381,10 +393,11 @@ class InviteQueueService:
                             exclude_job_id=job.id,
                         )
                         reservation_exclusions = [*excluded_team_ids, *email_team_ids]
+                        target_team_type = TEAM_TYPE_STANDARD
 
-                    team = await self._reserve_next_available_team(db_session, reservation_exclusions)
+                    team = await self._reserve_next_available_team(db_session, reservation_exclusions, team_type=target_team_type)
                     if not team:
-                        await self._mark_job_failed(db_session, job, "当前没有可用 Team，请稍后再试")
+                        await self._mark_job_failed(db_session, job, f"当前没有可用{self._get_team_pool_label(target_team_type)}，请稍后再试")
                         return
                     job.team_id = team.id
                     job.reservation_released = False
@@ -841,9 +854,10 @@ class InviteQueueService:
         self,
         db_session: AsyncSession,
         exclude_team_ids: Optional[List[int]] = None,
+        team_type: Optional[str] = TEAM_TYPE_STANDARD,
     ) -> Optional[Team]:
         exclude_team_ids = list(dict.fromkeys([int(team_id) for team_id in exclude_team_ids or [] if team_id]))
-        active_window_team_ids = await self._get_active_window_team_ids(db_session)
+        active_window_team_ids = await self._get_active_window_team_ids(db_session, team_type=team_type)
         candidate_team_ids = [
             team_id
             for team_id in active_window_team_ids
@@ -860,6 +874,8 @@ class InviteQueueService:
             Team.import_status == IMPORT_STATUS_CLASSIFIED,
             or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
         )
+        if team_type:
+            stmt = stmt.where(Team.team_type == team_type)
         stmt = stmt.order_by(
             func.coalesce(Team.reserved_members, 0).asc(),
             func.coalesce(Team.current_members, 0).asc(),
@@ -875,6 +891,8 @@ class InviteQueueService:
                 Team.import_status == IMPORT_STATUS_CLASSIFIED,
                 or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
             )
+            if team_type:
+                update_stmt = update_stmt.where(Team.team_type == team_type)
             update_result = await db_session.execute(
                 update_stmt.values(reserved_members=func.coalesce(Team.reserved_members, 0) + 1)
             )
@@ -886,9 +904,13 @@ class InviteQueueService:
                     return team
         return None
 
-    async def _get_active_window_team_ids(self, db_session: AsyncSession) -> List[int]:
+    async def _get_active_window_team_ids(
+        self,
+        db_session: AsyncSession,
+        team_type: Optional[str] = TEAM_TYPE_STANDARD,
+    ) -> List[int]:
         capacity_expr = func.coalesce(Team.current_members, 0) + func.coalesce(Team.reserved_members, 0)
-        result = await db_session.execute(
+        stmt = (
             select(Team.id)
             .where(
                 Team.status == "active",
@@ -899,6 +921,9 @@ class InviteQueueService:
             .order_by(Team.id.asc())
             .limit(self._get_active_team_limit())
         )
+        if team_type:
+            stmt = stmt.where(Team.team_type == team_type)
+        result = await db_session.execute(stmt)
         return [int(team_id) for team_id in result.scalars().all() if team_id]
 
     async def _release_job_reservation(self, db_session: AsyncSession, job: InviteJob) -> None:

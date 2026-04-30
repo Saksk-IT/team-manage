@@ -40,6 +40,20 @@ class WarrantyServiceSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(success)
         self.assertEqual(config, {"enabled": False})
 
+    async def test_get_number_pool_config_defaults_to_false(self):
+        async with self.Session() as session:
+            config = await settings_service.get_number_pool_config(session)
+
+        self.assertEqual(config, {"enabled": False})
+
+    async def test_update_number_pool_config_persists_value(self):
+        async with self.Session() as session:
+            success = await settings_service.update_number_pool_config(session, True)
+            config = await settings_service.get_number_pool_config(session)
+
+        self.assertTrue(success)
+        self.assertEqual(config, {"enabled": True})
+
 
 if __name__ == "__main__":
     unittest.main()

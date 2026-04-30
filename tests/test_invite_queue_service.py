@@ -25,7 +25,8 @@ from app.services.invite_queue import (
     JOB_STATUS_SUCCESS,
     InviteQueueService,
 )
-from app.services.team import TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY
+from app.services.settings import settings_service
+from app.services.team import TEAM_TYPE_NUMBER_POOL, TEAM_TYPE_STANDARD
 from app.services.warranty import WarrantyService
 from app.utils.time_utils import get_now
 
@@ -36,10 +37,12 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
         os.close(fd)
         self.engine = create_async_engine(f"sqlite+aiosqlite:///{self.db_path}", future=True)
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+        settings_service.clear_cache()
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
     async def asyncTearDown(self):
+        settings_service.clear_cache()
         await self.engine.dispose()
         if os.path.exists(self.db_path):
             os.remove(self.db_path)
@@ -135,6 +138,78 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNotNone(team)
         self.assertEqual(team.id, 11)
+
+    async def test_redeem_submission_uses_number_pool_when_enabled(self):
+        service = InviteQueueService()
+
+        async with self.Session() as session:
+            standard_team = Team(
+                email="standard-owner@example.com",
+                access_token_encrypted="dummy-standard",
+                account_id="acc-standard",
+                team_type=TEAM_TYPE_STANDARD,
+                team_name="Standard Team",
+                status="active",
+                current_members=1,
+                reserved_members=0,
+                max_members=5,
+            )
+            number_pool_team = Team(
+                email="pool-owner@example.com",
+                access_token_encrypted="dummy-pool",
+                account_id="acc-pool",
+                team_type=TEAM_TYPE_NUMBER_POOL,
+                team_name="Pool Team",
+                status="active",
+                current_members=1,
+                reserved_members=0,
+                max_members=5,
+            )
+            session.add_all([standard_team, number_pool_team, RedemptionCode(code="CODE-POOL", status="unused")])
+            await session.commit()
+            await settings_service.update_number_pool_config(session, True)
+
+            result = await service.submit_redeem_job(session, "buyer@example.com", "CODE-POOL")
+            job = await session.get(InviteJob, result["job_id"])
+            standard_team = await session.get(Team, standard_team.id)
+            number_pool_team = await session.get(Team, number_pool_team.id)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(job.team_id, number_pool_team.id)
+        self.assertEqual(standard_team.reserved_members, 0)
+        self.assertEqual(number_pool_team.reserved_members, 1)
+
+    async def test_redeem_submission_does_not_fallback_to_standard_when_number_pool_empty(self):
+        service = InviteQueueService()
+
+        async with self.Session() as session:
+            session.add_all([
+                Team(
+                    email="standard-owner@example.com",
+                    access_token_encrypted="dummy-standard",
+                    account_id="acc-standard",
+                    team_type=TEAM_TYPE_STANDARD,
+                    team_name="Standard Team",
+                    status="active",
+                    current_members=1,
+                    reserved_members=0,
+                    max_members=5,
+                ),
+                RedemptionCode(code="CODE-NO-POOL", status="unused"),
+            ])
+            await session.commit()
+            await settings_service.update_number_pool_config(session, True)
+
+            result = await service.submit_redeem_job(session, "buyer@example.com", "CODE-NO-POOL")
+            job_count = await session.scalar(select(func.count(InviteJob.id)))
+            standard_team = await session.scalar(select(Team).where(Team.team_type == TEAM_TYPE_STANDARD))
+            code = await session.scalar(select(RedemptionCode).where(RedemptionCode.code == "CODE-NO-POOL"))
+
+        self.assertFalse(result["success"])
+        self.assertIn("当前没有可用号池 Team", result["error"])
+        self.assertEqual(job_count, 0)
+        self.assertEqual(standard_team.reserved_members, 0)
+        self.assertEqual(code.status, "unused")
 
     async def test_duplicate_redeem_submission_reuses_active_job(self):
         await self._seed_redeem_teams_and_codes(team_count=1, code_count=1)
@@ -509,6 +584,54 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["error"], "未找到该质保订单对应邮箱最近加入的 Team，暂不能提交质保。")
         self.assertIsNone(job)
 
+    async def test_warranty_submission_uses_standard_team_when_number_pool_enabled(self):
+        service = InviteQueueService()
+        service.warranty_service.validate_warranty_claim_input = AsyncMock(
+            return_value={
+                "success": True,
+                "normalized_email": "buyer@example.com",
+                "warranty_entry": SimpleNamespace(last_redeem_code="CODE-WARRANTY"),
+                "latest_team_info": {"id": 99, "status": "banned"},
+            }
+        )
+
+        async with self.Session() as session:
+            standard_team = Team(
+                email="standard-owner@example.com",
+                access_token_encrypted="dummy-standard",
+                account_id="acc-standard",
+                team_type=TEAM_TYPE_STANDARD,
+                team_name="Standard Team",
+                status="active",
+                current_members=1,
+                reserved_members=0,
+                max_members=5,
+            )
+            number_pool_team = Team(
+                email="pool-owner@example.com",
+                access_token_encrypted="dummy-pool",
+                account_id="acc-pool",
+                team_type=TEAM_TYPE_NUMBER_POOL,
+                team_name="Pool Team",
+                status="active",
+                current_members=1,
+                reserved_members=0,
+                max_members=5,
+            )
+            session.add_all([standard_team, number_pool_team])
+            await session.commit()
+            await settings_service.update_number_pool_config(session, True)
+
+            result = await service.submit_warranty_job(session, "buyer@example.com")
+            job = await session.get(InviteJob, result["job_id"])
+            standard_team = await session.get(Team, standard_team.id)
+            number_pool_team = await session.get(Team, number_pool_team.id)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(job.team_id, standard_team.id)
+        self.assertEqual(standard_team.reserved_members, 1)
+        self.assertEqual(number_pool_team.reserved_members, 0)
+
     async def test_warranty_processing_records_before_team_before_success_record(self):
         service = InviteQueueService()
 
@@ -528,7 +651,7 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
                 email="after-owner@example.com",
                 access_token_encrypted="dummy-after",
                 account_id="acc-after",
-                team_type=TEAM_TYPE_WARRANTY,
+                team_type=TEAM_TYPE_STANDARD,
                 team_name="After Team",
                 status="active",
                 current_members=1,

@@ -4,6 +4,7 @@
 
 {% block content %}
 {% set is_import_only_mode = active_page == 'import_only' %}
+{% set is_number_pool_mode = active_page == 'number_pool' %}
 <div class="page-header">
     <h2>{{ page_title or '控制台' }}</h2>
 </div>
@@ -45,8 +46,8 @@
     <div class="team-list-toolbar">
         <div class="team-toolbar-primary">
             <div class="team-list-heading">
-                <h3>{{ '我的导入' if is_import_only_mode else ('子管理员导入记录' if is_review_mode else 'Team 列表') }}</h3>
-                <p>{{ '查看导入记录；成功导入的 Team 会直接进入控制台。' if is_import_only_mode else ('查看并筛选导入记录，批量进入控制台或维护 Team。' if is_review_mode else '筛选、搜索并批量维护 Team 账号。') }}</p>
+                <h3>{{ '我的导入' if is_import_only_mode else ('子管理员导入记录' if is_review_mode else ('号池 Team 列表' if is_number_pool_mode else 'Team 列表')) }}</h3>
+                <p>{{ '查看导入记录；成功导入的 Team 会直接进入控制台。' if is_import_only_mode else ('查看并筛选导入记录，批量进入控制台或维护 Team。' if is_review_mode else ('号池只用于前台兑换码拉人；质保服务仍使用控制台 Team。' if is_number_pool_mode else '筛选、搜索并批量维护 Team 账号。')) }}</p>
             </div>
 
             <div class="team-toolbar-actions">
@@ -109,7 +110,7 @@
                     </div>
                 </div>
 
-                {% if not is_review_mode or is_import_only_mode %}
+                {% if (not is_review_mode or is_import_only_mode) and not is_number_pool_mode %}
                 <button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">
                     <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 导入 Team
                 </button>
@@ -135,6 +136,11 @@
             <button onclick="handleBatchEnableDeviceAuth()" class="btn btn-success btn-sm">
                 <i data-lucide="shield-check" style="width: 14px; height: 14px;"></i> 批量开启验证
             </button>
+            {% if number_pool_enabled or is_number_pool_mode %}
+            <button onclick="handleBatchTransferPool()" class="btn btn-secondary btn-sm">
+                <i data-lucide="arrow-left-right" style="width: 14px; height: 14px;"></i> {{ '批量转回控制台' if is_number_pool_mode else '批量转入号池' }}
+            </button>
+            {% endif %}
             <button onclick="handleBatchDelete()" class="btn btn-danger btn-sm">
                 <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> 批量删除
             </button>
@@ -410,6 +416,13 @@
                             data-id="{{ team.id }}" title="一键开启设备代码验证">
                             <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i>
                         </button>
+                        {% if number_pool_enabled or is_number_pool_mode %}
+                        <button class="btn btn-sm btn-icon btn-minimal btn-secondary btn-transfer-pool"
+                            data-id="{{ team.id }}" data-target-type="{{ 'standard' if is_number_pool_mode else 'number_pool' }}"
+                            title="{{ '转回控制台 Team' if is_number_pool_mode else '转入号池' }}">
+                            <i data-lucide="arrow-left-right" style="width: 16px; height: 16px;"></i>
+                        </button>
+                        {% endif %}
                         <button class="btn btn-sm btn-icon btn-minimal btn-danger btn-delete-team"
                             data-id="{{ team.id }}" data-email="{{ team.email }}" title="删除">
                             <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
@@ -523,8 +536,8 @@
 {% endif %}
 {% else %}
 <div class="empty-state">
-    <p>{{ '暂无导入记录' if is_review_mode else '暂无 Team 数据' }}</p>
-    {% if not is_review_mode or is_import_only_mode %}<button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">立即导入</button>{% endif %}
+    <p>{{ '暂无导入记录' if is_review_mode else ('暂无号池 Team，请先从控制台转入' if is_number_pool_mode else '暂无 Team 数据') }}</p>
+    {% if (not is_review_mode or is_import_only_mode) and not is_number_pool_mode %}<button onclick="showImportTeamModal('{{ team_mode or 'standard' }}')" class="btn btn-primary">立即导入</button>{% endif %}
 </div>
 {% endif %}
 </div>
@@ -820,6 +833,15 @@
             btn.addEventListener('click', () => {
                 const id = btn.getAttribute('data-id');
                 enableDeviceAuth(id);
+            });
+        });
+
+        // 绑定号池/控制台转移按钮
+        document.querySelectorAll('.btn-transfer-pool').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.getAttribute('data-id');
+                const targetType = btn.getAttribute('data-target-type');
+                transferTeamPool(id, targetType);
             });
         });
 
@@ -1647,6 +1669,84 @@
                 },
             }
         );
+    }
+
+    async function transferTeamPool(teamId, targetType) {
+        const isToNumberPool = targetType === 'number_pool';
+        const targetLabel = isToNumberPool ? '号池' : '控制台 Team';
+        const confirmed = await showSystemConfirm({
+            title: `确认转入${targetLabel}`,
+            message: isToNumberPool
+                ? '确定要将该 Team 转入号池吗？开启号池后，前台兑换码会优先使用号池 Team。'
+                : '确定要将该 Team 转回控制台 Team 吗？转回后可继续用于质保服务拉人。',
+            confirmText: '确认转移',
+        });
+        if (!confirmed) return;
+
+        try {
+            showToast('正在转移...', 'info');
+            const response = await fetch(`/admin/teams/${teamId}/transfer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_team_type: targetType })
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                showToast(data.message || `已转入${targetLabel}`, 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showToast(data.error || '转移失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    async function handleBatchTransferPool() {
+        const selectedIds = getSelectedTeamIds();
+        if (selectedIds.length === 0) {
+            showToast('请先选择要转移的 Team', 'warning');
+            return;
+        }
+
+        const targetType = {{ '"standard"' if is_number_pool_mode else '"number_pool"' }};
+        const isToNumberPool = targetType === 'number_pool';
+        const targetLabel = isToNumberPool ? '号池' : '控制台 Team';
+        const confirmed = await showSystemConfirm({
+            title: `确认批量转入${targetLabel}`,
+            message: `确定要将选中的 ${selectedIds.length} 个 Team 转入${targetLabel}吗？`,
+            confirmText: '确认转移',
+        });
+        if (!confirmed) return;
+
+        let successCount = 0;
+        const failedItems = [];
+        for (const teamId of selectedIds) {
+            try {
+                const response = await fetch(`/admin/teams/${teamId}/transfer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target_team_type: targetType })
+                });
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    successCount += 1;
+                } else {
+                    failedItems.push({ team_id: teamId, error: data.error || '转移失败' });
+                }
+            } catch (error) {
+                failedItems.push({ team_id: teamId, error: '网络错误' });
+            }
+        }
+
+        const message = `批量转移完成: 成功 ${successCount}, 失败 ${failedItems.length}`;
+        if (failedItems.length) {
+            showToast(message, 'error');
+            showBatchActionResultModal('批量转移', message, failedItems);
+        } else {
+            showToast(message, 'success');
+            setTimeout(() => location.reload(), 1000);
+        }
     }
 
 

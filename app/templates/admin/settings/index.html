@@ -173,6 +173,31 @@
     </form>
 </div>
 
+
+<!-- 独立号池 -->
+<div class="content-section">
+    <div class="section-header">
+        <h3>独立号池</h3>
+    </div>
+
+    <form id="numberPoolForm" class="settings-form">
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input
+                    type="checkbox"
+                    id="numberPoolEnabled"
+                    name="enabled"
+                    {% if number_pool_enabled %}checked{% endif %}
+                >
+                <span>启用独立号池</span>
+            </label>
+            <p class="form-help">开启后，前台兑换码拉人只进入“号池”Team；质保服务仍进入控制台 Team。关闭前需要先清空号池，或将号池 Team 转回控制台。</p>
+        </div>
+
+        <button type="submit" class="btn btn-primary">保存号池开关</button>
+    </form>
+</div>
+
 <!-- 前台质保服务 -->
 <div class="content-section">
     <div class="section-header">
@@ -675,6 +700,35 @@
 
             if (response.ok && data.success) {
                 showToast('Team 默认最大人数已保存', 'success');
+            } else {
+                showToast(data.error || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    });
+
+
+    // 独立号池开关
+    document.getElementById('numberPoolForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const enabled = document.getElementById('numberPoolEnabled').checked;
+
+        try {
+            const response = await fetch('/admin/settings/number-pool', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ enabled })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                showToast('号池功能开关已保存，正在刷新页面', 'success');
+                setTimeout(() => window.location.reload(), 700);
             } else {
                 showToast(data.error || '保存失败', 'error');
             }

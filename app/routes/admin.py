@@ -31,6 +31,7 @@ from app.services.team import (
     TeamService,
     TEAM_TYPE_STANDARD,
     TEAM_TYPE_WARRANTY,
+    TEAM_TYPE_NUMBER_POOL,
     IMPORT_STATUS_PENDING,
     IMPORT_STATUS_CLASSIFIED,
     IMPORT_TAG_LABELS,
@@ -112,11 +113,18 @@ async def _build_admin_template_context(
 ) -> dict[str, Any]:
     sidebar_order = await _resolve_admin_sidebar_order(db, current_user)
     sidebar_stats = await _get_import_admin_sidebar_stats(db, current_user)
+    number_pool_config = await settings_service.get_number_pool_config(db)
+    number_pool_enabled = bool(number_pool_config.get("enabled"))
     return {
         "request": request,
         "user": current_user,
         "active_page": active_page,
-        "sidebar_items": get_admin_sidebar_items_for_user(current_user, sidebar_order),
+        "number_pool_enabled": number_pool_enabled,
+        "sidebar_items": get_admin_sidebar_items_for_user(
+            current_user,
+            sidebar_order,
+            number_pool_enabled=number_pool_enabled,
+        ),
         "sidebar_stats": sidebar_stats,
         **extra_context,
     }
@@ -274,7 +282,7 @@ class TeamUpdateRequest(BaseModel):
 
 class TeamTransferRequest(BaseModel):
     """Team 类型转移请求"""
-    target_team_type: str = Field(..., description="兼容旧字段；仅支持 standard")
+    target_team_type: str = Field(..., description="目标 Team 类型：standard 或 number_pool")
 
 
 class TeamClassifyRequest(BaseModel):
@@ -522,8 +530,10 @@ def _parse_member_count_filter_range(
 
 
 async def _get_code_generation_capacity(db: AsyncSession) -> Dict[str, int]:
-    """获取兑换码生成容量，保证未使用兑换码不超过实际可用席位。"""
-    available_seats = await team_service.get_total_available_seats(db)
+    """获取兑换码生成容量，保证未使用兑换码不超过当前兑换池实际可用席位。"""
+    number_pool_config = await settings_service.get_number_pool_config(db)
+    redeem_team_type = TEAM_TYPE_NUMBER_POOL if number_pool_config.get("enabled") else TEAM_TYPE_STANDARD
+    available_seats = await team_service.get_total_available_seats(db, team_type=redeem_team_type)
     unused_codes = await redemption_service.get_unused_count(db)
     return {
         "available_seats": int(available_seats or 0),
@@ -1014,7 +1024,7 @@ async def _stream_batch_team_action(
 
 def _normalize_team_type(team_type: Optional[str]) -> str:
     normalized = (team_type or TEAM_TYPE_STANDARD).strip().lower()
-    if normalized not in {TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY}:
+    if normalized not in {TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY, TEAM_TYPE_NUMBER_POOL}:
         return TEAM_TYPE_STANDARD
     return normalized
 
@@ -1236,6 +1246,59 @@ async def admin_dashboard(
         raise HTTPException(
             status_code=500,
             detail=f"加载管理员面板失败: {str(e)}"
+        )
+
+
+@router.get("/number-pool", response_class=HTMLResponse)
+async def number_pool_dashboard(
+    request: Request,
+    page: int = 1,
+    per_page: int = 100,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    imported_from: Optional[str] = None,
+    imported_to: Optional[str] = None,
+    expires_from: Optional[str] = None,
+    expires_to: Optional[str] = None,
+    device_auth: Optional[str] = None,
+    members_min: Optional[str] = None,
+    members_max: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """独立号池 Team 管理页。"""
+    number_pool_config = await settings_service.get_number_pool_config(db)
+    if not number_pool_config.get("enabled"):
+        return RedirectResponse(url="/admin/settings", status_code=307)
+
+    try:
+        logger.info("管理员访问号池, search=%s, page=%s, per_page=%s", search, page, per_page)
+        return await _render_team_dashboard_page(
+            request=request,
+            db=db,
+            current_user=current_user,
+            page=page,
+            per_page=per_page,
+            search=search,
+            status=status,
+            team_type=TEAM_TYPE_NUMBER_POOL,
+            active_page="number_pool",
+            page_title="号池",
+            imported_from=imported_from,
+            imported_to=imported_to,
+            expires_from=expires_from,
+            expires_to=expires_to,
+            device_auth=device_auth,
+            members_min=members_min,
+            members_max=members_max,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("加载号池页面失败: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"加载号池页面失败: {str(e)}"
         )
 
 
@@ -1492,14 +1555,22 @@ async def transfer_team_type(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
-    """兼容旧转移接口：仅允许归一到控制台 Team 池。"""
+    """在控制台 Team 与独立号池之间转移 Team。"""
     try:
         target_team_type = (transfer_data.target_team_type or "").strip().lower()
-        if target_team_type != TEAM_TYPE_STANDARD:
+        if target_team_type not in {TEAM_TYPE_STANDARD, TEAM_TYPE_NUMBER_POOL}:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"success": False, "error": "目标 Team 类型无效"}
             )
+
+        if target_team_type == TEAM_TYPE_NUMBER_POOL:
+            number_pool_config = await settings_service.get_number_pool_config(db)
+            if not number_pool_config.get("enabled"):
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"success": False, "error": "请先在设置中开启号池功能"}
+                )
 
         logger.info("管理员转移 Team 类型: team_id=%s, target=%s", team_id, target_team_type)
 
@@ -3189,6 +3260,7 @@ async def settings_page(
         default_team_max_members = await settings_service.get_default_team_max_members(db)
         warranty_service_config = await settings_service.get_warranty_service_config(db)
         warranty_fake_success_config = await settings_service.get_warranty_fake_success_config(db)
+        number_pool_config = await settings_service.get_number_pool_config(db)
         admin_sidebar_order = await _resolve_admin_sidebar_order(db, current_user)
         admin_sidebar_order = admin_sidebar_order or get_default_admin_sidebar_order()
 
@@ -3208,6 +3280,7 @@ async def settings_page(
                 default_team_max_members=default_team_max_members,
                 warranty_service_enabled=warranty_service_config["enabled"],
                 warranty_fake_success_enabled=warranty_fake_success_config["enabled"],
+                number_pool_enabled=number_pool_config["enabled"],
                 webhook_url=await settings_service.get_setting(db, "webhook_url", ""),
                 low_stock_threshold=await settings_service.get_setting(db, "low_stock_threshold", "10"),
                 api_key=await settings_service.get_setting(db, "api_key", ""),
@@ -3307,6 +3380,11 @@ class DefaultTeamMaxMembersSettingsRequest(BaseModel):
 class WarrantyServiceSettingsRequest(BaseModel):
     """前台质保服务开关请求"""
     enabled: bool = Field(..., description="是否启用前台质保服务")
+
+
+class NumberPoolSettingsRequest(BaseModel):
+    """独立号池功能开关请求"""
+    enabled: bool = Field(..., description="是否启用独立号池")
 
 
 class WarrantyFakeSuccessSettingsRequest(BaseModel):
@@ -4676,6 +4754,47 @@ async def update_admin_sidebar_order_settings(
         )
     except Exception as e:
         logger.error(f"更新侧边栏排序失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"更新失败: {str(e)}"}
+        )
+
+
+@router.post("/settings/number-pool")
+async def update_number_pool_settings(
+    pool_data: NumberPoolSettingsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """更新独立号池功能开关。"""
+    try:
+        logger.info("管理员更新独立号池开关: enabled=%s", pool_data.enabled)
+
+        if not pool_data.enabled:
+            pool_team_count = await db.scalar(
+                select(func.count(Team.id)).where(Team.team_type == TEAM_TYPE_NUMBER_POOL)
+            ) or 0
+            if int(pool_team_count) > 0:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "success": False,
+                        "error": "号池内仍有 Team，请先清空号池或转回控制台 Team 后再关闭",
+                        "pool_team_count": int(pool_team_count),
+                    },
+                )
+
+        success = await settings_service.update_number_pool_config(db, pool_data.enabled)
+
+        if success:
+            return JSONResponse(content={"success": True, "message": "号池功能开关已保存"})
+
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": "保存失败"}
+        )
+    except Exception as e:
+        logger.error("更新独立号池开关失败: %s", e)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"更新失败: {str(e)}"}

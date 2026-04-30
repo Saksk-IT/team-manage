@@ -28,6 +28,7 @@ SUPER_ADMIN_SIDEBAR_ITEMS: tuple[AdminSidebarItem, ...] = (
         "质保提交记录",
     ),
     AdminSidebarItem("codes", "codes", "/admin/codes", "ticket", "兑换码管理"),
+    AdminSidebarItem("number_pool", "number_pool", "/admin/number-pool", "layers", "号池"),
     AdminSidebarItem("records", "records", "/admin/records", "file-text", "使用记录"),
     AdminSidebarItem(
         "team_member_snapshots",
@@ -110,19 +111,26 @@ def safe_normalize_admin_sidebar_order(order: Sequence[str] | None) -> list[str]
         return get_default_admin_sidebar_order()
 
 
-def get_admin_sidebar_items(order: Sequence[str] | None = None) -> list[dict[str, str]]:
+def get_admin_sidebar_items(
+    order: Sequence[str] | None = None,
+    *,
+    number_pool_enabled: bool = True,
+) -> list[dict[str, str]]:
     normalized_order = safe_normalize_admin_sidebar_order(order) if order is not None else get_default_admin_sidebar_order()
     return [
         _serialize_item(SUPER_ADMIN_SIDEBAR_ITEM_MAP[menu_id])
         for menu_id in normalized_order
         if menu_id in SUPER_ADMIN_SIDEBAR_ITEM_MAP
+        and (number_pool_enabled or menu_id != "number_pool")
     ]
 
 
 def get_admin_sidebar_items_for_user(
     user: dict | None,
     order: Sequence[str] | None = None,
+    *,
+    number_pool_enabled: bool = True,
 ) -> list[dict[str, str]]:
     if _is_super_admin_user(user):
-        return get_admin_sidebar_items(order)
+        return get_admin_sidebar_items(order, number_pool_enabled=number_pool_enabled)
     return [_serialize_item(item) for item in IMPORT_ADMIN_SIDEBAR_ITEMS]

@@ -53,6 +53,9 @@ class AdminSidebarOrderPageTests(unittest.IsolatedAsyncioTestCase):
                 "app.routes.admin.settings_service.get_warranty_fake_success_config",
                 new=AsyncMock(return_value={"enabled": False})
             ), patch(
+                "app.routes.admin.settings_service.get_number_pool_config",
+                new=AsyncMock(return_value={"enabled": False})
+            ), patch(
                 "app.routes.admin.settings_service.get_setting",
                 new=AsyncMock(side_effect=["", "10", ""])
             ), patch(

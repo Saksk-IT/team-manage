@@ -111,7 +111,7 @@ class RedeemFlowBoundTeamRefreshTests(unittest.IsolatedAsyncioTestCase):
                 )
 
         self.assertFalse(result["success"])
-        self.assertEqual(result["error"], "您已加入所有可用 Team")
+        self.assertEqual(result["error"], "您已加入所有可用控制台 Team")
         service.chatgpt_service.send_invite.assert_not_called()
 
 

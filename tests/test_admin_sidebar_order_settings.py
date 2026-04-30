@@ -5,7 +5,11 @@ import unittest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.services.admin_sidebar import get_default_admin_sidebar_order
+from app.services.admin_sidebar import (
+    get_admin_sidebar_items,
+    get_admin_sidebar_items_for_user,
+    get_default_admin_sidebar_order,
+)
 from app.services.settings import settings_service
 
 
@@ -66,6 +70,21 @@ class AdminSidebarOrderSettingsTests(unittest.IsolatedAsyncioTestCase):
         async with self.Session() as session:
             with self.assertRaises(ValueError):
                 await settings_service.update_admin_sidebar_order(session, ["dashboard", "unknown"])
+
+    def test_number_pool_sidebar_item_can_be_hidden_when_disabled(self):
+        order = get_default_admin_sidebar_order()
+
+        hidden_items = get_admin_sidebar_items(order, number_pool_enabled=False)
+        visible_items = get_admin_sidebar_items(order, number_pool_enabled=True)
+        user_hidden_items = get_admin_sidebar_items_for_user(
+            {"username": "admin", "is_super_admin": True},
+            order,
+            number_pool_enabled=False,
+        )
+
+        self.assertNotIn("number_pool", [item["id"] for item in hidden_items])
+        self.assertIn("number_pool", [item["id"] for item in visible_items])
+        self.assertNotIn("number_pool", [item["id"] for item in user_hidden_items])
 
 
 if __name__ == "__main__":

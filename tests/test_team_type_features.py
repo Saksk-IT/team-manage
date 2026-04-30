@@ -12,6 +12,7 @@ from app.services.team import (
     TeamService,
     TEAM_TYPE_STANDARD,
     TEAM_TYPE_WARRANTY,
+    TEAM_TYPE_NUMBER_POOL,
     IMPORT_RETRY_ATTEMPTS,
 )
 
@@ -465,6 +466,44 @@ class TeamTypeFeatureTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(unused_code_obj)
         self.assertIsNotNone(used_code_obj)
         self.assertEqual(used_code_obj.bound_team_id, team.id)
+
+    async def test_transfer_standard_team_to_number_pool_and_back(self):
+        async with self.Session() as session:
+            team = Team(
+                email="pool-transfer@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-pool-transfer",
+                team_type=TEAM_TYPE_STANDARD,
+                team_name="Pool Transfer",
+                status="active",
+                current_members=1,
+                max_members=5,
+            )
+            session.add(team)
+            await session.commit()
+
+            to_pool = await self.service.transfer_team_type(
+                team_id=team.id,
+                target_team_type=TEAM_TYPE_NUMBER_POOL,
+                db_session=session,
+            )
+            refreshed_team = await session.get(Team, team.id)
+            pool_team_type = refreshed_team.team_type
+
+            to_standard = await self.service.transfer_team_type(
+                team_id=team.id,
+                target_team_type=TEAM_TYPE_STANDARD,
+                db_session=session,
+            )
+            refreshed_team_again = await session.get(Team, team.id)
+            standard_team_type = refreshed_team_again.team_type
+
+        self.assertTrue(to_pool["success"])
+        self.assertEqual(to_pool["team_type"], TEAM_TYPE_NUMBER_POOL)
+        self.assertEqual(pool_team_type, TEAM_TYPE_NUMBER_POOL)
+        self.assertTrue(to_standard["success"])
+        self.assertEqual(to_standard["team_type"], TEAM_TYPE_STANDARD)
+        self.assertEqual(standard_team_type, TEAM_TYPE_STANDARD)
 
     async def test_transfer_legacy_warranty_team_to_standard_does_not_generate_codes(self):
         async with self.Session() as session:

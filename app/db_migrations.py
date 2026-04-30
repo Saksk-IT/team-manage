@@ -189,7 +189,7 @@ def migrate_unified_team_pool(cursor) -> list[str]:
             SET team_type = 'standard'
             WHERE team_type IS NULL
                OR TRIM(team_type) = ''
-               OR team_type != 'standard'
+               OR team_type NOT IN ('standard', 'number_pool')
         """)
         if cursor.rowcount:
             migration_names.append(f"teams.team_type_unified:{cursor.rowcount}")
@@ -452,6 +452,7 @@ def run_auto_migration():
             WHERE import_status IS NULL OR TRIM(import_status) = ''
         """)
 
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_type ON teams (team_type)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_import_tag ON teams (import_tag)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_created_at ON teams (created_at)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_last_refresh_at ON teams (last_refresh_at)")

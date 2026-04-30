@@ -16,7 +16,7 @@ from app.models import (
     WarrantyClaimRecord,
     WarrantyEmailEntry,
 )
-from app.services.team import TEAM_TYPE_STANDARD, TEAM_TYPE_WARRANTY
+from app.services.team import TEAM_TYPE_STANDARD
 from app.services.warranty import WarrantyService
 from app.utils.time_utils import get_now
 
@@ -52,7 +52,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
             email="warranty-owner@example.com",
             access_token_encrypted="dummy",
             account_id="acc-warranty",
-            team_type=TEAM_TYPE_WARRANTY,
+            team_type=TEAM_TYPE_STANDARD,
             team_name="Warranty Team",
             status="active",
             current_members=1,
@@ -352,7 +352,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
                 email="warranty-owner-2@example.com",
                 access_token_encrypted="dummy",
                 account_id="acc-warranty-2",
-                team_type=TEAM_TYPE_WARRANTY,
+                team_type=TEAM_TYPE_STANDARD,
                 team_name="Warranty Team 2",
                 status="active",
                 current_members=1,
@@ -409,7 +409,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
                 email="warranty-owner-2@example.com",
                 access_token_encrypted="dummy",
                 account_id="acc-warranty-2",
-                team_type=TEAM_TYPE_WARRANTY,
+                team_type=TEAM_TYPE_STANDARD,
                 team_name="Warranty Team 2",
                 status="active",
                 current_members=1,
@@ -468,7 +468,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
                 email="warranty-owner-2@example.com",
                 access_token_encrypted="dummy",
                 account_id="acc-warranty-2",
-                team_type=TEAM_TYPE_WARRANTY,
+                team_type=TEAM_TYPE_STANDARD,
                 team_name="Warranty Team 2",
                 status="active",
                 current_members=1,
@@ -539,7 +539,7 @@ class WarrantyClaimTests(unittest.IsolatedAsyncioTestCase):
                 email="warranty-owner-2@example.com",
                 access_token_encrypted="dummy",
                 account_id="acc-warranty-2",
-                team_type=TEAM_TYPE_WARRANTY,
+                team_type=TEAM_TYPE_STANDARD,
                 team_name="Warranty Team 2",
                 status="active",
                 current_members=1,

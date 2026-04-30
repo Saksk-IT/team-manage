@@ -33,8 +33,8 @@ async def redeem_page(
     """
     try:
         from app.main import templates
-        from app.services.team import TeamService
         from app.services.settings import settings_service
+        from app.services.team import TeamService, TEAM_TYPE_NUMBER_POOL, TEAM_TYPE_STANDARD
 
         front_announcement_config = await settings_service.get_front_announcement_config(db)
         customer_service_config = await settings_service.get_customer_service_config(db)
@@ -48,7 +48,9 @@ async def redeem_page(
             remaining_spots = await settings_service.get_warranty_fake_success_remaining_spots(db)
         else:
             team_service = TeamService()
-            remaining_spots = await team_service.get_total_available_seats(db)
+            number_pool_config = await settings_service.get_number_pool_config(db)
+            redeem_team_type = TEAM_TYPE_NUMBER_POOL if number_pool_config.get("enabled") else TEAM_TYPE_STANDARD
+            remaining_spots = await team_service.get_total_available_seats(db, team_type=redeem_team_type)
 
         logger.info(f"用户访问兑换页面，剩余车位: {remaining_spots}")
 

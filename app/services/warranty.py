@@ -20,7 +20,7 @@ from app.models import (
     WarrantyEmailEntry,
 )
 from app.services.settings import settings_service
-from app.services.team import IMPORT_STATUS_CLASSIFIED
+from app.services.team import IMPORT_STATUS_CLASSIFIED, TEAM_TYPE_STANDARD
 from app.services.team_refresh_record import SOURCE_USER_WARRANTY
 from app.utils.time_utils import get_now
 
@@ -2054,6 +2054,7 @@ class WarrantyService:
                 or_(Team.warranty_unavailable.is_(False), Team.warranty_unavailable.is_(None)),
                 capacity_expr < Team.max_members,
                 Team.import_status == IMPORT_STATUS_CLASSIFIED,
+                Team.team_type == TEAM_TYPE_STANDARD,
             )
             .order_by(
                 func.coalesce(Team.reserved_members, 0).asc(),
