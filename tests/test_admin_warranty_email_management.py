@@ -77,6 +77,10 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("openWarrantyEmailCreateModal", html)
         self.assertIn('id="warrantyRedeemCode"', html)
         self.assertIn('id="warrantyRemainingClaims" class="form-control" min="0" value="10" required', html)
+        self.assertIn('id="warrantyRemainingHours"', html)
+        self.assertIn('id="warrantyRemainingMinutes"', html)
+        self.assertIn('id="warrantyRemainingSeconds"', html)
+        self.assertIn('剩余时间会精确到秒', html)
         self.assertIn("批量删除", html)
         self.assertIn("function bulkDeleteWarrantyEmails()", html)
         self.assertIn("/admin/warranty-emails/bulk-delete", html)
@@ -85,10 +89,8 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         fill_script_end = html.index("document.getElementById('warrantyEmailForm')")
         fill_script = html[fill_script_start:fill_script_end]
         self.assertIn("document.getElementById('warrantyRedeemCode').value", fill_script)
-        self.assertIn(
-            "remainingDaysInput.value = entry.remaining_days === null || entry.remaining_days === undefined ? '' : String(entry.remaining_days);",
-            fill_script,
-        )
+        self.assertIn("setWarrantyRemainingTimeInputs(", fill_script)
+        self.assertIn("entry.remaining_seconds", fill_script)
         self.assertIn(
             "remainingClaimsInput.value = entry.remaining_claims === null || entry.remaining_claims === undefined ? '0' : String(entry.remaining_claims);",
             fill_script,
@@ -100,6 +102,8 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         submit_script_end = html.index("function getSelectedWarrantyEmailIds()")
         submit_script = html[submit_script_start:submit_script_end]
         self.assertIn("redeem_code: redeemCode || null", submit_script)
+        self.assertIn("remaining_seconds: remainingTime.seconds", submit_script)
+        self.assertIn("parseWarrantyRemainingTimeSeconds", html)
 
     async def test_warranty_emails_page_supports_search_by_redeem_code(self):
         async with self.Session() as session:
@@ -454,6 +458,7 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
                 payload=WarrantyEmailSaveRequest(
                     email="buyer@example.com",
                     remaining_days=5,
+                    remaining_seconds=5 * 86400 + 3661,
                     remaining_claims=2
                 ),
                 db=session,
@@ -471,6 +476,9 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(save_response.status_code, 200)
         self.assertTrue(save_payload["success"])
+        self.assertRegex(save_payload["entry"]["remaining_time"], r"^5天 01:0[01]:\d{2}$")
+        self.assertGreaterEqual(save_payload["entry"]["remaining_seconds"], 5 * 86400 + 3658)
+        self.assertLessEqual(save_payload["entry"]["remaining_seconds"], 5 * 86400 + 3661)
         self.assertEqual(delete_response.status_code, 200)
 
     async def test_save_warranty_email_order_updates_matching_redeem_code_only(self):
@@ -561,6 +569,7 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
                     entry_id=entry.id,
                     email="buyer@example.com",
                     remaining_days=8,
+                    remaining_seconds=8 * 86400 + 3723,
                     remaining_claims=5,
                     redeem_code="CODE-A",
                 ),
@@ -581,7 +590,8 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(refreshed_code_b.warranty_claims, 2)
         self.assertIsNone(refreshed_code_b.warranty_expires_at)
         self.assertEqual(entries_by_code["CODE-A"]["remaining_claims"], 5)
-        self.assertEqual(entries_by_code["CODE-A"]["remaining_days"], 8)
+        self.assertEqual(entries_by_code["CODE-A"]["remaining_days"], 9)
+        self.assertRegex(entries_by_code["CODE-A"]["remaining_time"], r"^8天 01:02:0[0-3]$")
         self.assertNotIn("CODE-B", entries_by_code)
 
 

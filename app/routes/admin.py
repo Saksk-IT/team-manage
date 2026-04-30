@@ -702,7 +702,8 @@ class WarrantySuperCodeConfigRequest(BaseModel):
 class WarrantyEmailSaveRequest(BaseModel):
     entry_id: Optional[int] = Field(None, description="质保邮箱记录 ID")
     email: EmailStr = Field(..., description="质保邮箱")
-    remaining_days: Optional[int] = Field(None, ge=0, description="剩余天数")
+    remaining_days: Optional[int] = Field(None, ge=0, description="剩余天数（兼容旧字段）")
+    remaining_seconds: Optional[int] = Field(None, ge=0, description="剩余时间秒数")
     remaining_claims: int = Field(..., ge=0, description="剩余次数")
     redeem_code: Optional[str] = Field(None, max_length=32, description="指定质保兑换码")
 
@@ -4343,6 +4344,7 @@ async def save_warranty_email(
                 email=payload.email,
                 redeem_code=redeem_code,
                 remaining_days=payload.remaining_days,
+                remaining_seconds=payload.remaining_seconds,
                 remaining_claims=payload.remaining_claims,
                 source="manual"
             )
@@ -4352,6 +4354,7 @@ async def save_warranty_email(
                 entry_id=payload.entry_id,
                 email=payload.email,
                 remaining_days=payload.remaining_days,
+                remaining_seconds=payload.remaining_seconds,
                 remaining_claims=payload.remaining_claims,
                 source="manual"
             )

@@ -78,7 +78,25 @@ class WarrantyService:
         normalized_status = (status or "").strip().lower()
         return self.TEAM_STATUS_LABELS.get(normalized_status, "未知")
 
-    def _build_warranty_entry_expires_at(self, remaining_days: Optional[int]) -> Optional[datetime]:
+    def _build_warranty_entry_expires_at(
+        self,
+        remaining_days: Optional[int],
+        remaining_seconds: Optional[int] = None,
+    ) -> Optional[datetime]:
+        if remaining_seconds is not None:
+            try:
+                remaining_seconds_int = int(remaining_seconds)
+            except (TypeError, ValueError):
+                raise ValueError("剩余时间必须是非负整数秒")
+
+            if remaining_seconds_int < 0:
+                raise ValueError("剩余时间必须是非负整数秒")
+
+            if remaining_seconds_int == 0:
+                return get_now()
+
+            return get_now() + timedelta(seconds=remaining_seconds_int)
+
         if remaining_days is None:
             return None
         try:
@@ -655,6 +673,7 @@ class WarrantyService:
         email: str,
         remaining_claims: int,
         remaining_days: Optional[int],
+        remaining_seconds: Optional[int] = None,
         source: str = "manual",
         entry_id: Optional[int] = None
     ) -> WarrantyEmailEntry:
@@ -663,7 +682,7 @@ class WarrantyService:
             raise ValueError("邮箱不能为空")
 
         remaining_claims_int = self._normalize_remaining_claims(remaining_claims)
-        expires_at = self._build_warranty_entry_expires_at(remaining_days)
+        expires_at = self._build_warranty_entry_expires_at(remaining_days, remaining_seconds)
 
         current_entry = None
         if entry_id is not None:
@@ -711,6 +730,7 @@ class WarrantyService:
         redeem_code: str,
         remaining_claims: int,
         remaining_days: Optional[int],
+        remaining_seconds: Optional[int] = None,
         source: str = "manual",
         entry_id: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -744,6 +764,7 @@ class WarrantyService:
             entry_id=warranty_entry.id if warranty_entry else entry_id,
             email=normalized_email,
             remaining_days=remaining_days,
+            remaining_seconds=remaining_seconds,
             remaining_claims=remaining_claims,
             source=source,
         )

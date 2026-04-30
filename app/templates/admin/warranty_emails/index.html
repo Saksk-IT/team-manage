@@ -295,9 +295,14 @@
                     <input type="email" id="warrantyEmail" class="form-control" placeholder="user@example.com" required>
                 </div>
                 <div class="form-group">
-                    <label for="warrantyRemainingDays">剩余天数</label>
-                    <input type="number" id="warrantyRemainingDays" class="form-control" min="0" value="30" placeholder="0 表示立即过期；留空表示未启用">
-                    <p class="form-help">系统按“剩余天数 + 剩余次数”同时满足时才允许质保。</p>
+                    <label for="warrantyRemainingDays">剩余时间</label>
+                    <input type="number" id="warrantyRemainingDays" class="form-control" min="0" value="30" placeholder="天；0 表示立即过期；留空表示未启用">
+                    <div class="warranty-time-input-grid" aria-label="剩余时间快捷输入">
+                        <label>时<input type="number" id="warrantyRemainingHours" class="form-control" min="0" max="23" value="0" inputmode="numeric"></label>
+                        <label>分<input type="number" id="warrantyRemainingMinutes" class="form-control" min="0" max="59" value="0" inputmode="numeric"></label>
+                        <label>秒<input type="number" id="warrantyRemainingSeconds" class="form-control" min="0" max="59" value="0" inputmode="numeric"></label>
+                    </div>
+                    <p class="form-help">系统按“剩余时间 + 剩余次数”同时满足时才允许质保；剩余时间会精确到秒。</p>
                 </div>
                 <div class="form-group">
                     <label for="warrantyRemainingClaims">剩余次数</label>
@@ -456,6 +461,23 @@
         margin: 0;
     }
 
+    .warranty-time-input-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+
+    .warranty-time-input-grid label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
     @media (max-width: 768px) {
         .warranty-email-filter-form {
             grid-template-columns: 1fr;
@@ -472,6 +494,10 @@
 
         .warranty-filter-range-inputs span {
             display: none;
+        }
+
+        .warranty-time-input-grid {
+            grid-template-columns: 1fr;
         }
 
         .bulk-action-bar {
@@ -531,14 +557,73 @@
 
     }
 
-    function resetWarrantyEmailForm() {
+    function setWarrantyRemainingTimeInputs(totalSeconds) {
         const remainingDaysInput = document.getElementById('warrantyRemainingDays');
+        const remainingHoursInput = document.getElementById('warrantyRemainingHours');
+        const remainingMinutesInput = document.getElementById('warrantyRemainingMinutes');
+        const remainingSecondsInput = document.getElementById('warrantyRemainingSeconds');
+
+        if (totalSeconds === null || totalSeconds === undefined || totalSeconds === '') {
+            remainingDaysInput.value = '';
+            remainingHoursInput.value = '0';
+            remainingMinutesInput.value = '0';
+            remainingSecondsInput.value = '0';
+            return;
+        }
+
+        const safeSeconds = Math.max(Math.floor(Number(totalSeconds) || 0), 0);
+        const days = Math.floor(safeSeconds / 86400);
+        const hours = Math.floor((safeSeconds % 86400) / 3600);
+        const minutes = Math.floor((safeSeconds % 3600) / 60);
+        const seconds = safeSeconds % 60;
+
+        remainingDaysInput.value = String(days);
+        remainingHoursInput.value = String(hours);
+        remainingMinutesInput.value = String(minutes);
+        remainingSecondsInput.value = String(seconds);
+    }
+
+    function parseWarrantyRemainingTimeSeconds() {
+        const daysValue = document.getElementById('warrantyRemainingDays').value.trim();
+        const hoursValue = document.getElementById('warrantyRemainingHours').value.trim();
+        const minutesValue = document.getElementById('warrantyRemainingMinutes').value.trim();
+        const secondsValue = document.getElementById('warrantyRemainingSeconds').value.trim();
+
+        if (daysValue === '') {
+            return { seconds: null, days: null };
+        }
+
+        const days = Number(daysValue);
+        const hours = hoursValue === '' ? 0 : Number(hoursValue);
+        const minutes = minutesValue === '' ? 0 : Number(minutesValue);
+        const seconds = secondsValue === '' ? 0 : Number(secondsValue);
+
+        if (!Number.isInteger(days) || days < 0) {
+            return { error: '剩余天数必须是非负整数' };
+        }
+        if (!Number.isInteger(hours) || hours < 0 || hours > 23) {
+            return { error: '剩余小时必须是 0-23 的整数' };
+        }
+        if (!Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+            return { error: '剩余分钟必须是 0-59 的整数' };
+        }
+        if (!Number.isInteger(seconds) || seconds < 0 || seconds > 59) {
+            return { error: '剩余秒数必须是 0-59 的整数' };
+        }
+
+        return {
+            seconds: days * 86400 + hours * 3600 + minutes * 60 + seconds,
+            days,
+        };
+    }
+
+    function resetWarrantyEmailForm() {
         const remainingClaimsInput = document.getElementById('warrantyRemainingClaims');
 
         document.getElementById('warrantyEntryId').value = '';
         document.getElementById('warrantyRedeemCode').value = '';
         document.getElementById('warrantyEmail').value = '';
-        remainingDaysInput.value = remainingDaysInput.defaultValue;
+        setWarrantyRemainingTimeInputs(Number(document.getElementById('warrantyRemainingDays').defaultValue) * 86400);
         remainingClaimsInput.value = remainingClaimsInput.defaultValue;
         setWarrantyEditorMode(false);
     }
@@ -555,13 +640,16 @@
     }
 
     function fillWarrantyEmailForm(entry) {
-        const remainingDaysInput = document.getElementById('warrantyRemainingDays');
         const remainingClaimsInput = document.getElementById('warrantyRemainingClaims');
 
         document.getElementById('warrantyEntryId').value = entry.id || '';
         document.getElementById('warrantyRedeemCode').value = entry.is_order_row ? (entry.last_redeem_code || '') : '';
         document.getElementById('warrantyEmail').value = entry.email || '';
-        remainingDaysInput.value = entry.remaining_days === null || entry.remaining_days === undefined ? '' : String(entry.remaining_days);
+        setWarrantyRemainingTimeInputs(
+            entry.remaining_seconds === null || entry.remaining_seconds === undefined
+                ? null
+                : Number(entry.remaining_seconds)
+        );
         remainingClaimsInput.value = entry.remaining_claims === null || entry.remaining_claims === undefined ? '0' : String(entry.remaining_claims);
         setWarrantyEditorMode(true, entry);
         showModal('warrantyEmailEditorModal');
@@ -574,9 +662,8 @@
         const entryId = document.getElementById('warrantyEntryId').value.trim();
         const redeemCode = document.getElementById('warrantyRedeemCode').value.trim();
         const email = document.getElementById('warrantyEmail').value.trim();
-        const remainingDaysValue = document.getElementById('warrantyRemainingDays').value.trim();
+        const remainingTime = parseWarrantyRemainingTimeSeconds();
         const remainingClaims = parseInt(document.getElementById('warrantyRemainingClaims').value, 10);
-        const remainingDays = remainingDaysValue === '' ? null : parseInt(remainingDaysValue, 10);
 
         if (!email) {
             showToast('请输入邮箱', 'error');
@@ -588,8 +675,8 @@
             return;
         }
 
-        if (remainingDaysValue !== '' && (Number.isNaN(remainingDays) || remainingDays < 0)) {
-            showToast('剩余天数必须是非负整数', 'error');
+        if (remainingTime.error) {
+            showToast(remainingTime.error, 'error');
             return;
         }
 
@@ -601,7 +688,8 @@
                     entry_id: entryId ? parseInt(entryId, 10) : null,
                     redeem_code: redeemCode || null,
                     email,
-                    remaining_days: remainingDays,
+                    remaining_days: remainingTime.days,
+                    remaining_seconds: remainingTime.seconds,
                     remaining_claims: remainingClaims
                 })
             });
