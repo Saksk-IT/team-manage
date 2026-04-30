@@ -52,11 +52,15 @@ class AdminTeamCleanupRecordsPageTests(unittest.IsolatedAsyncioTestCase):
                     team_name=team.team_name,
                     team_account_id=team.account_id,
                     cleanup_status="partial_failed",
+                    cleanup_source="warranty_expiry",
+                    cleanup_reason="质保订单到期自动清理：成员已删除",
                     removed_member_count=1,
                     revoked_invite_count=1,
+                    whitelist_deactivated_count=1,
                     failed_count=1,
                     removed_member_emails='["removed@example.com"]',
                     revoked_invite_emails='["invite@example.com"]',
+                    whitelist_deactivated_emails='["whitelist@example.com"]',
                     failed_items='[{"type":"member","email":"failed@example.com","error":"删除失败"}]',
                 )
             )
@@ -77,12 +81,16 @@ class AdminTeamCleanupRecordsPageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Cleanup Team", html)
         self.assertIn("removed@example.com", html)
         self.assertIn("invite@example.com", html)
+        self.assertIn("whitelist@example.com", html)
+        self.assertIn("质保到期自动清理", html)
+        self.assertIn("质保订单到期自动清理", html)
+        self.assertIn("停用白名单", html)
         self.assertIn("failed@example.com", html)
         self.assertIn("部分失败", html)
         self.assertIn("清理总数", html)
         self.assertIn("清理成功", html)
         self.assertIn("清理失败", html)
-        self.assertIn("搜索 Team、邮箱、Account ID、失败原因", html)
+        self.assertIn("搜索 Team、邮箱、Account ID、清理来源、失败原因", html)
 
 
 if __name__ == "__main__":

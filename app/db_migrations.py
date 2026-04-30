@@ -735,12 +735,16 @@ def run_auto_migration():
                     team_email VARCHAR(255) NOT NULL,
                     team_name VARCHAR(255),
                     team_account_id VARCHAR(100),
+                    cleanup_source VARCHAR(40) NOT NULL DEFAULT 'team_refresh',
+                    cleanup_reason TEXT,
                     cleanup_status VARCHAR(20) NOT NULL DEFAULT 'success',
                     removed_member_count INTEGER NOT NULL DEFAULT 0,
                     revoked_invite_count INTEGER NOT NULL DEFAULT 0,
+                    whitelist_deactivated_count INTEGER NOT NULL DEFAULT 0,
                     failed_count INTEGER NOT NULL DEFAULT 0,
                     removed_member_emails TEXT,
                     revoked_invite_emails TEXT,
+                    whitelist_deactivated_emails TEXT,
                     failed_items TEXT,
                     created_at DATETIME NOT NULL,
                     FOREIGN KEY(team_id) REFERENCES teams(id)
@@ -751,6 +755,10 @@ def run_auto_migration():
                 ON team_cleanup_records (team_id)
             """)
             cursor.execute("""
+                CREATE INDEX idx_team_cleanup_records_source
+                ON team_cleanup_records (cleanup_source)
+            """)
+            cursor.execute("""
                 CREATE INDEX idx_team_cleanup_records_status
                 ON team_cleanup_records (cleanup_status)
             """)
@@ -759,6 +767,44 @@ def run_auto_migration():
                 ON team_cleanup_records (created_at)
             """)
             migrations_applied.append("team_cleanup_records")
+
+        if table_exists(cursor, "team_cleanup_records"):
+            if not column_exists(cursor, "team_cleanup_records", "cleanup_source"):
+                logger.info("添加 team_cleanup_records.cleanup_source 字段")
+                cursor.execute("""
+                    ALTER TABLE team_cleanup_records
+                    ADD COLUMN cleanup_source VARCHAR(40) NOT NULL DEFAULT 'team_refresh'
+                """)
+                migrations_applied.append("team_cleanup_records.cleanup_source")
+
+            if not column_exists(cursor, "team_cleanup_records", "cleanup_reason"):
+                logger.info("添加 team_cleanup_records.cleanup_reason 字段")
+                cursor.execute("""
+                    ALTER TABLE team_cleanup_records
+                    ADD COLUMN cleanup_reason TEXT
+                """)
+                migrations_applied.append("team_cleanup_records.cleanup_reason")
+
+            if not column_exists(cursor, "team_cleanup_records", "whitelist_deactivated_count"):
+                logger.info("添加 team_cleanup_records.whitelist_deactivated_count 字段")
+                cursor.execute("""
+                    ALTER TABLE team_cleanup_records
+                    ADD COLUMN whitelist_deactivated_count INTEGER NOT NULL DEFAULT 0
+                """)
+                migrations_applied.append("team_cleanup_records.whitelist_deactivated_count")
+
+            if not column_exists(cursor, "team_cleanup_records", "whitelist_deactivated_emails"):
+                logger.info("添加 team_cleanup_records.whitelist_deactivated_emails 字段")
+                cursor.execute("""
+                    ALTER TABLE team_cleanup_records
+                    ADD COLUMN whitelist_deactivated_emails TEXT
+                """)
+                migrations_applied.append("team_cleanup_records.whitelist_deactivated_emails")
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_team_cleanup_records_source
+                ON team_cleanup_records (cleanup_source)
+            """)
 
         if not table_exists(cursor, "team_refresh_records"):
             logger.info("创建 team_refresh_records 表")

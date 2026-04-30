@@ -22,6 +22,11 @@ class TeamCleanupRecordService:
         "failed": "清理失败",
     }
 
+    SOURCE_LABELS = {
+        "team_refresh": "Team 刷新自动清理",
+        "warranty_expiry": "质保到期自动清理",
+    }
+
     @staticmethod
     def _serialize_json(value: Any) -> str:
         return json.dumps(value or [], ensure_ascii=False)
@@ -43,11 +48,12 @@ class TeamCleanupRecordService:
         self,
         removed_member_count: int,
         revoked_invite_count: int,
+        whitelist_deactivated_count: int,
         failed_count: int,
     ) -> str:
         if failed_count <= 0:
             return "success"
-        if removed_member_count > 0 or revoked_invite_count > 0:
+        if removed_member_count > 0 or revoked_invite_count > 0 or whitelist_deactivated_count > 0:
             return "partial_failed"
         return "failed"
 
@@ -55,34 +61,48 @@ class TeamCleanupRecordService:
         self,
         db_session: AsyncSession,
         *,
-        team_id: int,
+        team_id: Optional[int],
         team_email: str,
         team_name: Optional[str],
         team_account_id: Optional[str],
         cleanup_summary: Dict[str, Any],
+        cleanup_source: str = "team_refresh",
+        cleanup_reason: Optional[str] = None,
     ) -> Optional[TeamCleanupRecord]:
         removed_member_count = int(cleanup_summary.get("removed_member_count") or 0)
         revoked_invite_count = int(cleanup_summary.get("revoked_invite_count") or 0)
+        whitelist_deactivated_count = int(cleanup_summary.get("whitelist_deactivated_count") or 0)
         failed_count = int(cleanup_summary.get("failed_count") or 0)
 
-        if removed_member_count <= 0 and revoked_invite_count <= 0 and failed_count <= 0:
+        if (
+            removed_member_count <= 0
+            and revoked_invite_count <= 0
+            and whitelist_deactivated_count <= 0
+            and failed_count <= 0
+        ):
             return None
+        normalized_source = (cleanup_source or "team_refresh").strip().lower() or "team_refresh"
 
         cleanup_record = TeamCleanupRecord(
             team_id=team_id,
             team_email=(team_email or "").strip(),
             team_name=(team_name or "").strip() or None,
             team_account_id=(team_account_id or "").strip() or None,
+            cleanup_source=normalized_source,
+            cleanup_reason=(cleanup_reason or "").strip() or None,
             cleanup_status=self._resolve_cleanup_status(
                 removed_member_count=removed_member_count,
                 revoked_invite_count=revoked_invite_count,
+                whitelist_deactivated_count=whitelist_deactivated_count,
                 failed_count=failed_count,
             ),
             removed_member_count=removed_member_count,
             revoked_invite_count=revoked_invite_count,
+            whitelist_deactivated_count=whitelist_deactivated_count,
             failed_count=failed_count,
             removed_member_emails=self._serialize_json(cleanup_summary.get("removed_member_emails")),
             revoked_invite_emails=self._serialize_json(cleanup_summary.get("revoked_invite_emails")),
+            whitelist_deactivated_emails=self._serialize_json(cleanup_summary.get("whitelist_deactivated_emails")),
             failed_items=self._serialize_json(cleanup_summary.get("failed_items")),
         )
 
@@ -90,10 +110,12 @@ class TeamCleanupRecordService:
         await db_session.flush()
 
         logger.info(
-            "已写入 Team 自动清理记录: team_id=%s removed=%s revoked=%s failed=%s",
+            "已写入后台自动清理记录: source=%s team_id=%s removed=%s revoked=%s whitelist=%s failed=%s",
+            normalized_source,
             team_id,
             removed_member_count,
             revoked_invite_count,
+            whitelist_deactivated_count,
             failed_count,
         )
 
@@ -101,8 +123,10 @@ class TeamCleanupRecordService:
 
     def serialize_cleanup_record(self, record: TeamCleanupRecord) -> Dict[str, Any]:
         cleanup_status = (record.cleanup_status or "").strip().lower() or "success"
+        cleanup_source = (getattr(record, "cleanup_source", None) or "team_refresh").strip().lower() or "team_refresh"
         removed_member_emails = self._deserialize_json(record.removed_member_emails)
         revoked_invite_emails = self._deserialize_json(record.revoked_invite_emails)
+        whitelist_deactivated_emails = self._deserialize_json(getattr(record, "whitelist_deactivated_emails", None))
         failed_items = self._deserialize_json(record.failed_items)
 
         return {
@@ -111,13 +135,18 @@ class TeamCleanupRecordService:
             "team_email": record.team_email,
             "team_name": record.team_name,
             "team_account_id": record.team_account_id,
+            "cleanup_source": cleanup_source,
+            "cleanup_source_label": self.SOURCE_LABELS.get(cleanup_source, "其他自动清理"),
+            "cleanup_reason": getattr(record, "cleanup_reason", None),
             "cleanup_status": cleanup_status,
             "cleanup_status_label": self.STATUS_LABELS.get(cleanup_status, "未知"),
             "removed_member_count": int(record.removed_member_count or 0),
             "revoked_invite_count": int(record.revoked_invite_count or 0),
+            "whitelist_deactivated_count": int(getattr(record, "whitelist_deactivated_count", 0) or 0),
             "failed_count": int(record.failed_count or 0),
             "removed_member_emails": removed_member_emails,
             "revoked_invite_emails": revoked_invite_emails,
+            "whitelist_deactivated_emails": whitelist_deactivated_emails,
             "failed_items": failed_items,
             "created_at": record.created_at.isoformat() if record.created_at else None,
         }
@@ -148,8 +177,11 @@ class TeamCleanupRecordService:
                     TeamCleanupRecord.team_email.ilike(search_pattern),
                     TeamCleanupRecord.team_name.ilike(search_pattern),
                     TeamCleanupRecord.team_account_id.ilike(search_pattern),
+                    TeamCleanupRecord.cleanup_source.ilike(search_pattern),
+                    TeamCleanupRecord.cleanup_reason.ilike(search_pattern),
                     TeamCleanupRecord.removed_member_emails.ilike(search_pattern),
                     TeamCleanupRecord.revoked_invite_emails.ilike(search_pattern),
+                    TeamCleanupRecord.whitelist_deactivated_emails.ilike(search_pattern),
                     TeamCleanupRecord.failed_items.ilike(search_pattern),
                 )
             )

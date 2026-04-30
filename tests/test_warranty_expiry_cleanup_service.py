@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import EmailWhitelistEntry, Team, TeamMemberSnapshot, WarrantyEmailEntry
+from app.models import EmailWhitelistEntry, Team, TeamCleanupRecord, TeamMemberSnapshot, WarrantyEmailEntry
 from app.services.warranty_expiry_cleanup import warranty_expiry_cleanup_service
 from app.utils.time_utils import get_now
 
@@ -90,6 +90,9 @@ class WarrantyExpiryCleanupServiceTests(unittest.IsolatedAsyncioTestCase):
             snapshot = await session.scalar(
                 select(TeamMemberSnapshot).where(TeamMemberSnapshot.email == "buyer@example.com")
             )
+            cleanup_record = await session.scalar(
+                select(TeamCleanupRecord).where(TeamCleanupRecord.team_id == team.id)
+            )
 
         self.assertEqual(result["processed_count"], 1)
         self.assertEqual(result["success_count"], 1)
@@ -103,6 +106,17 @@ class WarrantyExpiryCleanupServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(whitelist_entry.is_active)
         self.assertIn("质保订单到期", whitelist_entry.note)
         self.assertIsNone(snapshot)
+        self.assertIsNotNone(cleanup_record)
+        self.assertEqual(cleanup_record.cleanup_source, "warranty_expiry")
+        self.assertIn("质保订单到期自动清理", cleanup_record.cleanup_reason or "")
+        self.assertEqual(cleanup_record.cleanup_status, "success")
+        self.assertEqual(cleanup_record.removed_member_count, 1)
+        self.assertEqual(cleanup_record.revoked_invite_count, 0)
+        self.assertEqual(cleanup_record.whitelist_deactivated_count, 1)
+        self.assertIn("buyer@example.com", cleanup_record.removed_member_emails or "")
+        self.assertIn("buyer@example.com", cleanup_record.whitelist_deactivated_emails or "")
+        self.assertEqual(result["items"][0]["cleanup_record_id"], cleanup_record.id)
+        self.assertEqual(result["items"][0]["member_action"], "member_removed")
 
     async def test_run_once_keeps_whitelist_when_same_email_has_active_order(self):
         async with self.Session() as session:

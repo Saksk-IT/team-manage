@@ -52,7 +52,7 @@
                 id="search"
                 name="search"
                 value="{{ search or '' }}"
-                placeholder="搜索 Team、邮箱、Account ID、失败原因"
+                placeholder="搜索 Team、邮箱、Account ID、清理来源、失败原因"
                 class="form-control"
             >
         </div>
@@ -94,6 +94,7 @@
                     <th>清理结果</th>
                     <th>删除成员邮箱</th>
                     <th>撤回邀请邮箱</th>
+                    <th>停用白名单邮箱</th>
                     <th>失败明细</th>
                     <th>记录时间</th>
                 </tr>
@@ -117,8 +118,13 @@
                                     {{ record.cleanup_status_label }}
                                 </span>
                             </div>
+                            <div class="record-muted">来源：{{ record.cleanup_source_label }}</div>
+                            {% if record.cleanup_reason %}
+                            <div class="record-muted">原因：{{ record.cleanup_reason }}</div>
+                            {% endif %}
                             <div class="record-muted">删除成员：{{ record.removed_member_count }}</div>
                             <div class="record-muted">撤回邀请：{{ record.revoked_invite_count }}</div>
+                            <div class="record-muted">停用白名单：{{ record.whitelist_deactivated_count }}</div>
                             <div class="record-muted">失败：{{ record.failed_count }}</div>
                         </div>
                     </td>
@@ -145,11 +151,22 @@
                         {% endif %}
                     </td>
                     <td>
+                        {% if record.whitelist_deactivated_emails %}
+                        <div class="email-list-cell">
+                            {% for email in record.whitelist_deactivated_emails %}
+                            <div>{{ email }}</div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
                         {% if record.failed_items %}
                         <div class="record-stack">
                             {% for item in record.failed_items %}
                             <div class="failure-reason-cell">
-                                <strong>{{ '成员' if item.type == 'member' else '邀请' }}</strong>：
+                                <strong>{{ '成员' if item.type == 'member' else ('邀请' if item.type == 'invite' else ('白名单' if item.type == 'whitelist' else '项目')) }}</strong>：
                                 {{ item.email or '-' }}<br>
                                 <span class="record-muted">{{ item.error or '-' }}</span>
                             </div>

@@ -12,6 +12,7 @@ from app.database import AsyncSessionLocal
 from app.models import EmailWhitelistEntry, Team, TeamMemberSnapshot, WarrantyEmailEntry
 from app.services.email_whitelist import email_whitelist_service
 from app.services.settings import settings_service
+from app.services.team_cleanup_record import team_cleanup_record_service
 from app.services.team import team_service
 from app.utils.time_utils import get_now
 
@@ -310,6 +311,68 @@ class WarrantyExpiryCleanupService:
             "expires_at": entry.expires_at.isoformat() if entry.expires_at else None,
         }
 
+    @staticmethod
+    def _resolve_member_action(remove_result: Dict[str, Any]) -> str:
+        message = str(remove_result.get("message") or "")
+        if "撤回" in message or "邀请" in message:
+            return "invite_revoked"
+        if "不存在" in message:
+            return "already_missing"
+        return "member_removed"
+
+    @staticmethod
+    def _build_cleanup_summary(
+        *,
+        email: str,
+        member_action: str,
+        whitelist_deactivated: bool,
+        error: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        removed_member_emails = [email] if member_action == "member_removed" else []
+        revoked_invite_emails = [email] if member_action == "invite_revoked" else []
+        whitelist_deactivated_emails = [email] if whitelist_deactivated else []
+        failed_items = [{"type": "member", "email": email, "error": error}] if error else []
+
+        return {
+            "removed_member_count": len(removed_member_emails),
+            "revoked_invite_count": len(revoked_invite_emails),
+            "whitelist_deactivated_count": len(whitelist_deactivated_emails),
+            "failed_count": len(failed_items),
+            "removed_member_emails": removed_member_emails,
+            "revoked_invite_emails": revoked_invite_emails,
+            "whitelist_deactivated_emails": whitelist_deactivated_emails,
+            "failed_items": failed_items,
+        }
+
+    async def _create_warranty_cleanup_record(
+        self,
+        db_session: AsyncSession,
+        *,
+        team: Team,
+        email: str,
+        message: str,
+        member_action: str,
+        whitelist_deactivated: bool,
+        error: Optional[str] = None,
+    ) -> Optional[int]:
+        cleanup_summary = self._build_cleanup_summary(
+            email=email,
+            member_action=member_action,
+            whitelist_deactivated=whitelist_deactivated,
+            error=error,
+        )
+        cleanup_record = await team_cleanup_record_service.create_record(
+            db_session=db_session,
+            team_id=team.id,
+            team_email=team.email,
+            team_name=team.team_name,
+            team_account_id=team.account_id,
+            cleanup_summary=cleanup_summary,
+            cleanup_source="warranty_expiry",
+            cleanup_reason=message or "质保订单到期自动清理",
+        )
+        return cleanup_record.id if cleanup_record else None
+
     async def _cleanup_entry(self, db_session: AsyncSession, entry: WarrantyEmailEntry) -> Dict[str, Any]:
         payload = self._serialize_entry(entry)
         team_id = int(entry.last_warranty_team_id or 0)
@@ -348,22 +411,45 @@ class WarrantyExpiryCleanupService:
             db_session=db_session,
         )
         if not remove_result.get("success"):
+            cleanup_record_id = await self._create_warranty_cleanup_record(
+                db_session,
+                team=team,
+                email=normalized_email,
+                message=remove_result.get("error") or "踢出 Team 成员失败",
+                member_action="failed",
+                whitelist_deactivated=False,
+                error=remove_result.get("error") or "踢出 Team 成员失败",
+            )
             return {
                 **payload,
                 "success": False,
                 "error": remove_result.get("error") or "踢出 Team 成员失败",
                 "whitelist_deactivated": False,
                 "member_removed": False,
+                "member_action": "failed",
+                "cleanup_record_id": cleanup_record_id,
             }
 
+        member_action = self._resolve_member_action(remove_result)
         whitelist_deactivated = await self._deactivate_whitelist_if_safe(db_session, entry=entry)
         await self._mark_entry_processed(db_session, entry)
+        message = remove_result.get("message") or "已清理到期质保订单"
+        cleanup_record_id = await self._create_warranty_cleanup_record(
+            db_session,
+            team=team,
+            email=normalized_email,
+            message=f"质保订单到期自动清理：{message}",
+            member_action=member_action,
+            whitelist_deactivated=whitelist_deactivated,
+        )
         return {
             **payload,
             "success": True,
-            "message": remove_result.get("message") or "已清理到期质保订单",
+            "message": message,
             "whitelist_deactivated": whitelist_deactivated,
-            "member_removed": True,
+            "member_removed": member_action in {"member_removed", "invite_revoked"},
+            "member_action": member_action,
+            "cleanup_record_id": cleanup_record_id,
         }
 
     async def run_once(self) -> Dict[str, Any]:
@@ -401,7 +487,7 @@ class WarrantyExpiryCleanupService:
                 for entry in entries:
                     try:
                         item = await self._cleanup_entry(session, entry)
-                        if item.get("success"):
+                        if item.get("success") or item.get("cleanup_record_id"):
                             await session.commit()
                         else:
                             await session.rollback()
