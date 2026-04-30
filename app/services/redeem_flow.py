@@ -404,6 +404,7 @@ class RedeemFlowService:
                                 email=email,
                                 redeem_code=code,
                                 has_warranty_code=bool(rc.has_warranty),
+                                team_id=team_id_final,
                             )
                             await db_session.flush()
                             await email_whitelist_service.sync_from_dependency_sources(db_session, commit=False)

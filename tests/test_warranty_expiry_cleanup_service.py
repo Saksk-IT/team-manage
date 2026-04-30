@@ -244,6 +244,59 @@ class WarrantyExpiryCleanupServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(snapshot)
         mocked_remove.assert_not_awaited()
 
+        with (
+            patch(
+                "app.services.warranty_expiry_cleanup.settings_service.get_warranty_expiry_auto_cleanup_config",
+                new=AsyncMock(return_value={"enabled": True}),
+            ),
+            patch("app.services.warranty_expiry_cleanup.AsyncSessionLocal", self.Session),
+            patch(
+                "app.services.warranty_expiry_cleanup.team_service.remove_invite_or_member",
+                new=AsyncMock(return_value={"success": True, "message": "成员已删除"}),
+            ) as mocked_second_remove,
+        ):
+            second_result = await warranty_expiry_cleanup_service.run_once()
+
+        self.assertEqual(second_result["processed_count"], 0)
+        mocked_second_remove.assert_not_awaited()
+
+    async def test_run_once_uses_next_expiry_delay_when_no_order_expired_yet(self):
+        async with self.Session() as session:
+            team = Team(
+                email="owner@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-team",
+                team_name="Team",
+                status="active",
+                current_members=1,
+                max_members=5,
+            )
+            session.add(team)
+            await session.flush()
+            session.add(
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=1,
+                    expires_at=get_now() + timedelta(seconds=30),
+                    source="auto_redeem",
+                    last_redeem_code="CODE-SOON",
+                    last_warranty_team_id=team.id,
+                )
+            )
+            await session.commit()
+
+        with (
+            patch(
+                "app.services.warranty_expiry_cleanup.settings_service.get_warranty_expiry_auto_cleanup_config",
+                new=AsyncMock(return_value={"enabled": True}),
+            ),
+            patch("app.services.warranty_expiry_cleanup.AsyncSessionLocal", self.Session),
+        ):
+            result = await warranty_expiry_cleanup_service.run_once()
+
+        self.assertEqual(result["processed_count"], 0)
+        self.assertEqual(result["next_delay_minutes"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

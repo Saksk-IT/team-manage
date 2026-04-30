@@ -6,7 +6,7 @@ from datetime import timedelta
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import RedemptionCode, WarrantyEmailEntry
+from app.models import RedemptionCode, Team, WarrantyEmailEntry
 from app.services.warranty import WarrantyService
 from app.utils.time_utils import get_now
 
@@ -162,6 +162,35 @@ class WarrantyEmailAutoEnqueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entries_by_code["NEW-CODE"].remaining_claims, 10)
         self.assertEqual(serialized_entry["remaining_days"], 30)
         self.assertEqual(entries_by_code["NEW-CODE"].source, "auto_redeem")
+
+    async def test_sync_warranty_email_entry_after_redeem_records_redeemed_team(self):
+        async with self.Session() as session:
+            team = Team(
+                email="owner@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-team",
+                team_name="Team",
+                status="active",
+                current_members=1,
+                max_members=5,
+            )
+            session.add(team)
+            await session.flush()
+
+            service = WarrantyService()
+            await service.sync_warranty_email_entry_after_redeem(
+                db_session=session,
+                email="buyer@example.com",
+                redeem_code="CODE-123",
+                has_warranty_code=True,
+                team_id=team.id,
+            )
+            await session.commit()
+
+            entry = await service.get_warranty_email_entry(session, "buyer@example.com")
+
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.last_warranty_team_id, team.id)
 
 
 if __name__ == "__main__":

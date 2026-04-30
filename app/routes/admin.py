@@ -4367,6 +4367,7 @@ async def save_warranty_email(
                 source="manual"
             )
             entry_data = warranty_service.serialize_warranty_email_entry(entry)
+        warranty_expiry_cleanup_service.wake()
         return JSONResponse(
             content={
                 "success": True,
@@ -4402,6 +4403,8 @@ async def bulk_update_warranty_emails(
             update_remaining_claims=payload.update_remaining_claims,
             remaining_claims=payload.remaining_claims,
         )
+        if payload.update_remaining_days or payload.update_remaining_claims:
+            warranty_expiry_cleanup_service.wake()
         return JSONResponse(
             content={
                 "success": True,

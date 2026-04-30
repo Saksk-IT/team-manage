@@ -883,7 +883,8 @@ class WarrantyService:
         db_session: AsyncSession,
         email: str,
         redeem_code: str,
-        has_warranty_code: Optional[bool] = None
+        has_warranty_code: Optional[bool] = None,
+        team_id: Optional[int] = None,
     ) -> Optional[WarrantyEmailEntry]:
         code_result = await db_session.execute(
             select(RedemptionCode).where(RedemptionCode.code == redeem_code)
@@ -926,6 +927,8 @@ class WarrantyService:
             entry.last_redeem_code = redeem_code
             entry.remaining_claims = warranty_claims
             entry.expires_at = default_expires_at
+            if team_id:
+                entry.last_warranty_team_id = int(team_id)
             entry.updated_at = get_now()
         else:
             entry = WarrantyEmailEntry(
@@ -933,7 +936,8 @@ class WarrantyService:
                 remaining_claims=warranty_claims,
                 expires_at=default_expires_at,
                 source="auto_redeem",
-                last_redeem_code=redeem_code
+                last_redeem_code=redeem_code,
+                last_warranty_team_id=int(team_id) if team_id else None,
             )
             db_session.add(entry)
 

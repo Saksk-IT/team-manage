@@ -777,6 +777,7 @@ class InviteQueueService:
             email=job.email,
             redeem_code=job.code or "",
             has_warranty_code=bool(redemption_code.has_warranty),
+            team_id=team.id,
         )
         await db_session.flush()
         await email_whitelist_service.sync_from_dependency_sources(db_session, commit=False)

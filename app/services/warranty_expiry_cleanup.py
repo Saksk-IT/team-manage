@@ -1,7 +1,7 @@
 """质保到期自动清理服务。"""
 import asyncio
 import logging
-from datetime import timedelta
+import math
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import delete, or_, select
@@ -121,9 +121,36 @@ class WarrantyExpiryCleanupService:
             config = await settings_service.get_warranty_expiry_auto_cleanup_config(session)
             return bool(config.get("enabled"))
 
+    async def _get_next_pending_delay_minutes(self, db_session: AsyncSession) -> int:
+        now = get_now()
+        stmt = (
+            select(WarrantyEmailEntry.expires_at)
+            .where(
+                WarrantyEmailEntry.expires_at.is_not(None),
+                WarrantyEmailEntry.expires_at > now,
+                WarrantyEmailEntry.last_warranty_team_id.is_not(None),
+                WarrantyEmailEntry.remaining_claims > 0,
+            )
+            .order_by(WarrantyEmailEntry.expires_at.asc(), WarrantyEmailEntry.id.asc())
+            .limit(1)
+        )
+        result = await db_session.execute(stmt)
+        next_expires_at = result.scalar_one_or_none()
+        if not next_expires_at:
+            return WARRANTY_EXPIRY_CLEANUP_IDLE_INTERVAL_MINUTES
+
+        delay_seconds = (next_expires_at - now).total_seconds()
+        if delay_seconds <= 0:
+            return 1
+        return min(
+            max(math.ceil(delay_seconds / 60), 1),
+            WARRANTY_EXPIRY_CLEANUP_INTERVAL_MINUTES,
+        )
+
     async def _get_expired_entries(self, db_session: AsyncSession, *, limit: int) -> List[WarrantyEmailEntry]:
         now = get_now()
         active_entry = aliased(WarrantyEmailEntry)
+        active_team_entry = aliased(WarrantyEmailEntry)
         active_whitelist_exists = (
             select(EmailWhitelistEntry.id)
             .where(
@@ -143,6 +170,18 @@ class WarrantyExpiryCleanupService:
             )
             .exists()
         )
+        active_team_warranty_entry_exists = (
+            select(active_team_entry.id)
+            .where(
+                active_team_entry.id != WarrantyEmailEntry.id,
+                active_team_entry.email == WarrantyEmailEntry.email,
+                active_team_entry.last_warranty_team_id == WarrantyEmailEntry.last_warranty_team_id,
+                active_team_entry.remaining_claims > 0,
+                active_team_entry.expires_at.is_not(None),
+                active_team_entry.expires_at > now,
+            )
+            .exists()
+        )
         snapshot_exists = (
             select(TeamMemberSnapshot.id)
             .where(
@@ -159,7 +198,7 @@ class WarrantyExpiryCleanupService:
                 WarrantyEmailEntry.last_warranty_team_id.is_not(None),
                 or_(
                     WarrantyEmailEntry.remaining_claims > 0,
-                    snapshot_exists,
+                    snapshot_exists & ~active_team_warranty_entry_exists,
                     active_whitelist_exists & ~active_warranty_entry_exists,
                 ),
             )
@@ -348,12 +387,13 @@ class WarrantyExpiryCleanupService:
                     limit=WARRANTY_EXPIRY_CLEANUP_BATCH_SIZE,
                 )
                 if not entries:
+                    next_delay_minutes = await self._get_next_pending_delay_minutes(session)
                     return {
                         "enabled": True,
                         "processed_count": 0,
                         "success_count": 0,
                         "failed_count": 0,
-                        "next_delay_minutes": WARRANTY_EXPIRY_CLEANUP_IDLE_INTERVAL_MINUTES,
+                        "next_delay_minutes": next_delay_minutes,
                         "items": [],
                     }
 

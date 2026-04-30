@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from datetime import timedelta
+from unittest.mock import patch
 
 from starlette.requests import Request
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -379,17 +380,18 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
             await session.refresh(entry_one)
             await session.refresh(entry_two)
 
-            response = await bulk_update_warranty_emails(
-                payload=BulkWarrantyEmailUpdateRequest(
-                    entry_ids=[entry_one.id, entry_two.id],
-                    update_remaining_days=True,
-                    remaining_days=7,
-                    update_remaining_claims=True,
-                    remaining_claims=5,
-                ),
-                db=session,
-                current_user={"username": "admin"}
-            )
+            with patch("app.routes.admin.warranty_expiry_cleanup_service.wake") as mocked_wake:
+                response = await bulk_update_warranty_emails(
+                    payload=BulkWarrantyEmailUpdateRequest(
+                        entry_ids=[entry_one.id, entry_two.id],
+                        update_remaining_days=True,
+                        remaining_days=7,
+                        update_remaining_claims=True,
+                        remaining_claims=5,
+                    ),
+                    db=session,
+                    current_user={"username": "admin"}
+                )
 
             payload = json.loads(response.body.decode("utf-8"))
             entries = [
@@ -400,6 +402,7 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["success"])
         self.assertEqual(payload["updated_count"], 2)
+        mocked_wake.assert_called_once_with()
         for entry in entries:
             self.assertEqual(entry.remaining_claims, 5)
             remaining_days = warranty_service._get_warranty_entry_remaining_days(entry)
@@ -454,16 +457,17 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_save_and_delete_warranty_email(self):
         async with self.Session() as session:
-            save_response = await save_warranty_email(
-                payload=WarrantyEmailSaveRequest(
-                    email="buyer@example.com",
-                    remaining_days=5,
-                    remaining_seconds=5 * 86400 + 3661,
-                    remaining_claims=2
-                ),
-                db=session,
-                current_user={"username": "admin"}
-            )
+            with patch("app.routes.admin.warranty_expiry_cleanup_service.wake") as mocked_wake:
+                save_response = await save_warranty_email(
+                    payload=WarrantyEmailSaveRequest(
+                        email="buyer@example.com",
+                        remaining_days=5,
+                        remaining_seconds=5 * 86400 + 3661,
+                        remaining_claims=2
+                    ),
+                    db=session,
+                    current_user={"username": "admin"}
+                )
 
             save_payload = json.loads(save_response.body.decode("utf-8"))
             entry_id = save_payload["entry"]["id"]
@@ -480,6 +484,7 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(save_payload["entry"]["remaining_seconds"], 5 * 86400 + 3658)
         self.assertLessEqual(save_payload["entry"]["remaining_seconds"], 5 * 86400 + 3661)
         self.assertEqual(delete_response.status_code, 200)
+        mocked_wake.assert_called_once_with()
 
     async def test_save_warranty_email_order_updates_matching_redeem_code_only(self):
         async with self.Session() as session:
