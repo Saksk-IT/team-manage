@@ -55,8 +55,10 @@ class SettingsService:
     WARRANTY_FAKE_SUCCESS_MAX_SPOTS = 100
     TEAM_AUTO_REFRESH_ENABLED_KEY = "team_auto_refresh_enabled"
     TEAM_AUTO_REFRESH_INTERVAL_MINUTES_KEY = "team_auto_refresh_interval_minutes"
+    WARRANTY_EXPIRY_AUTO_CLEANUP_ENABLED_KEY = "warranty_expiry_auto_cleanup_enabled"
     DEFAULT_TEAM_AUTO_REFRESH_ENABLED = True
     DEFAULT_TEAM_AUTO_REFRESH_INTERVAL_MINUTES = 5
+    DEFAULT_WARRANTY_EXPIRY_AUTO_CLEANUP_ENABLED = False
     MIN_TEAM_AUTO_REFRESH_INTERVAL_MINUTES = 1
     MAX_TEAM_AUTO_REFRESH_INTERVAL_MINUTES = 1440
 
@@ -408,6 +410,32 @@ class SettingsService:
                 self.TEAM_AUTO_REFRESH_ENABLED_KEY: str(bool(enabled)).lower(),
                 self.TEAM_AUTO_REFRESH_INTERVAL_MINUTES_KEY: str(interval_minutes)
             }
+        )
+
+    async def get_warranty_expiry_auto_cleanup_config(self, session: AsyncSession) -> Dict[str, bool]:
+        """获取质保到期自动踢出配置。"""
+        enabled_raw = await self.get_setting(
+            session,
+            self.WARRANTY_EXPIRY_AUTO_CLEANUP_ENABLED_KEY,
+            str(self.DEFAULT_WARRANTY_EXPIRY_AUTO_CLEANUP_ENABLED).lower()
+        )
+        return {
+            "enabled": self._parse_bool(
+                enabled_raw,
+                self.DEFAULT_WARRANTY_EXPIRY_AUTO_CLEANUP_ENABLED
+            )
+        }
+
+    async def update_warranty_expiry_auto_cleanup_config(
+        self,
+        session: AsyncSession,
+        enabled: bool
+    ) -> bool:
+        """更新质保到期自动踢出配置。"""
+        return await self.update_setting(
+            session,
+            self.WARRANTY_EXPIRY_AUTO_CLEANUP_ENABLED_KEY,
+            str(bool(enabled)).lower()
         )
 
     async def get_default_team_max_members(self, session: AsyncSession) -> int:

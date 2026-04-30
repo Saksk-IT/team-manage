@@ -149,6 +149,30 @@
     </form>
 </div>
 
+<!-- 质保到期自动踢出 -->
+<div class="content-section">
+    <div class="section-header">
+        <h3>质保到期自动踢出</h3>
+    </div>
+
+    <form id="warrantyExpiryAutoCleanupForm" class="settings-form">
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input
+                    type="checkbox"
+                    id="warrantyExpiryAutoCleanupEnabled"
+                    name="enabled"
+                    {% if warranty_expiry_auto_cleanup_enabled %}checked{% endif %}
+                >
+                <span>质保订单到期后自动踢出邮箱并移出白名单</span>
+            </label>
+            <p class="form-help">开启后，后台会检测质保邮箱列表中已到期且仍有剩余次数的订单；若订单记录了最近质保 Team，会自动删除该邮箱成员或撤回邀请，并停用对应邮箱白名单。清理完成后会将该质保订单剩余次数置为 0，避免重复执行。</p>
+        </div>
+
+        <button type="submit" class="btn btn-primary">保存自动踢出配置</button>
+    </form>
+</div>
+
 <!-- Team 默认最大人数 -->
 <div class="content-section">
     <div class="section-header">
@@ -668,6 +692,33 @@
 
             if (response.ok && data.success) {
                 showToast('Team 自动刷新配置已保存', 'success');
+            } else {
+                showToast(data.error || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    });
+
+    // 质保到期自动踢出
+    document.getElementById('warrantyExpiryAutoCleanupForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const enabled = document.getElementById('warrantyExpiryAutoCleanupEnabled').checked;
+
+        try {
+            const response = await fetch('/admin/settings/warranty-expiry-auto-cleanup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ enabled })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                showToast('质保到期自动踢出配置已保存', 'success');
             } else {
                 showToast(data.error || '保存失败', 'error');
             }

@@ -41,6 +41,9 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
             "app.services.settings.settings_service.get_warranty_fake_success_config",
             new=AsyncMock(return_value={"enabled": True})
         ), patch(
+            "app.services.settings.settings_service.get_number_pool_config",
+            new=AsyncMock(return_value={"enabled": False})
+        ), patch(
             "app.services.team.TeamService.get_total_available_seats",
             new=AsyncMock(return_value=12)
         ):
@@ -94,6 +97,9 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
             new=AsyncMock(return_value={"enabled": True})
         ), patch(
             "app.services.settings.settings_service.get_warranty_fake_success_config",
+            new=AsyncMock(return_value={"enabled": False})
+        ), patch(
+            "app.services.settings.settings_service.get_number_pool_config",
             new=AsyncMock(return_value={"enabled": False})
         ), patch(
             "app.services.team.TeamService.get_total_available_seats",

@@ -47,6 +47,9 @@ class AdminFrontContentSettingsTests(unittest.IsolatedAsyncioTestCase):
                 "url": "https://example.com/buy",
                 "button_text": "购买套餐"
             })
+        ), patch(
+            "app.routes.admin.settings_service.get_number_pool_config",
+            new=AsyncMock(return_value={"enabled": False})
         ):
             response = await front_page_settings_page(
                 request=self._build_request(),

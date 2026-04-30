@@ -48,6 +48,7 @@ from app.services.team_refresh_record import (
 )
 from app.services.team_member_snapshot import team_member_snapshot_service
 from app.services.team_auto_refresh import team_auto_refresh_service
+from app.services.warranty_expiry_cleanup import warranty_expiry_cleanup_service
 from app.services.redemption import RedemptionService
 from app.services.settings import settings_service
 from app.services.admin_sidebar import (
@@ -3258,6 +3259,7 @@ async def settings_page(
         proxy_config = await settings_service.get_proxy_config(db)
         log_level = await settings_service.get_log_level(db)
         team_auto_refresh_config = await settings_service.get_team_auto_refresh_config(db)
+        warranty_expiry_cleanup_config = await settings_service.get_warranty_expiry_auto_cleanup_config(db)
         default_team_max_members = await settings_service.get_default_team_max_members(db)
         warranty_service_config = await settings_service.get_warranty_service_config(db)
         warranty_fake_success_config = await settings_service.get_warranty_fake_success_config(db)
@@ -3278,6 +3280,7 @@ async def settings_page(
                 log_level=log_level,
                 team_auto_refresh_enabled=team_auto_refresh_config["enabled"],
                 team_auto_refresh_interval_minutes=team_auto_refresh_config["interval_minutes"],
+                warranty_expiry_auto_cleanup_enabled=warranty_expiry_cleanup_config["enabled"],
                 default_team_max_members=default_team_max_members,
                 warranty_service_enabled=warranty_service_config["enabled"],
                 warranty_fake_success_enabled=warranty_fake_success_config["enabled"],
@@ -3371,6 +3374,11 @@ class TeamAutoRefreshSettingsRequest(BaseModel):
         settings_service.DEFAULT_TEAM_AUTO_REFRESH_INTERVAL_MINUTES,
         description="自动刷新间隔（分钟）"
     )
+
+
+class WarrantyExpiryAutoCleanupSettingsRequest(BaseModel):
+    """质保到期自动踢出设置请求"""
+    enabled: bool = Field(..., description="是否启用质保到期自动踢出")
 
 
 class DefaultTeamMaxMembersSettingsRequest(BaseModel):
@@ -4682,6 +4690,37 @@ async def update_team_auto_refresh_settings(
         )
     except Exception as e:
         logger.error(f"更新 Team 自动刷新配置失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"更新失败: {str(e)}"}
+        )
+
+
+@router.post("/settings/warranty-expiry-auto-cleanup")
+async def update_warranty_expiry_auto_cleanup_settings(
+    cleanup_data: WarrantyExpiryAutoCleanupSettingsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """更新质保到期自动踢出设置。"""
+    try:
+        logger.info("管理员更新质保到期自动踢出配置: enabled=%s", cleanup_data.enabled)
+
+        success = await settings_service.update_warranty_expiry_auto_cleanup_config(
+            db,
+            cleanup_data.enabled,
+        )
+
+        if success:
+            warranty_expiry_cleanup_service.wake()
+            return JSONResponse(content={"success": True, "message": "质保到期自动踢出配置已保存"})
+
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": "保存失败"}
+        )
+    except Exception as e:
+        logger.error(f"更新质保到期自动踢出配置失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"更新失败: {str(e)}"}

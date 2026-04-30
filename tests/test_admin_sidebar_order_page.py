@@ -44,6 +44,9 @@ class AdminSidebarOrderPageTests(unittest.IsolatedAsyncioTestCase):
                 "app.routes.admin.settings_service.get_team_auto_refresh_config",
                 new=AsyncMock(return_value={"enabled": True, "interval_minutes": 5})
             ), patch(
+                "app.routes.admin.settings_service.get_warranty_expiry_auto_cleanup_config",
+                new=AsyncMock(return_value={"enabled": False})
+            ), patch(
                 "app.routes.admin.settings_service.get_default_team_max_members",
                 new=AsyncMock(return_value=5)
             ), patch(

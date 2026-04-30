@@ -25,6 +25,7 @@ class EmailWhitelistService:
     SOURCE_WARRANTY_EMAIL = "warranty_email"
     SOURCE_MANUAL = "manual"
     SOURCE_MANUAL_PULL = "manual_pull"
+    SOURCE_EXPIRED_WARRANTY_CLEANUP = "expired_warranty_cleanup"
 
     WARRANTY_ONLY_SYNCED_AT_SETTING_KEY = "email_whitelist_warranty_only_synced_at"
     LEGACY_SYNC_MODE_SETTING_KEY = "email_whitelist_sync_mode"
@@ -37,6 +38,7 @@ class EmailWhitelistService:
         SOURCE_WARRANTY_EMAIL: "质保邮箱列表有效账号",
         SOURCE_MANUAL: "管理员手动维护",
         SOURCE_MANUAL_PULL: "管理员手动拉入",
+        SOURCE_EXPIRED_WARRANTY_CLEANUP: "质保到期自动移出",
     }
 
     STATUS_LABELS = {
@@ -247,6 +249,13 @@ class EmailWhitelistService:
 
             if existing_entry:
                 was_inactive = not existing_entry.is_active
+                if (
+                    was_inactive
+                    and existing_entry.source == self.SOURCE_EXPIRED_WARRANTY_CLEANUP
+                    and source == self.SOURCE_CONSOLE_TEAM
+                    and email not in active_warranty_entries
+                ):
+                    continue
                 if was_inactive:
                     reactivated_count += 1
                 existing_entry.is_active = True
@@ -598,6 +607,39 @@ class EmailWhitelistService:
             entry.note = "已由管理员移出白名单"
         await db_session.commit()
         return True
+
+    async def deactivate_email(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        *,
+        note: str = "已由系统移出白名单",
+        source: Optional[str] = None,
+        commit: bool = False,
+    ) -> bool:
+        """按邮箱停用白名单，用于质保到期自动清理。"""
+        normalized_email = self.normalize_email(email)
+        if not normalized_email:
+            return False
+
+        result = await db_session.execute(
+            select(EmailWhitelistEntry).where(EmailWhitelistEntry.email == normalized_email)
+        )
+        entry = result.scalar_one_or_none()
+        if not entry:
+            return False
+
+        changed = bool(entry.is_active)
+        entry.is_active = False
+        normalized_source = (source or "").strip().lower()
+        if normalized_source in self.SOURCE_LABELS:
+            entry.source = normalized_source
+        entry.note = (note or "").strip() or entry.note or "已由系统移出白名单"
+        await db_session.flush()
+        if commit:
+            await db_session.commit()
+            await db_session.refresh(entry)
+        return changed
 
 
 email_whitelist_service = EmailWhitelistService()

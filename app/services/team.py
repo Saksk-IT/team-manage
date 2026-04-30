@@ -3470,12 +3470,21 @@ class TeamService:
                 return members_result
 
             all_members = members_result["members"]
+            normalized_email = self._normalize_member_email(email)
+            if not normalized_email:
+                return {"success": False, "error": "邮箱不能为空"}
             
             # 2. 查找匹配的记录
-            target = next((m for m in all_members if m["email"] == email), None)
+            target = next(
+                (
+                    m for m in all_members
+                    if self._normalize_member_email(m.get("email")) == normalized_email
+                ),
+                None
+            )
             
             if not target:
-                logger.warning(f"在 Team {team_id} 中未找到邮箱为 {email} 的成员或邀请")
+                logger.warning(f"在 Team {team_id} 中未找到邮箱为 {normalized_email} 的成员或邀请")
                 # 即使没找到也返回成功，以便上层逻辑继续更新记录
                 return {"success": True, "message": "成员已不存在"}
 
@@ -3485,7 +3494,7 @@ class TeamService:
                 return await self.delete_team_member(team_id, target["user_id"], db_session)
             else:
                 # 待加入，调用撤回邀请
-                return await self.revoke_team_invite(team_id, email, db_session)
+                return await self.revoke_team_invite(team_id, normalized_email, db_session)
 
         except Exception as e:
             logger.error(f"撤回邀请或删除成员时发生异常: {e}")

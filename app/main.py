@@ -19,6 +19,7 @@ from app.database import init_db, close_db, AsyncSessionLocal
 from app.services.auth import auth_service
 from app.services.invite_queue import invite_queue_service
 from app.services.team_auto_refresh import team_auto_refresh_service
+from app.services.warranty_expiry_cleanup import warranty_expiry_cleanup_service
 from app.utils.storage import get_uploads_root_dir
 
 # 获取项目根目录
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI):
         async with AsyncSessionLocal() as session:
             await auth_service.initialize_admin_password(session)
         await team_auto_refresh_service.start()
+        await warranty_expiry_cleanup_service.start()
         await invite_queue_service.start()
         logger.info("数据库初始化完成")
     except Exception as e:
@@ -59,6 +61,7 @@ async def lifespan(app: FastAPI):
     
     # 关闭连接
     await invite_queue_service.stop()
+    await warranty_expiry_cleanup_service.stop()
     await team_auto_refresh_service.stop()
     await close_db()
     logger.info("系统正在关闭，已释放数据库连接")
