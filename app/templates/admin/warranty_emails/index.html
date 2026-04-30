@@ -78,7 +78,7 @@
             </div>
         </div>
         <div class="warranty-filter-field warranty-filter-range-field">
-            <span>剩余天数</span>
+            <span>剩余时间</span>
             <div class="warranty-filter-range-inputs">
                 <input type="number" name="remaining_days_min" value="{{ warranty_email_filters.remaining_days_min }}" min="0" class="form-control" placeholder="最小">
                 <span>-</span>
@@ -116,7 +116,8 @@
                     <th>邮箱</th>
                     <th>状态</th>
                     <th>剩余次数</th>
-                    <th>剩余天数</th>
+                    <th>剩余时间</th>
+                    <th>质保到期时间</th>
                     <th>来源</th>
                     <th>质保兑换码 / 最近普通兑换码</th>
                     <th>关联 Team / 最近质保席位</th>
@@ -141,7 +142,8 @@
                         </span>
                     </td>
                     <td>{{ entry.remaining_claims }}</td>
-                    <td>{{ entry.remaining_days if entry.remaining_days is not none else '-' }}</td>
+                    <td>{{ entry.remaining_time if entry.remaining_time is not none else '-' }}</td>
+                    <td>{{ entry.expires_at|format_datetime_seconds if entry.expires_at else '-' }}</td>
                     <td>{{ entry.source_label }}</td>
                     <td>{{ entry.last_redeem_code or '-' }}</td>
                     <td>{{ entry.last_warranty_team_id or '-' }}</td>
@@ -167,7 +169,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="10" class="empty-state-cell">暂无质保邮箱记录</td>
+                    <td colspan="11" class="empty-state-cell">暂无质保邮箱记录</td>
                 </tr>
                 {% endfor %}
             </tbody>

@@ -94,18 +94,28 @@ class WarrantyService:
 
         return get_now() + timedelta(days=remaining_days_int)
 
-    def _get_warranty_entry_remaining_days(self, entry: WarrantyEmailEntry) -> Optional[int]:
+    def _get_warranty_entry_remaining_seconds(self, entry: WarrantyEmailEntry) -> Optional[int]:
         if not entry or not entry.expires_at:
             return None
 
-        remaining_seconds = (entry.expires_at - get_now()).total_seconds()
+        return max(int((entry.expires_at - get_now()).total_seconds()), 0)
+
+    def _get_warranty_entry_remaining_days(self, entry: WarrantyEmailEntry) -> Optional[int]:
+        remaining_seconds = self._get_warranty_entry_remaining_seconds(entry)
+        if remaining_seconds is None:
+            return None
         if remaining_seconds <= 0:
             return 0
 
         return max(math.ceil(remaining_seconds / 86400), 0)
 
     def serialize_warranty_email_entry(self, entry: WarrantyEmailEntry) -> Dict[str, Any]:
-        remaining_days = self._get_warranty_entry_remaining_days(entry)
+        remaining_seconds = self._get_warranty_entry_remaining_seconds(entry)
+        remaining_days = (
+            max(math.ceil(remaining_seconds / 86400), 0)
+            if remaining_seconds is not None
+            else None
+        )
         remaining_claims = max(int(entry.remaining_claims or 0), 0)
 
         if remaining_claims <= 0 and not entry.expires_at:
@@ -126,6 +136,8 @@ class WarrantyService:
             "email": entry.email,
             "remaining_claims": remaining_claims,
             "remaining_days": remaining_days,
+            "remaining_seconds": remaining_seconds,
+            "remaining_time": self._format_remaining_seconds(remaining_seconds),
             "expires_at": entry.expires_at.isoformat() if entry.expires_at else None,
             "source": source,
             "source_label": self.WARRANTY_EMAIL_SOURCE_LABELS.get(source, "未知来源"),
@@ -1357,14 +1369,32 @@ class WarrantyService:
             "is_warranty_redemption": False,
         }
 
-    def _calculate_remaining_days(self, expires_at: Optional[datetime]) -> Optional[int]:
+    def _calculate_remaining_seconds(self, expires_at: Optional[datetime]) -> Optional[int]:
         if not expires_at:
             return None
 
-        remaining_seconds = (expires_at - get_now()).total_seconds()
+        return max(int((expires_at - get_now()).total_seconds()), 0)
+
+    def _calculate_remaining_days(self, expires_at: Optional[datetime]) -> Optional[int]:
+        remaining_seconds = self._calculate_remaining_seconds(expires_at)
+        if remaining_seconds is None:
+            return None
         if remaining_seconds <= 0:
             return 0
         return max(math.ceil(remaining_seconds / 86400), 0)
+
+    def format_remaining_seconds(self, remaining_seconds: Optional[int]) -> Optional[str]:
+        if remaining_seconds is None:
+            return None
+
+        total_seconds = max(int(remaining_seconds), 0)
+        days, day_remainder = divmod(total_seconds, 86400)
+        hours, hour_remainder = divmod(day_remainder, 3600)
+        minutes, seconds = divmod(hour_remainder, 60)
+        return f"{days}天 {hours:02d}:{minutes:02d}:{seconds:02d}"
+
+    def _format_remaining_seconds(self, remaining_seconds: Optional[int]) -> Optional[str]:
+        return self.format_remaining_seconds(remaining_seconds)
 
     def _get_warranty_entry_claim_error(
         self,
@@ -1429,6 +1459,8 @@ class WarrantyService:
         order_code = (code or entry.last_redeem_code or "").strip()
         remaining_claims = int(warranty_info.get("remaining_claims") or 0)
         remaining_days = warranty_info.get("remaining_days")
+        remaining_seconds = warranty_info.get("remaining_seconds")
+        remaining_time = warranty_info.get("remaining_time")
         warranty_valid = warranty_info.get("status") == "active"
         latest_team_banned = self._is_latest_team_banned(latest_team_info)
         status_checked = latest_team_info is not None
@@ -1456,6 +1488,8 @@ class WarrantyService:
             "warranty_valid": bool(warranty_valid),
             "remaining_claims": remaining_claims,
             "remaining_days": remaining_days,
+            "remaining_seconds": remaining_seconds,
+            "remaining_time": remaining_time,
             "warranty_expires_at": warranty_info.get("expires_at"),
             "used_claims": None,
             "total_claims": None,
@@ -1718,7 +1752,9 @@ class WarrantyService:
             warranty_entry=warranty_entry,
             is_legacy_entry_code=bool(context.get("is_legacy_entry_code")),
         )
+        remaining_seconds = self._calculate_remaining_seconds(expires_at)
         remaining_days = self._calculate_remaining_days(expires_at)
+        remaining_time = self._format_remaining_seconds(remaining_seconds)
         entry_info = (
             self.serialize_warranty_email_entry(warranty_entry)
             if warranty_entry
@@ -1727,6 +1763,8 @@ class WarrantyService:
         if entry_info:
             remaining_claims = int(entry_info.get("remaining_claims") or 0)
             remaining_days = entry_info.get("remaining_days")
+            remaining_seconds = entry_info.get("remaining_seconds")
+            remaining_time = entry_info.get("remaining_time")
             warranty_valid = entry_info.get("status") == "active"
             warranty_expires_at = entry_info.get("expires_at")
         else:
@@ -1750,6 +1788,8 @@ class WarrantyService:
         warranty_info = {
             "remaining_claims": remaining_claims,
             "remaining_days": remaining_days,
+            "remaining_seconds": remaining_seconds,
+            "remaining_time": remaining_time,
             "expires_at": warranty_expires_at,
             "used_claims": used_claims,
             "total_claims": initial_claims,
@@ -1773,6 +1813,8 @@ class WarrantyService:
             "warranty_valid": warranty_valid,
             "remaining_claims": remaining_claims,
             "remaining_days": remaining_days,
+            "remaining_seconds": remaining_seconds,
+            "remaining_time": remaining_time,
             "warranty_expires_at": warranty_expires_at,
             "used_claims": used_claims,
             "total_claims": initial_claims,

@@ -26,7 +26,13 @@ class WarrantyCheckRouteTests(unittest.IsolatedAsyncioTestCase):
                 "success": True,
                 "can_claim": False,
                 "latest_team": None,
-                "warranty_info": {"remaining_claims": 2, "remaining_days": 3},
+                "warranty_info": {
+                    "remaining_claims": 2,
+                    "remaining_days": 3,
+                    "remaining_seconds": 259199,
+                    "remaining_time": "2天 23:59:59",
+                    "expires_at": "2026-05-03T12:00:00",
+                },
                 "warranty_orders": [
                     {
                         "entry_id": 1,
@@ -35,6 +41,9 @@ class WarrantyCheckRouteTests(unittest.IsolatedAsyncioTestCase):
                         "can_claim": False,
                         "can_refresh_status": True,
                         "latest_team": None,
+                        "remaining_seconds": 259199,
+                        "remaining_time": "2天 23:59:59",
+                        "warranty_expires_at": "2026-05-03T12:00:00",
                     }
                 ],
                 "message": "已查询到 1 个质保订单，请对仍有剩余次数和天数的订单单独查询 Team 状态。"
@@ -50,6 +59,8 @@ class WarrantyCheckRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result["can_claim"])
         self.assertIsNone(result["latest_team"])
         self.assertEqual(result["warranty_orders"][0]["code"], "CODE-123")
+        self.assertEqual(result["warranty_orders"][0]["remaining_time"], "2天 23:59:59")
+        self.assertEqual(result["warranty_orders"][0]["warranty_expires_at"], "2026-05-03T12:00:00")
         self.assertTrue(result["warranty_orders"][0]["can_refresh_status"])
 
     async def test_refresh_warranty_order_status_route(self):

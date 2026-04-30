@@ -73,6 +73,9 @@ class RedemptionWarrantyCodeListingTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(code["has_warranty"])
         self.assertEqual(code["warranty_days"], 30)
         self.assertEqual(code["warranty_remaining_days"], 12)
+        self.assertGreater(code["warranty_remaining_seconds"], 11 * 86400)
+        self.assertRegex(code["warranty_remaining_time"], r"^11天 23:")
+        self.assertIsNotNone(code["warranty_expires_at"])
         self.assertEqual(code["warranty_remaining_claims"], 8)
 
     async def test_get_all_codes_filters_warranty_codes_by_multiple_conditions(self):
@@ -193,6 +196,9 @@ class RedemptionWarrantyCodeListingTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["success"])
         self.assertEqual([code["code"] for code in result["codes"]], ["UNUSED-WARRANTY-MATCH"])
         self.assertEqual(result["codes"][0]["warranty_remaining_days"], 12)
+        self.assertEqual(result["codes"][0]["warranty_remaining_seconds"], 12 * 86400)
+        self.assertEqual(result["codes"][0]["warranty_remaining_time"], "12天 00:00:00")
+        self.assertIsNone(result["codes"][0]["warranty_expires_at"])
         self.assertEqual(result["codes"][0]["warranty_remaining_claims"], 6)
 
     async def test_get_all_codes_treats_usage_record_as_authoritative_status(self):

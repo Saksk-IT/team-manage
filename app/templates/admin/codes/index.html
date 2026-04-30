@@ -88,7 +88,7 @@
             </label>
 
             <div class="code-filter-field code-filter-range-field">
-                <span>剩余天数</span>
+                <span>剩余时间</span>
                 <div class="filter-range-inputs">
                     <input type="number" name="remaining_days_min" value="{{ code_filters.remaining_days_min }}" min="0" class="form-control" placeholder="最小">
                     <span>至</span>
@@ -154,7 +154,8 @@
                     <th>使用时间</th>
                     <th>兑换码类型</th>
                     <th>质保时长</th>
-                    <th>剩余天数</th>
+                    <th>剩余时间</th>
+                    <th>质保到期时间</th>
                     <th>剩余次数</th>
                     <th style="text-align: right;">操作</th>
                 </tr>
@@ -205,7 +206,14 @@
                     </td>
                     <td>
                         {% if code.has_warranty %}
-                            {{ code.warranty_remaining_days if code.warranty_remaining_days is not none else '-' }}
+                            {{ code.warranty_remaining_time if code.warranty_remaining_time is not none else (code.warranty_remaining_days if code.warranty_remaining_days is not none else '-') }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if code.has_warranty %}
+                            {{ code.warranty_expires_at|format_datetime_seconds if code.warranty_expires_at else '-' }}
                         {% else %}
                         -
                         {% endif %}

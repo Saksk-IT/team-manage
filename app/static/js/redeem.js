@@ -98,7 +98,7 @@ const WARRANTY_STATUS_LOADING_FLOW = Object.freeze({
         }),
         Object.freeze({
             label: '整理剩余额度',
-            message: '正在整理兑换码、剩余次数和剩余天数。'
+            message: '正在整理兑换码、剩余次数和剩余时间。'
         })
     ]),
     hints: Object.freeze([
@@ -117,7 +117,7 @@ const WARRANTY_ORDER_REFRESH_LOADING_FLOW = Object.freeze({
     stages: Object.freeze([
         Object.freeze({
             label: '锁定质保订单',
-            message: '正在核对该订单的剩余次数和剩余天数。'
+            message: '正在核对该订单的剩余次数和剩余时间。'
         }),
         Object.freeze({
             label: '执行 Team 刷新',
@@ -765,7 +765,8 @@ function renderWarrantyStatusResult(data, email) {
         const displayCode = order?.display_code || code || (order?.source === 'manual' ? '管理员手动维护' : `订单 ${index + 1}`);
         const entryId = order?.entry_id || warrantyInfo.id || '';
         const remainingClaims = order?.remaining_claims ?? warrantyInfo.remaining_claims ?? '-';
-        const remainingDays = order?.remaining_days ?? warrantyInfo.remaining_days ?? '-';
+        const remainingTime = order?.remaining_time ?? warrantyInfo.remaining_time ?? '-';
+        const warrantyExpiresAt = order?.warranty_expires_at ?? warrantyInfo.expires_at ?? null;
         const teamStatusText = statusChecked ? badge.label : '待查询';
         const detailItems = [
             ['质保订单', displayCode],
@@ -774,7 +775,8 @@ function renderWarrantyStatusResult(data, email) {
             ['Team 账号', statusChecked ? (latestTeam.email || '-') : '待查询'],
             ['最近加入时间', statusChecked ? formatDateTime(latestTeam.redeemed_at) : '待查询'],
             ['剩余质保次数', String(remainingClaims)],
-            ['剩余质保天数', String(remainingDays)]
+            ['剩余质保时间', String(remainingTime)],
+            ['质保到期时间', warrantyExpiresAt ? formatDateTime(warrantyExpiresAt) : '-']
         ].map(([label, value]) => `
             <div class="status-panel__item">
                 <span class="status-panel__label">${escapeHtml(label)}</span>
@@ -1718,7 +1720,7 @@ function showSuccessResult(data) {
     const warrantyNoticeHtml = warrantyServiceEnabled ? `
         <div class="result-notice">
             <i data-lucide="shield-check"></i>
-            <span><strong>质保说明</strong><br>如您购买了质保服务，兑换成功后邮箱会自动进入质保邮箱列表；若后续 Team 被封禁，请切换到“质保服务”提交该邮箱，系统会按剩余天数和次数处理质保。</span>
+            <span><strong>质保说明</strong><br>如您购买了质保服务，兑换成功后邮箱会自动进入质保邮箱列表；若后续 Team 被封禁，请切换到“质保服务”提交该邮箱，系统会按剩余时间和次数处理质保。</span>
         </div>
     ` : '';
 
@@ -1770,7 +1772,8 @@ function showWarrantyClaimSuccessResult(data, email) {
     const resultContent = document.getElementById('resultContent');
     const teamInfo = data.team_info || {};
     const warrantyInfo = data.warranty_info || {};
-    const remainingDays = warrantyInfo.remaining_days;
+    const remainingTime = warrantyInfo.remaining_time;
+    const warrantyExpiresAt = warrantyInfo.expires_at || data.warranty_expires_at;
     const remainingClaims = warrantyInfo.remaining_claims;
 
     let warrantyInfoHtml = '';
@@ -1782,11 +1785,19 @@ function showWarrantyClaimSuccessResult(data, email) {
             </div>
         `;
     }
-    if (remainingDays !== undefined && remainingDays !== null) {
+    if (remainingTime !== undefined && remainingTime !== null) {
         warrantyInfoHtml += `
             <div class="result-detail-item">
-                <span class="result-detail-label">剩余质保天数</span>
-                <span class="result-detail-value">${escapeHtml(String(remainingDays))}</span>
+                <span class="result-detail-label">剩余质保时间</span>
+                <span class="result-detail-value">${escapeHtml(String(remainingTime))}</span>
+            </div>
+        `;
+    }
+    if (warrantyExpiresAt) {
+        warrantyInfoHtml += `
+            <div class="result-detail-item">
+                <span class="result-detail-label">质保到期时间</span>
+                <span class="result-detail-value">${escapeHtml(formatDateTime(warrantyExpiresAt))}</span>
             </div>
         `;
     }
@@ -1875,7 +1886,8 @@ function formatDateTime(dateString) {
         const day = String(date.getDate()).padStart(2, '0');
         const hours = String(date.getHours()).padStart(2, '0');
         const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${year}-${month}-${day} ${hours}:${minutes}`;
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     } catch (e) {
         return dateString;
     }
@@ -2055,7 +2067,7 @@ function showWarrantyResult(data) {
                     <span style="font-weight: 600;">发现失效 Team，质保可触发</span>
                 </div>
                 <p style="margin: 0 0 1.2rem 0; color: var(--text-secondary); font-size: 0.95rem;">
-                    监测到您所在的 Team 已失效。请切换到“质保服务”提交邮箱，系统会按质保邮箱剩余天数和次数处理。
+                    监测到您所在的 Team 已失效。请切换到“质保服务”提交邮箱，系统会按质保邮箱剩余时间和次数处理。
                 </p>
                 <div style="display: flex; gap: 0.5rem; align-items: center;">
                     <input type="text" value="${escapeHtml(data.original_code)}" readonly 

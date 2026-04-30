@@ -743,10 +743,20 @@ class RedemptionService:
                     else {}
                 )
                 warranty_remaining_days = serialized_warranty_entry.get("remaining_days")
+                warranty_remaining_seconds = serialized_warranty_entry.get("remaining_seconds")
+                warranty_remaining_time = serialized_warranty_entry.get("remaining_time")
                 warranty_remaining_claims = serialized_warranty_entry.get("remaining_claims")
+                warranty_actual_expires_at = serialized_warranty_entry.get("expires_at")
                 if code.has_warranty and not normalized_used_email:
                     warranty_remaining_days = code.warranty_days
+                    warranty_remaining_seconds = (
+                        int(code.warranty_days) * 86400
+                        if code.warranty_days is not None
+                        else None
+                    )
+                    warranty_remaining_time = warranty_service.format_remaining_seconds(warranty_remaining_seconds)
                     warranty_remaining_claims = code.warranty_claims
+                    warranty_actual_expires_at = None
                 code_list.append({
                     "id": code.id,
                     "code": code.code,
@@ -763,8 +773,10 @@ class RedemptionService:
                     "has_warranty": code.has_warranty,
                     "warranty_days": code.warranty_days,
                     "warranty_claims": code.warranty_claims,
-                    "warranty_expires_at": code.warranty_expires_at.isoformat() if code.warranty_expires_at else None,
+                    "warranty_expires_at": warranty_actual_expires_at or (code.warranty_expires_at.isoformat() if code.warranty_expires_at else None),
                     "warranty_remaining_days": warranty_remaining_days,
+                    "warranty_remaining_seconds": warranty_remaining_seconds,
+                    "warranty_remaining_time": warranty_remaining_time,
                     "warranty_remaining_claims": warranty_remaining_claims,
                 })
 

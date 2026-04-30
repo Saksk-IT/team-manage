@@ -133,6 +133,25 @@ def format_datetime(dt):
         
     return dt.strftime("%Y-%m-%d %H:%M")
 
+
+def format_datetime_seconds(dt):
+    """格式化日期时间到秒"""
+    if not dt:
+        return "-"
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+        except:
+            return dt
+
+    import pytz
+    from app.config import settings
+    if dt.tzinfo is not None:
+        tz = pytz.timezone(settings.timezone)
+        dt = dt.astimezone(tz)
+
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
 def escape_js(value):
     """转义字符串用于 JavaScript"""
     if not value:
@@ -140,6 +159,7 @@ def escape_js(value):
     return value.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r")
 
 templates.env.filters["format_datetime"] = format_datetime
+templates.env.filters["format_datetime_seconds"] = format_datetime_seconds
 templates.env.filters["escape_js"] = escape_js
 
 # 配置日志
