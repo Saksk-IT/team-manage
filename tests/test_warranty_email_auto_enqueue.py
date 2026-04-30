@@ -79,7 +79,8 @@ class WarrantyEmailAutoEnqueueTests(unittest.IsolatedAsyncioTestCase):
                     code="CODE-123",
                     status="unused",
                     has_warranty=True,
-                    warranty_days=30,
+                    warranty_days=31,
+                    warranty_seconds=30 * 86400 + 3600,
                 )
             )
             await session.commit()
@@ -98,7 +99,9 @@ class WarrantyEmailAutoEnqueueTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNotNone(entry)
         self.assertEqual(entry.remaining_claims, 10)
-        self.assertEqual(serialized_entry["remaining_days"], 30)
+        self.assertEqual(serialized_entry["remaining_days"], 31)
+        self.assertGreaterEqual(serialized_entry["remaining_seconds"], 30 * 86400 + 3595)
+        self.assertLessEqual(serialized_entry["remaining_seconds"], 30 * 86400 + 3600)
 
     async def test_sync_warranty_email_entry_after_redeem_keeps_manual_and_adds_auto_order(self):
         async with self.Session() as session:

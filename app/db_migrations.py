@@ -271,6 +271,14 @@ def run_auto_migration():
             """)
             migrations_applied.append("redemption_codes.warranty_claims")
 
+        if not column_exists(cursor, "redemption_codes", "warranty_seconds"):
+            logger.info("添加 redemption_codes.warranty_seconds 字段")
+            cursor.execute("""
+                ALTER TABLE redemption_codes
+                ADD COLUMN warranty_seconds INTEGER
+            """)
+            migrations_applied.append("redemption_codes.warranty_seconds")
+
         if not column_exists(cursor, "redemption_codes", "bound_team_id"):
             logger.info("添加 redemption_codes.bound_team_id 字段")
             cursor.execute("""

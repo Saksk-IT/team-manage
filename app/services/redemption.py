@@ -86,6 +86,63 @@ class RedemptionService:
             latest_record_map.setdefault(record.code, record)
         return latest_record_map
 
+    def _normalize_warranty_seconds(
+        self,
+        warranty_days: Optional[int] = None,
+        warranty_seconds: Optional[int] = None,
+        *,
+        allow_zero: bool = False,
+    ) -> Optional[int]:
+        """归一化质保时长，优先使用秒；天数字段用于旧调用兼容。"""
+        if warranty_seconds is not None:
+            try:
+                seconds = int(warranty_seconds)
+            except (TypeError, ValueError):
+                raise ValueError("质保剩余时间必须是非负整数秒")
+            if seconds < 0 or (not allow_zero and seconds <= 0):
+                raise ValueError("质保剩余时间至少为 1 秒")
+            return seconds
+
+        if warranty_days is None:
+            return None
+
+        try:
+            days = int(warranty_days)
+        except (TypeError, ValueError):
+            raise ValueError("质保天数必须是整数")
+        if days < 0 or (not allow_zero and days <= 0):
+            raise ValueError("质保天数必须大于 0")
+        return days * 86400
+
+    def _derive_warranty_days(
+        self,
+        warranty_seconds: Optional[int],
+        fallback_days: Optional[int] = None,
+        *,
+        allow_zero: bool = False,
+    ) -> Optional[int]:
+        if warranty_seconds is None:
+            return fallback_days
+        derived_days = int((int(warranty_seconds) + 86399) // 86400)
+        return max(derived_days, 0 if allow_zero else 1)
+
+    def get_warranty_duration_seconds(self, code: RedemptionCode) -> Optional[int]:
+        if code is None:
+            return None
+        if getattr(code, "warranty_seconds", None) is not None:
+            return max(int(code.warranty_seconds or 0), 0)
+        if code.warranty_days is None:
+            return None
+        return max(int(code.warranty_days or 0), 0) * 86400
+
+    def build_warranty_expires_at(self, start_at: Optional[datetime], code: RedemptionCode) -> Optional[datetime]:
+        if not start_at:
+            return None
+        duration_seconds = self.get_warranty_duration_seconds(code)
+        if duration_seconds is None:
+            duration_seconds = 30 * 86400
+        return start_at + timedelta(seconds=max(int(duration_seconds), 0))
+
     def _generate_random_code(self, length: int = 16) -> str:
         """
         生成随机兑换码
@@ -141,6 +198,7 @@ class RedemptionService:
         expires_days: Optional[int] = None,
         has_warranty: bool = False,
         warranty_days: int = 30,
+        warranty_seconds: Optional[int] = None,
         warranty_claims: int = 10,
         bound_team_id: Optional[int] = None,
         commit: bool = True
@@ -187,6 +245,9 @@ class RedemptionService:
             if expires_days:
                 expires_at = get_now() + timedelta(days=expires_days)
 
+            warranty_duration_seconds = self._normalize_warranty_seconds(warranty_days, warranty_seconds)
+            normalized_warranty_days = self._derive_warranty_days(warranty_duration_seconds, warranty_days)
+
             # 3. 创建兑换码记录
             redemption_code = RedemptionCode(
                 code=code,
@@ -194,7 +255,8 @@ class RedemptionService:
                 expires_at=expires_at,
                 bound_team_id=bound_team_id,
                 has_warranty=has_warranty,
-                warranty_days=warranty_days,
+                warranty_days=normalized_warranty_days,
+                warranty_seconds=warranty_duration_seconds,
                 warranty_claims=warranty_claims
             )
 
@@ -231,6 +293,7 @@ class RedemptionService:
         expires_days: Optional[int] = None,
         has_warranty: bool = False,
         warranty_days: int = 30,
+        warranty_seconds: Optional[int] = None,
         warranty_claims: int = 10,
         bound_team_id: Optional[int] = None,
         commit: bool = True
@@ -261,6 +324,8 @@ class RedemptionService:
             expires_at = None
             if expires_days:
                 expires_at = get_now() + timedelta(days=expires_days)
+            warranty_duration_seconds = self._normalize_warranty_seconds(warranty_days, warranty_seconds)
+            normalized_warranty_days = self._derive_warranty_days(warranty_duration_seconds, warranty_days)
 
             # 批量生成兑换码
             codes = []
@@ -279,7 +344,8 @@ class RedemptionService:
                     expires_at=expires_at,
                     bound_team_id=bound_team_id,
                     has_warranty=has_warranty,
-                    warranty_days=warranty_days,
+                    warranty_days=normalized_warranty_days,
+                    warranty_seconds=warranty_duration_seconds,
                     warranty_claims=warranty_claims
                 )
                 db_session.add(redemption_code)
@@ -749,11 +815,7 @@ class RedemptionService:
                 warranty_actual_expires_at = serialized_warranty_entry.get("expires_at")
                 if code.has_warranty and not normalized_used_email:
                     warranty_remaining_days = code.warranty_days
-                    warranty_remaining_seconds = (
-                        int(code.warranty_days) * 86400
-                        if code.warranty_days is not None
-                        else None
-                    )
+                    warranty_remaining_seconds = self.get_warranty_duration_seconds(code)
                     warranty_remaining_time = warranty_service.format_remaining_seconds(warranty_remaining_seconds)
                     warranty_remaining_claims = code.warranty_claims
                     warranty_actual_expires_at = None
@@ -772,6 +834,7 @@ class RedemptionService:
                     "used_at": display_used_at.isoformat() if display_used_at else None,
                     "has_warranty": code.has_warranty,
                     "warranty_days": code.warranty_days,
+                    "warranty_seconds": self.get_warranty_duration_seconds(code),
                     "warranty_claims": code.warranty_claims,
                     "warranty_expires_at": warranty_actual_expires_at or (code.warranty_expires_at.isoformat() if code.warranty_expires_at else None),
                     "warranty_remaining_days": warranty_remaining_days,
@@ -1193,10 +1256,11 @@ class RedemptionService:
         code: str,
         db_session: AsyncSession,
         has_warranty: Optional[bool] = None,
-        warranty_days: Optional[int] = None
+        warranty_days: Optional[int] = None,
+        warranty_seconds: Optional[int] = None
     ) -> Dict[str, Any]:
         """更新兑换码信息"""
-        return await self.bulk_update_codes([code], db_session, has_warranty, warranty_days)
+        return await self.bulk_update_codes([code], db_session, has_warranty, warranty_days, warranty_seconds)
 
     async def withdraw_record(
         self,
@@ -1291,7 +1355,8 @@ class RedemptionService:
         codes: List[str],
         db_session: AsyncSession,
         has_warranty: Optional[bool] = None,
-        warranty_days: Optional[int] = None
+        warranty_days: Optional[int] = None,
+        warranty_seconds: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         批量更新兑换码信息
@@ -1339,8 +1404,10 @@ class RedemptionService:
             values = {}
             if has_warranty is not None:
                 values[RedemptionCode.has_warranty] = has_warranty
-            if warranty_days is not None:
-                values[RedemptionCode.warranty_days] = warranty_days
+            if warranty_days is not None or warranty_seconds is not None:
+                warranty_duration_seconds = self._normalize_warranty_seconds(warranty_days, warranty_seconds)
+                values[RedemptionCode.warranty_seconds] = warranty_duration_seconds
+                values[RedemptionCode.warranty_days] = self._derive_warranty_days(warranty_duration_seconds, warranty_days)
 
             if not values:
                 return {"success": True, "message": "没有提供更新内容"}
@@ -1372,6 +1439,7 @@ class RedemptionService:
         db_session: AsyncSession,
         remaining_days: int,
         remaining_claims: int,
+        remaining_seconds: Optional[int] = None,
     ) -> Dict[str, Any]:
         """批量修改未使用质保兑换码的初始剩余天数和次数"""
         try:
@@ -1392,20 +1460,21 @@ class RedemptionService:
             try:
                 remaining_days_int = int(remaining_days)
                 remaining_claims_int = int(remaining_claims)
+                remaining_duration_seconds = self._normalize_warranty_seconds(remaining_days_int, remaining_seconds, allow_zero=True)
             except (TypeError, ValueError):
                 return {
                     "success": False,
                     "message": None,
-                    "error": "剩余天数和剩余次数必须是非负整数",
+                    "error": "剩余时间和剩余次数必须是非负整数",
                     "updated_count": 0,
                     "skipped_count": 0,
                 }
 
-            if remaining_days_int < 0 or remaining_claims_int < 0:
+            if remaining_days_int < 0 or remaining_claims_int < 0 or remaining_duration_seconds is None:
                 return {
                     "success": False,
                     "message": None,
-                    "error": "剩余天数和剩余次数必须是非负整数",
+                    "error": "剩余时间和剩余次数必须是非负整数",
                     "updated_count": 0,
                     "skipped_count": 0,
                 }
@@ -1448,7 +1517,8 @@ class RedemptionService:
                 update(RedemptionCode)
                 .where(RedemptionCode.code.in_(eligible_codes))
                 .values({
-                    RedemptionCode.warranty_days: remaining_days_int,
+                    RedemptionCode.warranty_days: self._derive_warranty_days(remaining_duration_seconds, remaining_days_int, allow_zero=True),
+                    RedemptionCode.warranty_seconds: remaining_duration_seconds,
                     RedemptionCode.warranty_claims: remaining_claims_int,
                     RedemptionCode.warranty_expires_at: None,
                 })

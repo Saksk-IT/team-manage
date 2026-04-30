@@ -59,7 +59,7 @@ class AdminCodeGenerationCapacityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("可用席位不足", payload["error"])
         self.assertEqual(total_codes, 5)
 
-    async def test_generate_persists_warranty_claims_when_capacity_allows(self):
+    async def test_generate_persists_warranty_claims_and_seconds_when_capacity_allows(self):
         async with self.Session() as session:
             session.add(
                 Team(
@@ -78,7 +78,8 @@ class AdminCodeGenerationCapacityTests(unittest.IsolatedAsyncioTestCase):
                     type="single",
                     code="WARRANTY-CAP-001",
                     has_warranty=True,
-                    warranty_days=7,
+                    warranty_days=8,
+                    warranty_seconds=7 * 86400 + 3600,
                     warranty_claims=15,
                 ),
                 db=session,
@@ -94,7 +95,8 @@ class AdminCodeGenerationCapacityTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(payload["success"])
         self.assertIsNotNone(code)
         self.assertTrue(code.has_warranty)
-        self.assertEqual(code.warranty_days, 7)
+        self.assertEqual(code.warranty_days, 8)
+        self.assertEqual(code.warranty_seconds, 7 * 86400 + 3600)
         self.assertEqual(code.warranty_claims, 15)
 
 

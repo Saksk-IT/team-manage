@@ -53,6 +53,7 @@ class RedemptionWarrantyCodeUpdateTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["success"])
         self.assertTrue(refreshed_code.has_warranty)
         self.assertEqual(refreshed_code.warranty_days, 45)
+        self.assertEqual(refreshed_code.warranty_seconds, 45 * 86400)
 
     async def test_update_code_rejects_used_code_conversion_to_warranty(self):
         async with self.Session() as session:
@@ -116,7 +117,8 @@ class RedemptionWarrantyCodeUpdateTests(unittest.IsolatedAsyncioTestCase):
                     "USED-WARRANTY-001",
                 ],
                 db_session=session,
-                remaining_days=12,
+                remaining_days=13,
+                remaining_seconds=12 * 86400 + 3600,
                 remaining_claims=3,
             )
 
@@ -133,7 +135,8 @@ class RedemptionWarrantyCodeUpdateTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["success"])
         self.assertEqual(result["updated_count"], 1)
         self.assertEqual(result["skipped_count"], 2)
-        self.assertEqual(updated_code.warranty_days, 12)
+        self.assertEqual(updated_code.warranty_days, 13)
+        self.assertEqual(updated_code.warranty_seconds, 12 * 86400 + 3600)
         self.assertEqual(updated_code.warranty_claims, 3)
         self.assertEqual(normal_code.warranty_days, 30)
         self.assertEqual(normal_code.warranty_claims, 10)

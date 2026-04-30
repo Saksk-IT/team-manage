@@ -7,7 +7,7 @@ import asyncio
 import traceback
 from collections import defaultdict
 from typing import Optional, Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime
 from sqlalchemy import select, update, delete, func, text, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import AsyncSessionLocal
@@ -388,8 +388,7 @@ class RedeemFlowService:
                             rc.used_team_id = team_id_final
                             rc.used_at = get_now()
                             if rc.has_warranty:
-                                days = rc.warranty_days if rc.warranty_days is not None else 30
-                                rc.warranty_expires_at = get_now() + timedelta(days=days)
+                                rc.warranty_expires_at = self.redemption_service.build_warranty_expires_at(get_now(), rc)
 
                             record = RedemptionRecord(
                                 email=email,

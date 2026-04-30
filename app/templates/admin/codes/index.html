@@ -199,7 +199,7 @@
                     </td>
                     <td>
                         {% if code.has_warranty %}
-                        <span style="font-size: 0.875rem;">{{ code.warranty_days }} 天</span>
+                        <span style="font-size: 0.875rem;">{{ code.warranty_remaining_time if code.warranty_remaining_time is not none else (code.warranty_days ~ " 天") }}</span>
                         {% else %}
                         -
                         {% endif %}
@@ -233,7 +233,7 @@
                             </button>
                             {% if code.status == 'unused' %}
                             <button
-                                onclick="editCode('{{ code.code }}', {{ 'true' if code.has_warranty else 'false' }}, {{ code.warranty_days if code.warranty_days is not none else 30 }})"
+                                onclick="editCode('{{ code.code }}', {{ 'true' if code.has_warranty else 'false' }}, {{ code.warranty_seconds if code.warranty_seconds is not none else ((code.warranty_days if code.warranty_days is not none else 30) * 86400) }})"
                                 class="btn btn-sm btn-icon btn-minimal btn-info" title="编辑">
                                 <i data-lucide="edit-3" style="width: 14px; height: 14px;"></i>
                             </button>
@@ -368,7 +368,7 @@
     {% endif %}
 </div>
 
-<!-- 批量修改未使用质保兑换码剩余天数/次数模态框 -->
+<!-- 批量修改未使用质保兑换码剩余时间/次数模态框 -->
 <div id="bulkWarrantyQuotaModal" class="modal-overlay">
     <div class="modal">
         <div class="modal-header">
@@ -382,14 +382,20 @@
             </div>
             <form id="bulkWarrantyQuotaForm" onsubmit="handleBulkWarrantyQuotaUpdate(event)">
                 <div class="form-group">
-                    <label>剩余天数 *</label>
-                    <input type="number" id="bulk-warranty-remaining-days" data-quick-target="remainingDays"
-                        class="form-control" value="30" min="0" required>
-                    <div class="quick-value-row" aria-label="质保剩余天数快捷值">
-                        <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'remainingDays', 1)">1天</button>
-                        <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'remainingDays', 7)">7天</button>
-                        <button type="button" class="quick-value-btn" onclick="setQuickNumberValue(this, 'remainingDays', 15)">15天</button>
-                        <button type="button" class="quick-value-btn active" onclick="setQuickNumberValue(this, 'remainingDays', 30)">30天</button>
+                    <label>剩余时间 *</label>
+                    <div class="duration-input-row">
+                        <input type="number" id="bulk-warranty-remaining-days" name="warrantyDays" data-duration-role="days"
+                            class="form-control" value="30" min="0" max="3650" required aria-label="剩余天数">
+                        <span>天</span>
+                        <input type="number" id="bulk-warranty-remaining-hours" name="warrantyHours" data-duration-role="hours"
+                            class="form-control" value="0" min="0" max="23" required aria-label="剩余小时">
+                        <span>小时</span>
+                    </div>
+                    <div class="quick-value-row" aria-label="质保剩余时间快捷值">
+                        <button type="button" class="quick-value-btn" onclick="setQuickWarrantyDuration(this, 0, 1)">1小时</button>
+                        <button type="button" class="quick-value-btn" onclick="setQuickWarrantyDuration(this, 1, 0)">1天</button>
+                        <button type="button" class="quick-value-btn" onclick="setQuickWarrantyDuration(this, 7, 0)">7天</button>
+                        <button type="button" class="quick-value-btn active" onclick="setQuickWarrantyDuration(this, 30, 0)">30天</button>
                     </div>
                 </div>
                 <div class="form-group">
@@ -429,12 +435,18 @@
                             onchange="toggleWarrantyDays(this, 'bulk-edit-warranty-days-group')">
                         <span>质保兑换码（使用后加入质保邮箱列表）</span>
                     </label>
-                    <small class="form-text">兑换成功后会把使用邮箱加入质保邮箱列表，并赋予下方设置的剩余天数和默认 10 次质保次数；如需调整次数，请使用“修改剩余”。</small>
+                    <small class="form-text">兑换成功后会把使用邮箱加入质保邮箱列表，并赋予下方设置的剩余时间和默认 10 次质保次数；如需调整次数，请使用“修改剩余”。</small>
                 </div>
                 <div class="form-group" id="bulk-edit-warranty-days-group" style="display: none;">
-                    <label>质保邮箱初始剩余天数 (天) *</label>
-                    <input type="number" id="bulk-edit-warranty-days" name="warrantyDays" class="form-control"
-                        value="30" min="1" max="3650">
+                    <label>质保邮箱初始剩余时间 *</label>
+                    <div class="duration-input-row">
+                        <input type="number" id="bulk-edit-warranty-days" name="warrantyDays" class="form-control"
+                            value="30" min="0" max="3650" aria-label="质保剩余天数">
+                        <span>天</span>
+                        <input type="number" id="bulk-edit-warranty-hours" name="warrantyHours" class="form-control"
+                            value="0" min="0" max="23" aria-label="质保剩余小时">
+                        <span>小时</span>
+                    </div>
                 </div>
                 <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">保存修改</button>
             </form>
@@ -464,12 +476,18 @@
                             onchange="toggleWarrantyDays(this, 'edit-warranty-days-group')">
                         <span>质保兑换码（使用后加入质保邮箱列表）</span>
                     </label>
-                    <small class="form-text">兑换成功后会把使用邮箱加入质保邮箱列表，并赋予下方设置的剩余天数和默认 10 次质保次数；如需调整次数，请使用“修改剩余”。</small>
+                    <small class="form-text">兑换成功后会把使用邮箱加入质保邮箱列表，并赋予下方设置的剩余时间和默认 10 次质保次数；如需调整次数，请使用“修改剩余”。</small>
                 </div>
                 <div class="form-group" id="edit-warranty-days-group" style="display: none;">
-                    <label>质保邮箱初始剩余天数 (天) *</label>
-                    <input type="number" id="edit-warranty-days" name="warrantyDays" class="form-control" value="30"
-                        min="1" max="3650">
+                    <label>质保邮箱初始剩余时间 *</label>
+                    <div class="duration-input-row">
+                        <input type="number" id="edit-warranty-days" name="warrantyDays" class="form-control" value="30"
+                            min="0" max="3650" aria-label="质保剩余天数">
+                        <span>天</span>
+                        <input type="number" id="edit-warranty-hours" name="warrantyHours" class="form-control" value="0"
+                            min="0" max="23" aria-label="质保剩余小时">
+                        <span>小时</span>
+                    </div>
                 </div>
                 <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">保存修改</button>
             </form>
@@ -830,10 +848,11 @@
     async function handleBulkWarrantyQuotaUpdate(event) {
         event.preventDefault();
         const selectedCodes = getSelectedCodes();
-        const remainingDays = Number(document.getElementById('bulk-warranty-remaining-days').value);
+        const form = event.target;
+        const remainingDuration = parseWarrantyDurationFromForm(form, { allowZero: true });
         const remainingClaims = Number(document.getElementById('bulk-warranty-remaining-claims').value);
-        if (!Number.isInteger(remainingDays) || remainingDays < 0 || !Number.isInteger(remainingClaims) || remainingClaims < 0) {
-            showToast('剩余天数和剩余次数必须是非负整数', 'error');
+        if (remainingDuration.error || !Number.isInteger(remainingClaims) || remainingClaims < 0) {
+            showToast(remainingDuration.error || '剩余次数必须是非负整数', 'error');
             return;
         }
 
@@ -842,7 +861,12 @@
             : '确定要修改当前筛选结果中的未使用质保兑换码吗？';
         const confirmed = await showSystemConfirm({
             title: '确认批量修改质保剩余',
-            message: `${scopeText}\n\n剩余天数：${remainingDays}\n剩余次数：${remainingClaims}\n\n普通、已使用或已过期兑换码会自动跳过。`,
+            message: `${scopeText}
+
+剩余时间：${formatWarrantyDurationLabel(remainingDuration.seconds)}
+剩余次数：${remainingClaims}
+
+普通、已使用或已过期兑换码会自动跳过。`,
             confirmText: '确认修改',
         });
         if (!confirmed) {
@@ -860,7 +884,8 @@
                 body: JSON.stringify({
                     codes: selectedCodes,
                     ...(selectedCodes.length > 0 ? buildEmptyFilterPayload() : currentFilters),
-                    remaining_days: remainingDays,
+                    remaining_days: remainingDuration.roundedDays,
+                    remaining_seconds: remainingDuration.seconds,
                     remaining_claims: remainingClaims,
                 })
             });
@@ -902,7 +927,11 @@
         const codes = getSelectedCodes();
 
         const has_warranty = document.getElementById('bulk-edit-has-warranty').checked;
-        const warranty_days = parseInt(document.getElementById('bulk-edit-warranty-days').value) || 30;
+        const warrantyDuration = parseWarrantyDurationFromForm(event.target);
+        if (has_warranty && warrantyDuration.error) {
+            showToast(warrantyDuration.error, 'error');
+            return;
+        }
 
         try {
             const response = await fetch('/admin/codes/bulk-update', {
@@ -913,7 +942,8 @@
                 body: JSON.stringify({
                     codes: codes,
                     has_warranty: has_warranty,
-                    warranty_days: has_warranty ? warranty_days : null
+                    warranty_days: has_warranty ? warrantyDuration.roundedDays : null,
+                    warranty_seconds: has_warranty ? warrantyDuration.seconds : null
                 })
             });
 
@@ -1085,15 +1115,15 @@
     }
 
     // 编辑兑换码
-    function editCode(code, hasWarranty, warrantyDays) {
+    function editCode(code, hasWarranty, warrantySeconds) {
         document.getElementById('edit-code').value = code;
         document.getElementById('edit-code-display').value = code;
 
         const hasWarrantyCheckbox = document.getElementById('edit-has-warranty');
         hasWarrantyCheckbox.checked = hasWarranty;
 
-        const warrantyDaysInput = document.getElementById('edit-warranty-days');
-        warrantyDaysInput.value = warrantyDays || 30;
+        const editForm = document.getElementById('editCodeForm');
+        setWarrantyDurationInputs(editForm, warrantySeconds || 30 * 86400);
 
         // 触发显示/隐藏
         toggleWarrantyDays(hasWarrantyCheckbox, 'edit-warranty-days-group');
@@ -1105,7 +1135,11 @@
         event.preventDefault();
         const code = document.getElementById('edit-code').value;
         const has_warranty = document.getElementById('edit-has-warranty').checked;
-        const warranty_days = parseInt(document.getElementById('edit-warranty-days').value) || 30;
+        const warrantyDuration = parseWarrantyDurationFromForm(event.target);
+        if (has_warranty && warrantyDuration.error) {
+            showToast(warrantyDuration.error, 'error');
+            return;
+        }
 
         try {
             const response = await fetch(`/admin/codes/${encodeURIComponent(code)}/update`, {
@@ -1115,7 +1149,8 @@
                 },
                 body: JSON.stringify({
                     has_warranty,
-                    warranty_days: has_warranty ? warranty_days : null
+                    warranty_days: has_warranty ? warrantyDuration.roundedDays : null,
+                    warranty_seconds: has_warranty ? warrantyDuration.seconds : null
                 })
             });
 

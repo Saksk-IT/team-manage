@@ -744,8 +744,7 @@ class InviteQueueService:
         redemption_code.used_team_id = team.id
         redemption_code.used_at = get_now()
         if redemption_code.has_warranty:
-            days = redemption_code.warranty_days if redemption_code.warranty_days is not None else 30
-            redemption_code.warranty_expires_at = get_now() + timedelta(days=days)
+            redemption_code.warranty_expires_at = self.redemption_service.build_warranty_expires_at(get_now(), redemption_code)
 
         db_session.add(
             RedemptionRecord(

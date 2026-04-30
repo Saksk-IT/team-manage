@@ -264,7 +264,8 @@ class CodeGenerateRequest(BaseModel):
     count: Optional[int] = Field(None, description="生成数量 (批量生成)")
     expires_days: Optional[int] = Field(None, description="有效期天数")
     has_warranty: bool = Field(False, description="是否为质保兑换码")
-    warranty_days: int = Field(30, ge=1, description="质保天数")
+    warranty_days: int = Field(30, ge=1, description="质保天数（兼容字段，按秒数向上取整）")
+    warranty_seconds: Optional[int] = Field(None, ge=3600, description="质保时长秒数，用于小时精度")
     warranty_claims: int = Field(10, ge=0, description="质保次数")
 
 
@@ -311,13 +312,15 @@ class SubAdminResetPasswordRequest(BaseModel):
 class CodeUpdateRequest(BaseModel):
     """兑换码更新请求"""
     has_warranty: bool = Field(..., description="是否为质保兑换码")
-    warranty_days: Optional[int] = Field(None, description="质保天数")
+    warranty_days: Optional[int] = Field(None, ge=1, description="质保天数（兼容字段，按秒数向上取整）")
+    warranty_seconds: Optional[int] = Field(None, ge=3600, description="质保时长秒数，用于小时精度")
 
 class BulkCodeUpdateRequest(BaseModel):
     """批量兑换码更新请求"""
     codes: List[str] = Field(..., description="兑换码列表")
     has_warranty: bool = Field(..., description="是否为质保兑换码")
-    warranty_days: Optional[int] = Field(None, description="质保天数")
+    warranty_days: Optional[int] = Field(None, ge=1, description="质保天数（兼容字段，按秒数向上取整）")
+    warranty_seconds: Optional[int] = Field(None, ge=3600, description="质保时长秒数，用于小时精度")
 
 
 class BulkWarrantyCodeQuotaUpdateRequest(BaseModel):
@@ -334,7 +337,8 @@ class BulkWarrantyCodeQuotaUpdateRequest(BaseModel):
     remaining_days_max: Optional[int] = Field(None, ge=0, description="剩余天数最大值")
     remaining_claims_min: Optional[int] = Field(None, ge=0, description="剩余次数最小值")
     remaining_claims_max: Optional[int] = Field(None, ge=0, description="剩余次数最大值")
-    remaining_days: int = Field(..., ge=0, description="要设置的剩余天数")
+    remaining_days: int = Field(..., ge=0, description="要设置的剩余天数（兼容字段，按秒数向上取整）")
+    remaining_seconds: Optional[int] = Field(None, ge=0, description="要设置的剩余时间秒数，用于小时精度")
     remaining_claims: int = Field(..., ge=0, description="要设置的剩余次数")
 
 
@@ -2546,6 +2550,7 @@ async def generate_codes(
                 expires_days=generate_data.expires_days,
                 has_warranty=generate_data.has_warranty,
                 warranty_days=generate_data.warranty_days,
+                warranty_seconds=generate_data.warranty_seconds,
                 warranty_claims=generate_data.warranty_claims
             )
 
@@ -2581,6 +2586,7 @@ async def generate_codes(
                 expires_days=generate_data.expires_days,
                 has_warranty=generate_data.has_warranty,
                 warranty_days=generate_data.warranty_days,
+                warranty_seconds=generate_data.warranty_seconds,
                 warranty_claims=generate_data.warranty_claims
             )
 
@@ -2915,7 +2921,8 @@ async def update_code(
             code=code,
             db_session=db,
             has_warranty=update_data.has_warranty,
-            warranty_days=update_data.warranty_days
+            warranty_days=update_data.warranty_days,
+            warranty_seconds=update_data.warranty_seconds
         )
         if not result["success"]:
             return JSONResponse(
@@ -2941,7 +2948,8 @@ async def bulk_update_codes(
             codes=update_data.codes,
             db_session=db,
             has_warranty=update_data.has_warranty,
-            warranty_days=update_data.warranty_days
+            warranty_days=update_data.warranty_days,
+            warranty_seconds=update_data.warranty_seconds
         )
         if not result["success"]:
             return JSONResponse(
@@ -3004,6 +3012,7 @@ async def bulk_update_warranty_code_quota(
             codes=target_codes,
             db_session=db,
             remaining_days=update_data.remaining_days,
+            remaining_seconds=update_data.remaining_seconds,
             remaining_claims=update_data.remaining_claims,
         )
         if not result["success"]:

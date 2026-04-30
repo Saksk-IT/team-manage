@@ -115,7 +115,8 @@ class RedeemFlowWarrantyEnqueueTests(unittest.IsolatedAsyncioTestCase):
                     status="unused",
                     bound_team_id=team.id,
                     has_warranty=True,
-                    warranty_days=12,
+                    warranty_days=13,
+                    warranty_seconds=12 * 86400 + 3600,
                     warranty_claims=4,
                 )
             )
@@ -157,8 +158,9 @@ class RedeemFlowWarrantyEnqueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entry.last_redeem_code, "WARRANTY-CODE-CUSTOM")
         self.assertIsNotNone(entry.expires_at)
         self.assertIsNotNone(code.warranty_expires_at)
-        self.assertLessEqual((entry.expires_at - code.used_at).days, 12)
-        self.assertGreaterEqual((entry.expires_at - code.used_at).days, 11)
+        remaining_seconds = int((entry.expires_at - code.used_at).total_seconds())
+        self.assertGreaterEqual(remaining_seconds, 12 * 86400 + 3595)
+        self.assertLessEqual(remaining_seconds, 12 * 86400 + 3605)
 
 
 if __name__ == "__main__":

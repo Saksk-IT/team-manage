@@ -8,14 +8,10 @@ const CODE_GENERATION_PRESET_NAME_MAX_LENGTH = 20;
 const CODE_GENERATION_PRESET_LIMITS = Object.freeze({
     expiresDays: { min: 1, max: 3650 },
     warrantyDays: { min: 1, max: 3650 },
-    warrantyClaims: { min: 0, max: 1000 }
+    warrantyClaims: { min: 0, max: 1000 },
+    warrantySeconds: { min: 3600, max: 3650 * 86400 }
 });
-const DEFAULT_CODE_GENERATION_PRESETS = Object.freeze([
-    Object.freeze({ id: 'default-trial-7', name: '7天体验', expiresDays: 7, warrantyDays: 7, warrantyClaims: 1, builtIn: true }),
-    Object.freeze({ id: 'default-standard-30', name: '30天标准', expiresDays: 30, warrantyDays: 30, warrantyClaims: 10, builtIn: true }),
-    Object.freeze({ id: 'default-long-90', name: '90天长期', expiresDays: 90, warrantyDays: 90, warrantyClaims: 15, builtIn: true }),
-    Object.freeze({ id: 'default-permanent-30', name: '永久兑换', expiresDays: null, warrantyDays: 30, warrantyClaims: 10, builtIn: true })
-]);
+const DEFAULT_CODE_GENERATION_PRESETS = Object.freeze([]);
 
 function normalizeCodePresetName(name) {
     return String(name || '').trim().replace(/\s+/g, ' ');
@@ -35,17 +31,56 @@ function parseCodePresetInteger(value, key, allowNull = false) {
     return parsed;
 }
 
+function calculateCodeGenerationDaysFromSeconds(totalSeconds) {
+    if (totalSeconds === null || totalSeconds === undefined) {
+        return undefined;
+    }
+
+    const safeSeconds = Math.max(Math.floor(Number(totalSeconds) || 0), 0);
+    return Math.max(Math.ceil(safeSeconds / 86400), 1);
+}
+
+function parseCodePresetSeconds(value) {
+    if (value === null || value === undefined || String(value).trim() === '') {
+        return undefined;
+    }
+
+    const parsed = Number.parseInt(value, 10);
+    const limit = CODE_GENERATION_PRESET_LIMITS.warrantySeconds;
+    if (!Number.isInteger(parsed) || parsed < limit.min || parsed > limit.max) {
+        return undefined;
+    }
+
+    return parsed;
+}
+
+function resolveRawCodePresetWarrantySeconds(rawPreset) {
+    const warrantySeconds = parseCodePresetSeconds(rawPreset?.warrantySeconds);
+    if (warrantySeconds !== undefined) {
+        return warrantySeconds;
+    }
+
+    const warrantyDays = parseCodePresetInteger(rawPreset?.warrantyDays, 'warrantyDays');
+    if (warrantyDays === undefined) {
+        return undefined;
+    }
+
+    return warrantyDays * 86400;
+}
+
 function normalizeCodeGenerationPreset(rawPreset, builtIn = false) {
     const name = normalizeCodePresetName(rawPreset?.name);
     const expiresDays = parseCodePresetInteger(rawPreset?.expiresDays, 'expiresDays', true);
-    const warrantyDays = parseCodePresetInteger(rawPreset?.warrantyDays, 'warrantyDays');
+    const warrantySeconds = resolveRawCodePresetWarrantySeconds(rawPreset);
+    const warrantyDays = parseCodePresetInteger(rawPreset?.warrantyDays, 'warrantyDays')
+        ?? calculateCodeGenerationDaysFromSeconds(warrantySeconds);
     const warrantyClaims = parseCodePresetInteger(rawPreset?.warrantyClaims, 'warrantyClaims');
 
     if (!name || name.length > CODE_GENERATION_PRESET_NAME_MAX_LENGTH) {
         return null;
     }
 
-    if (expiresDays === undefined || warrantyDays === undefined || warrantyClaims === undefined) {
+    if (expiresDays === undefined || warrantySeconds === undefined || warrantyDays === undefined || warrantyClaims === undefined) {
         return null;
     }
 
@@ -54,6 +89,7 @@ function normalizeCodeGenerationPreset(rawPreset, builtIn = false) {
         name,
         expiresDays,
         warrantyDays,
+        warrantySeconds,
         warrantyClaims,
         builtIn: Boolean(builtIn || rawPreset?.builtIn)
     };
@@ -88,11 +124,12 @@ function saveCustomCodeGenerationPresets(presets) {
             .map((preset) => normalizeCodeGenerationPreset(preset, false))
             .filter(Boolean)
             .slice(0, CODE_GENERATION_PRESET_MAX_CUSTOM)
-            .map(({ id, name, expiresDays, warrantyDays, warrantyClaims }) => ({
+            .map(({ id, name, expiresDays, warrantyDays, warrantySeconds, warrantyClaims }) => ({
                 id,
                 name,
                 expiresDays,
                 warrantyDays,
+                warrantySeconds,
                 warrantyClaims
             }));
 
@@ -118,7 +155,51 @@ function findCodeGenerationPreset(presetId) {
 
 function formatCodeGenerationPresetMeta(preset) {
     const expiresText = preset.expiresDays ? `${preset.expiresDays}天` : '永久';
-    return `有效期 ${expiresText} · 质保 ${preset.warrantyDays}天 · ${preset.warrantyClaims}次`;
+    return `有效期 ${expiresText} · 质保 ${formatCodeGenerationDuration(preset.warrantySeconds)} · ${preset.warrantyClaims}次`;
+}
+
+function formatCodeGenerationDuration(totalSeconds) {
+    const safeSeconds = Math.max(Math.floor(Number(totalSeconds) || 0), 0);
+    const days = Math.floor(safeSeconds / 86400);
+    const hours = Math.floor((safeSeconds % 86400) / 3600);
+
+    if (days > 0 && hours > 0) {
+        return `${days}天${hours}小时`;
+    }
+    if (days > 0) {
+        return `${days}天`;
+    }
+    return `${hours}小时`;
+}
+
+function setCodeGenerationWarrantyDuration(form, totalSeconds) {
+    const safeSeconds = Math.max(Math.floor(Number(totalSeconds) || 0), 0);
+    const days = Math.floor(safeSeconds / 86400);
+    const hours = Math.floor((safeSeconds % 86400) / 3600);
+
+    setCodeGenerationFormInputValue(form, 'warrantyDays', days);
+    setCodeGenerationFormInputValue(form, 'warrantyHours', hours);
+}
+
+function parseCodeGenerationWarrantyDuration(form) {
+    const rawDays = form.querySelector('[name="warrantyDays"]')?.value ?? '';
+    const rawHours = form.querySelector('[name="warrantyHours"]')?.value ?? '';
+    const days = rawDays === '' ? 0 : Number(rawDays);
+    const hours = rawHours === '' ? 0 : Number(rawHours);
+
+    if (!Number.isInteger(days) || days < 0 || days > 3650) {
+        return { error: '质保剩余天数必须为 0-3650 的整数' };
+    }
+    if (!Number.isInteger(hours) || hours < 0 || hours > 23) {
+        return { error: '质保剩余小时必须为 0-23 的整数' };
+    }
+
+    const seconds = days * 86400 + hours * 3600;
+    if (seconds < CODE_GENERATION_PRESET_LIMITS.warrantySeconds.min) {
+        return { error: '质保剩余时间至少为 1 小时' };
+    }
+
+    return { seconds, days: calculateCodeGenerationDaysFromSeconds(seconds) };
 }
 
 function createCodeGenerationPresetApplyButton(preset) {
@@ -160,6 +241,14 @@ function renderCodeGenerationPresets() {
     const presets = getAllCodeGenerationPresets();
     presetLists.forEach((list) => {
         list.innerHTML = '';
+        if (!presets.length) {
+            const empty = document.createElement('div');
+            empty.className = 'code-preset-empty';
+            empty.textContent = '暂无自定义预设，可填写下方配置后保存。';
+            list.appendChild(empty);
+            return;
+        }
+
         presets.forEach((preset) => {
             const item = document.createElement('div');
             item.className = 'code-preset-item';
@@ -202,6 +291,27 @@ function syncQuickNumberButtons(form) {
         const group = row.closest('.form-group');
         const firstButton = row.querySelector('.quick-value-btn');
         const onclickValue = firstButton?.getAttribute?.('onclick') || '';
+        const durationMatch = onclickValue.match(/setQuickWarrantyDuration\([^,]+,\s*(\d+)\s*,\s*(\d+)/);
+        if (durationMatch) {
+            const daysInput = group?.querySelector?.('input[name="warrantyDays"]');
+            const hoursInput = group?.querySelector?.('input[name="warrantyHours"]');
+            const currentDays = Number.parseInt(daysInput?.value || '0', 10);
+            const currentHours = Number.parseInt(hoursInput?.value || '0', 10);
+            row.querySelectorAll('.quick-value-btn').forEach((button) => {
+                const buttonMatch = button.getAttribute('onclick')?.match(/setQuickWarrantyDuration\([^,]+,\s*(\d+)\s*,\s*(\d+)/);
+                const buttonDays = Number.parseInt(buttonMatch?.[1] || '', 10);
+                const buttonHours = Number.parseInt(buttonMatch?.[2] || '', 10);
+                button.classList.toggle(
+                    'active',
+                    Number.isInteger(currentDays)
+                    && Number.isInteger(currentHours)
+                    && buttonDays === currentDays
+                    && buttonHours === currentHours
+                );
+            });
+            return;
+        }
+
         const targetMatch = onclickValue.match(/setQuickNumberValue\([^,]+,\s*'([^']+)'/);
         const targetName = targetMatch?.[1] || '';
         const input = targetName
@@ -232,7 +342,7 @@ function applyCodeGenerationPreset(control, presetId) {
     }
 
     setCodeGenerationFormInputValue(context.form, 'expiresDays', preset.expiresDays);
-    setCodeGenerationFormInputValue(context.form, 'warrantyDays', preset.warrantyDays);
+    setCodeGenerationWarrantyDuration(context.form, preset.warrantySeconds);
     setCodeGenerationFormInputValue(context.form, 'warrantyClaims', preset.warrantyClaims);
 
     const warrantyCheckbox = context.form.querySelector('input[name="hasWarranty"]');
@@ -247,23 +357,27 @@ function applyCodeGenerationPreset(control, presetId) {
 
 function readCodeGenerationPresetFormValues(form) {
     const expiresInput = form.querySelector('[name="expiresDays"]')?.value || '';
-    const warrantyDaysInput = form.querySelector('[name="warrantyDays"]')?.value || '';
     const warrantyClaimsInput = form.querySelector('[name="warrantyClaims"]')?.value || '';
     const expiresDays = parseCodePresetInteger(expiresInput, 'expiresDays', true);
-    const warrantyDays = parseCodePresetInteger(warrantyDaysInput, 'warrantyDays');
+    const warrantyDuration = parseCodeGenerationWarrantyDuration(form);
     const warrantyClaims = parseCodePresetInteger(warrantyClaimsInput, 'warrantyClaims');
 
     if (expiresDays === undefined) {
         return { error: '有效期必须为 1-3650 天，留空表示永久有效' };
     }
-    if (warrantyDays === undefined) {
-        return { error: '质保天数必须为 1-3650 天' };
+    if (warrantyDuration.error) {
+        return { error: warrantyDuration.error };
     }
     if (warrantyClaims === undefined) {
         return { error: '质保次数必须为 0-1000 次' };
     }
 
-    return { expiresDays, warrantyDays, warrantyClaims };
+    return {
+        expiresDays,
+        warrantyDays: warrantyDuration.days,
+        warrantySeconds: warrantyDuration.seconds,
+        warrantyClaims
+    };
 }
 
 function createCustomCodeGenerationPresetId() {
@@ -318,6 +432,7 @@ function saveCodeGenerationPreset(control) {
         name,
         expiresDays: formValues.expiresDays,
         warrantyDays: formValues.warrantyDays,
+        warrantySeconds: formValues.warrantySeconds,
         warrantyClaims: formValues.warrantyClaims
     };
     const nextPresets = existingPreset

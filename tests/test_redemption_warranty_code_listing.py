@@ -166,7 +166,8 @@ class RedemptionWarrantyCodeListingTests(unittest.IsolatedAsyncioTestCase):
                     code="UNUSED-WARRANTY-MATCH",
                     status="unused",
                     has_warranty=True,
-                    warranty_days=12,
+                    warranty_days=13,
+                    warranty_seconds=12 * 86400 + 3600,
                     warranty_claims=6,
                     created_at=now,
                 ),
@@ -195,9 +196,9 @@ class RedemptionWarrantyCodeListingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual([code["code"] for code in result["codes"]], ["UNUSED-WARRANTY-MATCH"])
-        self.assertEqual(result["codes"][0]["warranty_remaining_days"], 12)
-        self.assertEqual(result["codes"][0]["warranty_remaining_seconds"], 12 * 86400)
-        self.assertEqual(result["codes"][0]["warranty_remaining_time"], "12天 00:00:00")
+        self.assertEqual(result["codes"][0]["warranty_remaining_days"], 13)
+        self.assertEqual(result["codes"][0]["warranty_remaining_seconds"], 12 * 86400 + 3600)
+        self.assertEqual(result["codes"][0]["warranty_remaining_time"], "12天 01:00:00")
         self.assertIsNone(result["codes"][0]["warranty_expires_at"])
         self.assertEqual(result["codes"][0]["warranty_remaining_claims"], 6)
 

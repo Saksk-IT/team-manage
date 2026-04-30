@@ -910,6 +910,11 @@ class WarrantyService:
             .order_by(WarrantyEmailEntry.updated_at.desc(), WarrantyEmailEntry.id.desc())
         )
         entry = result.scalars().first()
+        warranty_seconds = (
+            getattr(redemption_code, "warranty_seconds", None)
+            if redemption_code is not None
+            else None
+        )
         warranty_days = (
             redemption_code.warranty_days
             if redemption_code is not None and redemption_code.warranty_days is not None
@@ -921,7 +926,7 @@ class WarrantyService:
             else self.AUTO_WARRANTY_ENTRY_DEFAULT_CLAIMS
         )
         warranty_claims = max(int(warranty_claims or 0), 0)
-        default_expires_at = self._build_warranty_entry_expires_at(warranty_days)
+        default_expires_at = self._build_warranty_entry_expires_at(warranty_days, warranty_seconds)
 
         if entry:
             entry.last_redeem_code = redeem_code
@@ -1552,6 +1557,9 @@ class WarrantyService:
                 return redemption_code.warranty_expires_at
             start_at = redemption_code.used_at or first_used_at
             if start_at:
+                seconds = getattr(redemption_code, "warranty_seconds", None)
+                if seconds is not None:
+                    return start_at + timedelta(seconds=max(int(seconds or 0), 0))
                 days = (
                     redemption_code.warranty_days
                     if redemption_code.warranty_days is not None
@@ -2765,8 +2773,12 @@ class WarrantyService:
                 if code_obj.has_warranty and not expiry_date:
                     start_time = code_obj.used_at or record.redeemed_at # 优先取首次使用时间
                     if start_time:
-                        days = code_obj.warranty_days if code_obj.warranty_days is not None else 30
-                        expiry_date = start_time + timedelta(days=days)
+                        seconds = getattr(code_obj, "warranty_seconds", None)
+                        if seconds is not None:
+                            expiry_date = start_time + timedelta(seconds=max(int(seconds or 0), 0))
+                        else:
+                            days = code_obj.warranty_days if code_obj.warranty_days is not None else 30
+                            expiry_date = start_time + timedelta(days=days)
 
                 is_valid = True
                 if expiry_date and expiry_date < get_now():

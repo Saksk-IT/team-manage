@@ -210,6 +210,89 @@ function setWarrantyDaysQuickValue(control, days) {
     setQuickNumberValue(control, 'warrantyDays', days);
 }
 
+function setQuickWarrantyDuration(control, days, hours = 0) {
+    const normalizedDays = Math.max(Math.floor(Number(days) || 0), 0);
+    const normalizedHours = Math.max(Math.floor(Number(hours) || 0), 0);
+    const group = control?.closest?.('.form-group');
+    if (!group) {
+        return;
+    }
+
+    const daysInput = group.querySelector('input[name="warrantyDays"], input[data-quick-target="warrantyDays"], input[data-duration-role="days"]');
+    const hoursInput = group.querySelector('input[name="warrantyHours"], input[data-quick-target="warrantyHours"], input[data-duration-role="hours"]');
+    if (daysInput) {
+        daysInput.value = String(normalizedDays);
+        daysInput.dispatchEvent(new Event('input', { bubbles: true }));
+        daysInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (hoursInput) {
+        hoursInput.value = String(normalizedHours);
+        hoursInput.dispatchEvent(new Event('input', { bubbles: true }));
+        hoursInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    const row = control?.closest?.('.quick-value-row');
+    if (row) {
+        row.querySelectorAll('.quick-value-btn').forEach((button) => {
+            button.classList.toggle('active', button === control);
+        });
+    }
+}
+
+function parseWarrantyDurationFromForm(form, { allowZero = false, maxDays = 3650 } = {}) {
+    const daysField = form?.warrantyDays;
+    const hoursField = form?.warrantyHours;
+    const daysValue = daysField?.value?.trim?.() ?? '';
+    const hoursValue = hoursField?.value?.trim?.() ?? '';
+    const days = daysValue === '' ? 0 : Number(daysValue);
+    const hours = hoursValue === '' ? 0 : Number(hoursValue);
+
+    if (!Number.isInteger(days) || days < 0 || days > maxDays) {
+        return { error: `剩余天数必须为 0-${maxDays} 的整数` };
+    }
+    if (!Number.isInteger(hours) || hours < 0 || hours > 23) {
+        return { error: '剩余小时必须为 0-23 的整数' };
+    }
+
+    const seconds = days * 86400 + hours * 3600;
+    if (!allowZero && seconds <= 0) {
+        return { error: '剩余时间至少为 1 小时' };
+    }
+
+    return {
+        days,
+        hours,
+        seconds,
+        roundedDays: Math.max(Math.ceil(seconds / 86400), allowZero ? 0 : 1)
+    };
+}
+
+function setWarrantyDurationInputs(formOrElement, totalSeconds) {
+    const container = formOrElement;
+    const safeSeconds = Math.max(Math.floor(Number(totalSeconds) || 0), 0);
+    const days = Math.floor(safeSeconds / 86400);
+    const hours = Math.floor((safeSeconds % 86400) / 3600);
+    const daysInput = container?.querySelector?.('input[name="warrantyDays"], input[data-duration-role="days"]');
+    const hoursInput = container?.querySelector?.('input[name="warrantyHours"], input[data-duration-role="hours"]');
+
+    if (daysInput) {
+        daysInput.value = String(days);
+    }
+    if (hoursInput) {
+        hoursInput.value = String(hours);
+    }
+}
+
+function formatWarrantyDurationLabel(totalSeconds) {
+    const safeSeconds = Math.max(Math.floor(Number(totalSeconds) || 0), 0);
+    const days = Math.floor(safeSeconds / 86400);
+    const hours = Math.floor((safeSeconds % 86400) / 3600);
+
+    if (days > 0 && hours > 0) return `${days}天${hours}小时`;
+    if (days > 0) return `${days}天`;
+    return `${hours}小时`;
+}
+
 function getCodeGenerationCapacity() {
     const modal = document.getElementById('generateCodeModal');
     if (!modal) {
@@ -599,7 +682,7 @@ function switchModalTab(modalId, tabId) {
 }
 
 /**
- * 切换质保时长输入框的显示
+ * 切换质保剩余时间输入框的显示
  */
 function toggleWarrantyDays(checkbox, targetId) {
     const target = document.getElementById(targetId);
@@ -834,8 +917,13 @@ async function generateSingle(event) {
     const customCode = form.customCode.value.trim();
     const expiresDays = form.expiresDays.value;
     const hasWarranty = form.hasWarranty.checked;
-    const warrantyDays = form.warrantyDays ? form.warrantyDays.value : 30;
+    const warrantyDuration = parseWarrantyDurationFromForm(form);
     const warrantyClaims = form.warrantyClaims ? form.warrantyClaims.value : 10;
+
+    if (warrantyDuration.error) {
+        showToast(warrantyDuration.error, 'error');
+        return;
+    }
 
     if (!validateCodeGenerationCapacity(1)) {
         return;
@@ -844,7 +932,8 @@ async function generateSingle(event) {
     const data = {
         type: 'single',
         has_warranty: hasWarranty,
-        warranty_days: parseInt(warrantyDays || 30),
+        warranty_days: warrantyDuration.roundedDays,
+        warranty_seconds: warrantyDuration.seconds,
         warranty_claims: parseInt(warrantyClaims || 10)
     };
     if (customCode) data.code = customCode;
@@ -877,11 +966,16 @@ async function generateBatch(event) {
     const count = parseInt(form.count.value);
     const expiresDays = form.expiresDays.value;
     const hasWarranty = form.hasWarranty.checked;
-    const warrantyDays = form.warrantyDays ? form.warrantyDays.value : 30;
+    const warrantyDuration = parseWarrantyDurationFromForm(form);
     const warrantyClaims = form.warrantyClaims ? form.warrantyClaims.value : 10;
 
     if (count < 1 || count > 1000) {
         showToast('生成数量必须在1-1000之间', 'error');
+        return;
+    }
+
+    if (warrantyDuration.error) {
+        showToast(warrantyDuration.error, 'error');
         return;
     }
 
@@ -893,7 +987,8 @@ async function generateBatch(event) {
         type: 'batch',
         count: count,
         has_warranty: hasWarranty,
-        warranty_days: parseInt(warrantyDays || 30),
+        warranty_days: warrantyDuration.roundedDays,
+        warranty_seconds: warrantyDuration.seconds,
         warranty_claims: parseInt(warrantyClaims || 10)
     };
     if (expiresDays) data.expires_days = parseInt(expiresDays);
