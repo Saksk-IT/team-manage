@@ -1709,7 +1709,7 @@
             return;
         }
 
-        const targetType = {{ '"standard"' if is_number_pool_mode else '"number_pool"' }};
+        const targetType = {{ ('standard' if active_page == 'number_pool' else 'number_pool') | tojson }};
         const isToNumberPool = targetType === 'number_pool';
         const targetLabel = isToNumberPool ? '号池' : '控制台 Team';
         const confirmed = await showSystemConfirm({
