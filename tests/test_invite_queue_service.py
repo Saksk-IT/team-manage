@@ -267,17 +267,61 @@ class InviteQueueServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(jobs[0].email, "buyer-a@example.com")
         self.assertEqual(jobs[0].team_id, 1)
 
-    async def test_redeem_submission_skips_team_already_used_by_email(self):
+    async def test_redeem_submission_ignores_stale_redemption_history_when_snapshot_absent(self):
+        await self._seed_redeem_teams_and_codes(team_count=5, code_count=1)
+        service = InviteQueueService()
+
+        async with self.Session() as session:
+            session.add_all(
+                [
+                    TeamMemberSnapshot(
+                        team_id=1,
+                        email="buyer@example.com",
+                        member_state="joined",
+                    ),
+                    TeamMemberSnapshot(
+                        team_id=2,
+                        email="buyer@example.com",
+                        member_state="invited",
+                    ),
+                    RedemptionRecord(
+                        email="buyer@example.com",
+                        code="OLD-CODE-3",
+                        team_id=3,
+                        account_id="acc-3",
+                    ),
+                    RedemptionRecord(
+                        email="buyer@example.com",
+                        code="OLD-CODE-4",
+                        team_id=4,
+                        account_id="acc-4",
+                    ),
+                    RedemptionRecord(
+                        email="buyer@example.com",
+                        code="OLD-CODE-5",
+                        team_id=5,
+                        account_id="acc-5",
+                    ),
+                ]
+            )
+            await session.commit()
+
+            result = await service.submit_redeem_job(session, "buyer@example.com", "CODE-001")
+            job = await session.get(InviteJob, result.get("job_id"))
+
+        self.assertTrue(result["success"])
+        self.assertEqual(job.team_id, 3)
+
+    async def test_redeem_submission_skips_team_already_present_in_member_snapshot(self):
         await self._seed_redeem_teams_and_codes(team_count=2, code_count=2)
         service = InviteQueueService()
 
         async with self.Session() as session:
             session.add(
-                RedemptionRecord(
-                    email="buyer@example.com",
-                    code="OLD-CODE",
+                TeamMemberSnapshot(
                     team_id=1,
-                    account_id="acc-1",
+                    email="buyer@example.com",
+                    member_state="joined",
                 )
             )
             await session.commit()

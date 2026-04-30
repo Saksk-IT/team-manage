@@ -554,22 +554,6 @@ class InviteQueueService:
 
         team_ids: List[int] = []
 
-        record_result = await db_session.execute(
-            select(RedemptionRecord.team_id).where(
-                func.lower(func.trim(RedemptionRecord.email)) == normalized_email,
-                RedemptionRecord.team_id.is_not(None),
-            )
-        )
-        team_ids.extend(int(team_id) for team_id in record_result.scalars().all() if team_id)
-
-        code_result = await db_session.execute(
-            select(RedemptionCode.used_team_id).where(
-                func.lower(func.trim(RedemptionCode.used_by_email)) == normalized_email,
-                RedemptionCode.used_team_id.is_not(None),
-            )
-        )
-        team_ids.extend(int(team_id) for team_id in code_result.scalars().all() if team_id)
-
         snapshot_result = await db_session.execute(
             select(TeamMemberSnapshot.team_id).where(
                 TeamMemberSnapshot.email == normalized_email,
