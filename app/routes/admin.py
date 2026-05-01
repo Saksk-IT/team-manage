@@ -71,6 +71,7 @@ from app.utils.storage import (
 logger = logging.getLogger(__name__)
 
 MAX_CUSTOMER_SERVICE_IMAGE_SIZE = 5 * 1024 * 1024
+MAX_WARRANTY_EMAIL_CHECK_RICH_TEXT_LENGTH = 100_000
 ALLOWED_CUSTOMER_SERVICE_IMAGE_TYPES = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
@@ -3449,8 +3450,16 @@ class WarrantyFakeSuccessSettingsRequest(BaseModel):
 class WarrantyEmailCheckSettingsRequest(BaseModel):
     """前台质保邮箱名单判定模式请求"""
     enabled: bool = Field(..., description="是否启用质保邮箱名单判定模式")
-    match_content: str = Field("", description="邮箱命中时展示的富文本", max_length=10000)
-    miss_content: str = Field("", description="邮箱未命中时展示的富文本", max_length=10000)
+    match_content: str = Field(
+        "",
+        description="邮箱命中时展示的富文本",
+        max_length=MAX_WARRANTY_EMAIL_CHECK_RICH_TEXT_LENGTH,
+    )
+    miss_content: str = Field(
+        "",
+        description="邮箱未命中时展示的富文本",
+        max_length=MAX_WARRANTY_EMAIL_CHECK_RICH_TEXT_LENGTH,
+    )
 
 
 class AdminSidebarOrderSettingsRequest(BaseModel):

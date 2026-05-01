@@ -193,7 +193,10 @@
                 return;
             }
 
-            showToast(data.error || '保存失败', 'error');
+            const validationMessage = Array.isArray(data.detail)
+                ? data.detail.map((item) => item.msg).join('；')
+                : '';
+            showToast(data.error || validationMessage || '保存失败', 'error');
         } catch (error) {
             showToast('网络错误', 'error');
         }

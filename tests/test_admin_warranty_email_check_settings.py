@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 from starlette.requests import Request
 
 from app.routes.admin import (
+    MAX_WARRANTY_EMAIL_CHECK_RICH_TEXT_LENGTH,
     WarrantyEmailCheckSettingsRequest,
     update_warranty_email_check_settings,
     warranty_email_check_settings_page,
@@ -49,6 +50,33 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('data-rich-text-command="createLink"', html)
         self.assertIn("<p><strong>在列表</strong></p>", html)
         self.assertIn("fetch('/admin/warranty-email-check'", html)
+        self.assertIn("validationMessage", html)
+
+    async def test_update_warranty_email_check_settings_accepts_long_rich_text(self):
+        db = AsyncMock()
+        long_content = "<p>" + ("长教程内容" * 2500) + "</p>"
+
+        self.assertLess(len(long_content), MAX_WARRANTY_EMAIL_CHECK_RICH_TEXT_LENGTH)
+
+        with patch(
+            "app.routes.admin.settings_service.update_warranty_email_check_config",
+            new=AsyncMock(return_value=True)
+        ) as mocked_update:
+            response = await update_warranty_email_check_settings(
+                warranty_data=WarrantyEmailCheckSettingsRequest(
+                    enabled=True,
+                    match_content=long_content,
+                    miss_content="<p>未命中</p>",
+                ),
+                db=db,
+                current_user={"username": "admin"},
+            )
+
+        payload = json.loads(response.body.decode("utf-8"))
+
+        mocked_update.assert_awaited_once_with(db, True, long_content, "<p>未命中</p>")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["success"])
 
     async def test_update_warranty_email_check_settings_returns_success(self):
         db = AsyncMock()

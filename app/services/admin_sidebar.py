@@ -55,7 +55,7 @@ SUPER_ADMIN_SIDEBAR_ITEMS: tuple[AdminSidebarItem, ...] = (
         "team_cleanup_records",
         "team_cleanup_records",
         "/admin/team-cleanup-records",
-        "broom",
+        "trash-2",
         "自动清理记录",
     ),
     AdminSidebarItem("front_page", "front_page", "/admin/front-page", "store", "前台页面"),
