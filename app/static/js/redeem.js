@@ -23,7 +23,8 @@ let currentWarrantyEmail = '';
 let currentWarrantyStatus = null;
 const appConfig = window.APP_CONFIG || {};
 const warrantyServiceEnabled = Boolean(appConfig.warrantyServiceEnabled);
-const warrantyFakeSuccessEnabled = warrantyServiceEnabled && Boolean(appConfig.warrantyFakeSuccessEnabled);
+const warrantyEmailCheckEnabled = warrantyServiceEnabled && Boolean(appConfig.warrantyEmailCheckEnabled);
+const warrantyFakeSuccessEnabled = warrantyServiceEnabled && !warrantyEmailCheckEnabled && Boolean(appConfig.warrantyFakeSuccessEnabled);
 const WARRANTY_FAKE_SUCCESS_DELAY_MS = 15 * 1000;
 const WARRANTY_FAKE_SUCCESS_MIN_SPOTS = 60;
 const WARRANTY_FAKE_SUCCESS_MAX_SPOTS = 100;
@@ -743,7 +744,47 @@ function refreshWarrantyStatusWithOrder(order) {
     renderWarrantyStatusResult(currentWarrantyStatus, currentWarrantyEmail);
 }
 
+function renderWarrantyEmailCheckResult(data, email) {
+    currentWarrantyEmail = email;
+    currentWarrantyStatus = data;
+
+    const statusContainer = document.getElementById('warrantyStatusResult');
+    if (!statusContainer) return;
+
+    const matched = Boolean(data?.matched);
+    const contentHtml = String(data?.content_html || data?.message || '');
+    statusContainer.style.display = 'block';
+    statusContainer.innerHTML = `
+        <div class="status-panel status-panel--summary warranty-email-check-result">
+            <div class="status-panel__header">
+                <div class="status-panel__title">质保资格查询结果</div>
+                <span class="status-badge ${matched ? 'status-badge--success' : 'status-badge--warning'}">
+                    ${escapeHtml(matched ? '在质保列表内' : '不在质保列表内')}
+                </span>
+            </div>
+            <div class="status-panel__list">
+                <div class="status-panel__item">
+                    <span class="status-panel__label">邮箱地址</span>
+                    <span class="status-panel__value">${escapeHtml(email)}</span>
+                </div>
+            </div>
+            <div class="status-panel__message ${matched ? 'status-panel__message--success' : 'status-panel__message--warning'}">
+                <div class="warranty-email-check-content">${contentHtml}</div>
+            </div>
+        </div>
+    `;
+
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+}
+
 function renderWarrantyStatusResult(data, email) {
+    if (data?.mode === 'email_check') {
+        renderWarrantyEmailCheckResult(data, email);
+        return;
+    }
+
     currentWarrantyEmail = email;
     currentWarrantyStatus = data;
 
@@ -1315,7 +1356,7 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
     } finally {
         closeTransitionOverlay();
         if (claimBtn) claimBtn.disabled = false;
-        setClaimButtonContent('查询订单');
+        setClaimButtonContent(warrantyEmailCheckEnabled ? '查询质保资格' : '查询订单');
     }
 });
 

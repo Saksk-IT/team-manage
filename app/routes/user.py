@@ -41,8 +41,13 @@ async def redeem_page(
         purchase_link_config = await settings_service.get_purchase_link_config(db)
         warranty_service_config = await settings_service.get_warranty_service_config(db)
         warranty_fake_success_config = await settings_service.get_warranty_fake_success_config(db)
+        warranty_email_check_config = await settings_service.get_warranty_email_check_config(db)
         warranty_service_enabled = warranty_service_config["enabled"]
-        warranty_fake_success_enabled = warranty_service_enabled and warranty_fake_success_config["enabled"]
+        warranty_fake_success_enabled = (
+            warranty_service_enabled
+            and warranty_fake_success_config["enabled"]
+            and not warranty_email_check_config["enabled"]
+        )
 
         if warranty_fake_success_enabled:
             remaining_spots = await settings_service.get_warranty_fake_success_remaining_spots(db)
@@ -64,7 +69,8 @@ async def redeem_page(
                 "customer_service": customer_service_config,
                 "purchase_link": purchase_link_config,
                 "warranty_service_enabled": warranty_service_enabled,
-                "warranty_fake_success_enabled": warranty_fake_success_enabled
+                "warranty_fake_success_enabled": warranty_fake_success_enabled,
+                "warranty_email_check_enabled": warranty_email_check_config["enabled"]
             }
         )
 

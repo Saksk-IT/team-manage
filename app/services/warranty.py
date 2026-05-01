@@ -2011,6 +2011,29 @@ class WarrantyService:
             "message": message
         }
 
+    async def check_warranty_email_membership(
+        self,
+        db_session: AsyncSession,
+        email: str
+    ) -> Dict[str, Any]:
+        """
+        仅判定邮箱是否存在于质保邮箱列表，不触发订单/Team 查询逻辑。
+        """
+        normalized_email = self.normalize_email(email)
+        if not normalized_email:
+            return {"success": False, "error": "邮箱不能为空"}
+
+        entries = await self.get_warranty_email_entries_for_email(
+            db_session,
+            normalized_email
+        )
+        return {
+            "success": True,
+            "email": normalized_email,
+            "matched": bool(entries),
+            "matched_count": len(entries),
+        }
+
     async def _create_warranty_record(
         self,
         db_session: AsyncSession,

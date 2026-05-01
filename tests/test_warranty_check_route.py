@@ -21,6 +21,9 @@ class WarrantyCheckRouteTests(unittest.IsolatedAsyncioTestCase):
             "app.routes.warranty.settings_service.get_warranty_service_config",
             new=AsyncMock(return_value={"enabled": True})
         ), patch(
+            "app.routes.warranty.settings_service.get_warranty_email_check_config",
+            new=AsyncMock(return_value={"enabled": False})
+        ), patch(
             "app.routes.warranty.warranty_service.get_warranty_claim_status",
             new=AsyncMock(return_value={
                 "success": True,
@@ -57,6 +60,9 @@ class WarrantyCheckRouteTests(unittest.IsolatedAsyncioTestCase):
         mocked_status.assert_awaited_once_with(db_session=db, email="buyer@example.com")
         self.assertTrue(result["success"])
         self.assertFalse(result["can_claim"])
+        self.assertEqual(result["mode"], "orders")
+        self.assertIsNone(result["matched"])
+        self.assertIsNone(result["content_html"])
         self.assertIsNone(result["latest_team"])
         self.assertEqual(result["warranty_orders"][0]["code"], "CODE-123")
         self.assertEqual(result["warranty_orders"][0]["remaining_time"], "2天 23:59:59")
@@ -69,6 +75,9 @@ class WarrantyCheckRouteTests(unittest.IsolatedAsyncioTestCase):
         with patch(
             "app.routes.warranty.settings_service.get_warranty_service_config",
             new=AsyncMock(return_value={"enabled": True})
+        ), patch(
+            "app.routes.warranty.settings_service.get_warranty_email_check_config",
+            new=AsyncMock(return_value={"enabled": False})
         ), patch(
             "app.routes.warranty.warranty_service.refresh_warranty_order_status",
             new=AsyncMock(return_value={
@@ -105,6 +114,9 @@ class WarrantyCheckRouteTests(unittest.IsolatedAsyncioTestCase):
             "app.routes.warranty.settings_service.get_warranty_service_config",
             new=AsyncMock(return_value={"enabled": True})
         ), patch(
+            "app.routes.warranty.settings_service.get_warranty_email_check_config",
+            new=AsyncMock(return_value={"enabled": False})
+        ), patch(
             "app.routes.warranty.warranty_service.get_warranty_claim_status",
             new=AsyncMock(return_value={"success": False, "error": "未找到该邮箱最近加入的 Team 记录"})
         ):
@@ -123,6 +135,9 @@ class WarrantyCheckRouteTests(unittest.IsolatedAsyncioTestCase):
         with patch(
             "app.routes.warranty.settings_service.get_warranty_service_config",
             new=AsyncMock(return_value={"enabled": True})
+        ), patch(
+            "app.routes.warranty.settings_service.get_warranty_email_check_config",
+            new=AsyncMock(return_value={"enabled": False})
         ), patch(
             "app.routes.warranty.invite_queue_service.submit_warranty_job",
             new=AsyncMock(return_value={"success": True, "job_id": 1})

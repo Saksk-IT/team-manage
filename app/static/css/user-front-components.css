@@ -218,6 +218,25 @@
     margin-top: 0.2rem;
 }
 
+.warranty-email-check-content {
+    display: grid;
+    gap: 0.6rem;
+}
+
+.warranty-email-check-content :is(p, ul, ol, blockquote, pre) {
+    margin: 0;
+}
+
+.warranty-email-check-content :is(ul, ol) {
+    padding-left: 1.2rem;
+}
+
+.warranty-email-check-content a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
+}
+
 .side-card {
     display: grid;
     gap: 0.9rem;

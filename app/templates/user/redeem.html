@@ -91,7 +91,7 @@
                                     <span class="service-tab__icon"><i data-lucide="shield"></i></span>
                                     <span>
                                         <strong>质保服务</strong>
-                                        <small>仅 Team 封禁时可提交</small>
+                                        <small>{% if warranty_email_check_enabled %}输入邮箱查询质保资格{% else %}仅 Team 封禁时可提交{% endif %}</small>
                                     </span>
                                 </button>
                                 {% endif %}
@@ -121,16 +121,16 @@
                             <div id="warrantyPane" class="service-pane" style="display: none;" role="tabpanel" aria-labelledby="warrantyModeBtn" aria-hidden="true">
                                 <div class="service-notice">
                                     <i data-lucide="info"></i>
-                                    <span><strong>质保说明</strong>：如您购买了质保服务（包含多个质保订单），先按邮箱查询订单，再对每个仍有剩余次数和天数的订单单独刷新 Team 状态。只有状态为“封禁”的订单，才可以提交质保。</span>
+                                    <span><strong>质保说明</strong>：{% if warranty_email_check_enabled %}请输入邮箱查询是否在质保邮箱列表中，系统会按管理员设置展示对应说明。{% else %}如您购买了质保服务（包含多个质保订单），先按邮箱查询订单，再对每个仍有剩余次数和天数的订单单独刷新 Team 状态。只有状态为“封禁”的订单，才可以提交质保。{% endif %}</span>
                                 </div>
                                 <form id="warrantyClaimForm" class="action-form">
                                     <label class="form-group" for="warrantyEmail">
                                         <span>质保邮箱</span>
                                         <input type="email" id="warrantyEmail" name="email" required placeholder="请输入质保邮箱" class="form-input" autocomplete="email">
-                                        <small class="form-help">查询结果会展示每个质保订单对应的兑换码、剩余次数、剩余时间和质保到期时间。</small>
+                                        <small class="form-help">{% if warranty_email_check_enabled %}系统仅判断该邮箱是否在质保邮箱列表内，并展示管理员设置的说明。{% else %}查询结果会展示每个质保订单对应的兑换码、剩余次数、剩余时间和质保到期时间。{% endif %}</small>
                                     </label>
                                     <button type="submit" class="btn btn-primary" id="claimBtn">
-                                        <i data-lucide="search"></i> 查询订单
+                                        <i data-lucide="search"></i> {% if warranty_email_check_enabled %}查询质保资格{% else %}查询订单{% endif %}
                                     </button>
                                 </form>
                                 <div id="warrantyStatusResult" class="status-result" style="display: none;"></div>
@@ -296,7 +296,7 @@
                             <li><strong>兑换</strong><span>填写邮箱和兑换码，确认无误后提交。</span></li>
                             <li><strong>加入</strong><span>前往邮箱接收 Team 邀请并完成加入。</span></li>
                             {% if warranty_service_enabled %}
-                            <li><strong>质保</strong><span>如 Team 被封禁，切换到质保服务查询后提交。</span></li>
+                            <li><strong>质保</strong><span>{% if warranty_email_check_enabled %}切换到质保服务，输入邮箱查询质保资格。{% else %}如 Team 被封禁，切换到质保服务查询后提交。{% endif %}</span></li>
                             {% else %}
                             <li><strong>帮助</strong><span>如遇加入问题，请联系管理员协助处理。</span></li>
                             {% endif %}
@@ -516,6 +516,7 @@
         window.APP_CONFIG = {
             warrantyServiceEnabled: {{ warranty_service_enabled|default(true)|tojson }},
             warrantyFakeSuccessEnabled: {{ warranty_fake_success_enabled|default(false)|tojson }},
+            warrantyEmailCheckEnabled: {{ warranty_email_check_enabled|default(false)|tojson }},
             initialRemainingSpots: {{ remaining_spots|default(none)|tojson }}
         };
     </script>

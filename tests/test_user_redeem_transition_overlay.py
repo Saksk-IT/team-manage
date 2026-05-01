@@ -41,6 +41,9 @@ class UserRedeemTransitionOverlayTests(unittest.IsolatedAsyncioTestCase):
             "app.services.settings.settings_service.get_warranty_fake_success_config",
             new=AsyncMock(return_value={"enabled": False})
         ), patch(
+            "app.services.settings.settings_service.get_warranty_email_check_config",
+            new=AsyncMock(return_value={"enabled": False})
+        ), patch(
             "app.services.settings.settings_service.get_number_pool_config",
             new=AsyncMock(return_value={"enabled": False})
         ), patch(
@@ -66,6 +69,8 @@ class UserRedeemTransitionOverlayTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("const WARRANTY_CLAIM_LOADING_FLOW =", script)
         self.assertIn("const customerServicePromptModal =", script)
         self.assertIn("function setCustomerServicePromptOpen(isOpen)", script)
+        self.assertIn("const warrantyEmailCheckEnabled =", script)
+        self.assertIn("function renderWarrantyEmailCheckResult(data, email)", script)
         self.assertIn("function showCustomerServiceQrReminder()", script)
         self.assertEqual(script.count("showCustomerServiceQrReminder();"), 3)
         self.assertIn("openTransitionOverlay(", script)

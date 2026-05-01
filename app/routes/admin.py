@@ -3272,6 +3272,7 @@ async def settings_page(
         default_team_max_members = await settings_service.get_default_team_max_members(db)
         warranty_service_config = await settings_service.get_warranty_service_config(db)
         warranty_fake_success_config = await settings_service.get_warranty_fake_success_config(db)
+        warranty_email_check_config = await settings_service.get_warranty_email_check_config(db)
         number_pool_config = await settings_service.get_number_pool_config(db)
         admin_sidebar_order = await _resolve_admin_sidebar_order(db, current_user)
         admin_sidebar_order = admin_sidebar_order or get_default_admin_sidebar_order()
@@ -3293,6 +3294,9 @@ async def settings_page(
                 default_team_max_members=default_team_max_members,
                 warranty_service_enabled=warranty_service_config["enabled"],
                 warranty_fake_success_enabled=warranty_fake_success_config["enabled"],
+                warranty_email_check_enabled=warranty_email_check_config["enabled"],
+                warranty_email_check_match_content=warranty_email_check_config["match_content"],
+                warranty_email_check_miss_content=warranty_email_check_config["miss_content"],
                 number_pool_enabled=number_pool_config["enabled"],
                 webhook_url=await settings_service.get_setting(db, "webhook_url", ""),
                 low_stock_threshold=await settings_service.get_setting(db, "low_stock_threshold", "10"),
@@ -3408,6 +3412,13 @@ class NumberPoolSettingsRequest(BaseModel):
 class WarrantyFakeSuccessSettingsRequest(BaseModel):
     """前台质保模拟成功开关请求"""
     enabled: bool = Field(..., description="是否启用前台质保模拟成功")
+
+
+class WarrantyEmailCheckSettingsRequest(BaseModel):
+    """前台质保邮箱名单判定模式请求"""
+    enabled: bool = Field(..., description="是否启用质保邮箱名单判定模式")
+    match_content: str = Field("", description="邮箱命中时展示的富文本", max_length=10000)
+    miss_content: str = Field("", description="邮箱未命中时展示的富文本", max_length=10000)
 
 
 class AdminSidebarOrderSettingsRequest(BaseModel):
@@ -4919,6 +4930,43 @@ async def update_warranty_fake_success_settings(
         )
     except Exception as e:
         logger.error(f"更新前台质保模拟成功开关失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"更新失败: {str(e)}"}
+        )
+
+
+@router.post("/settings/warranty-email-check")
+async def update_warranty_email_check_settings(
+    warranty_data: WarrantyEmailCheckSettingsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """更新前台质保邮箱名单判定模式配置。"""
+    try:
+        logger.info(
+            "管理员更新质保邮箱名单判定模式: enabled=%s match_len=%s miss_len=%s",
+            warranty_data.enabled,
+            len((warranty_data.match_content or "").strip()),
+            len((warranty_data.miss_content or "").strip()),
+        )
+
+        success = await settings_service.update_warranty_email_check_config(
+            db,
+            warranty_data.enabled,
+            warranty_data.match_content,
+            warranty_data.miss_content,
+        )
+
+        if success:
+            return JSONResponse(content={"success": True, "message": "质保邮箱名单判定模式已保存"})
+
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": "保存失败"}
+        )
+    except Exception as e:
+        logger.error("更新质保邮箱名单判定模式失败: %s", e)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"更新失败: {str(e)}"}

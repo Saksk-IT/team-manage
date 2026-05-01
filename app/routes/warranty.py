@@ -11,6 +11,7 @@ from app.database import get_db
 from app.services.invite_queue import invite_queue_service
 from app.services.settings import settings_service
 from app.services.warranty import warranty_service
+from app.utils.rich_text import rich_text_to_plain_text
 
 router = APIRouter(
     prefix="/warranty",
@@ -22,6 +23,13 @@ async def ensure_warranty_service_enabled(db_session: AsyncSession) -> None:
     config = await settings_service.get_warranty_service_config(db_session)
     if not config.get("enabled"):
         raise HTTPException(status_code=404, detail="前台质保服务未开启")
+
+
+async def ensure_warranty_order_flow_enabled(db_session: AsyncSession) -> None:
+    await ensure_warranty_service_enabled(db_session)
+    email_check_config = await settings_service.get_warranty_email_check_config(db_session)
+    if email_check_config.get("enabled"):
+        raise HTTPException(status_code=400, detail="当前已启用质保邮箱名单判定模式，订单查询与质保提交已关闭")
 
 
 class WarrantyCheckRequest(BaseModel):
@@ -47,6 +55,9 @@ class WarrantyCheckResponse(BaseModel):
     """质保查询响应"""
     success: bool
     can_claim: bool
+    mode: str = "orders"
+    matched: Optional[bool] = None
+    content_html: Optional[str] = None
     latest_team: Optional[WarrantyLatestTeamInfo] = None
     warranty_info: Optional[dict] = None
     warranty_orders: List[dict] = Field(default_factory=list)
@@ -67,9 +78,36 @@ async def check_warranty(
     db_session: AsyncSession = Depends(get_db)
 ):
     """
-    查询质保邮箱对应的质保订单列表。
+    查询质保邮箱状态；名单判定模式开启时仅判断邮箱是否入列。
     """
     await ensure_warranty_service_enabled(db_session)
+    email_check_config = await settings_service.get_warranty_email_check_config(db_session)
+    if email_check_config.get("enabled"):
+        result = await warranty_service.check_warranty_email_membership(
+            db_session=db_session,
+            email=request.email,
+        )
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error") or "状态查询失败")
+
+        content_html = (
+            email_check_config.get("match_content")
+            if result.get("matched")
+            else email_check_config.get("miss_content")
+        ) or ""
+        return {
+            "success": True,
+            "can_claim": False,
+            "mode": "email_check",
+            "matched": bool(result.get("matched")),
+            "content_html": content_html,
+            "latest_team": None,
+            "warranty_info": None,
+            "warranty_orders": [],
+            "message": rich_text_to_plain_text(content_html),
+            "error": None,
+        }
+
     result = await warranty_service.get_warranty_claim_status(
         db_session=db_session,
         email=request.email
@@ -80,6 +118,9 @@ async def check_warranty(
     return {
         "success": True,
         "can_claim": result.get("can_claim", False),
+        "mode": "orders",
+        "matched": None,
+        "content_html": None,
         "latest_team": result.get("latest_team"),
         "warranty_info": result.get("warranty_info"),
         "warranty_orders": result.get("warranty_orders", []),
@@ -96,7 +137,7 @@ async def refresh_warranty_order_status(
     """
     按质保订单独立刷新其对应邮箱上次加入的 Team 状态。
     """
-    await ensure_warranty_service_enabled(db_session)
+    await ensure_warranty_order_flow_enabled(db_session)
     result = await warranty_service.refresh_warranty_order_status(
         db_session=db_session,
         email=request.email,
@@ -127,7 +168,7 @@ async def claim_warranty(
     request: WarrantyClaimRequest,
     db_session: AsyncSession = Depends(get_db)
 ):
-    await ensure_warranty_service_enabled(db_session)
+    await ensure_warranty_order_flow_enabled(db_session)
     result = await invite_queue_service.submit_warranty_job(
         db_session=db_session,
         email=request.email,
@@ -148,7 +189,7 @@ async def complete_fake_warranty_success(
     """
     前台质保模拟成功模式下，扣减并返回持久化展示席位。
     """
-    await ensure_warranty_service_enabled(db_session)
+    await ensure_warranty_order_flow_enabled(db_session)
     config = await settings_service.get_warranty_fake_success_config(db_session)
     if not config.get("enabled"):
         raise HTTPException(status_code=400, detail="前台质保模拟成功模式未启用")
@@ -168,7 +209,7 @@ async def validate_fake_warranty_success(
     """
     前台质保模拟成功模式下的提交资格校验。
     """
-    await ensure_warranty_service_enabled(db_session)
+    await ensure_warranty_order_flow_enabled(db_session)
     config = await settings_service.get_warranty_fake_success_config(db_session)
     if not config.get("enabled"):
         raise HTTPException(status_code=400, detail="前台质保模拟成功模式未启用")
@@ -197,7 +238,7 @@ async def enable_device_auth(
     """
     用户一键开启设备身份验证
     """
-    await ensure_warranty_service_enabled(db_session)
+    await ensure_warranty_order_flow_enabled(db_session)
     from app.services.team import team_service
     from sqlalchemy import select
     from app.models import RedemptionRecord

@@ -14,6 +14,9 @@ class WarrantyFakeSuccessValidateRouteTests(unittest.IsolatedAsyncioTestCase):
             "app.routes.warranty.settings_service.get_warranty_service_config",
             new=AsyncMock(return_value={"enabled": True})
         ), patch(
+            "app.routes.warranty.settings_service.get_warranty_email_check_config",
+            new=AsyncMock(return_value={"enabled": False})
+        ), patch(
             "app.routes.warranty.settings_service.get_warranty_fake_success_config",
             new=AsyncMock(return_value={"enabled": True})
         ), patch(
@@ -41,6 +44,9 @@ class WarrantyFakeSuccessValidateRouteTests(unittest.IsolatedAsyncioTestCase):
             "app.routes.warranty.settings_service.get_warranty_service_config",
             new=AsyncMock(return_value={"enabled": True})
         ), patch(
+            "app.routes.warranty.settings_service.get_warranty_email_check_config",
+            new=AsyncMock(return_value={"enabled": False})
+        ), patch(
             "app.routes.warranty.settings_service.get_warranty_fake_success_config",
             new=AsyncMock(return_value={"enabled": False})
         ):
@@ -58,6 +64,9 @@ class WarrantyFakeSuccessValidateRouteTests(unittest.IsolatedAsyncioTestCase):
         with patch(
             "app.routes.warranty.settings_service.get_warranty_service_config",
             new=AsyncMock(return_value={"enabled": True})
+        ), patch(
+            "app.routes.warranty.settings_service.get_warranty_email_check_config",
+            new=AsyncMock(return_value={"enabled": False})
         ), patch(
             "app.routes.warranty.settings_service.get_warranty_fake_success_config",
             new=AsyncMock(return_value={"enabled": True})

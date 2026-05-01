@@ -41,6 +41,9 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
             "app.services.settings.settings_service.get_warranty_fake_success_config",
             new=AsyncMock(return_value={"enabled": True})
         ), patch(
+            "app.services.settings.settings_service.get_warranty_email_check_config",
+            new=AsyncMock(return_value={"enabled": False})
+        ), patch(
             "app.services.settings.settings_service.get_number_pool_config",
             new=AsyncMock(return_value={"enabled": False})
         ), patch(
@@ -99,6 +102,9 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
             "app.services.settings.settings_service.get_warranty_fake_success_config",
             new=AsyncMock(return_value={"enabled": False})
         ), patch(
+            "app.services.settings.settings_service.get_warranty_email_check_config",
+            new=AsyncMock(return_value={"enabled": False})
+        ), patch(
             "app.services.settings.settings_service.get_number_pool_config",
             new=AsyncMock(return_value={"enabled": False})
         ), patch(
@@ -144,6 +150,56 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("超级兑换码", html)
         self.assertIn("质保邮箱", html)
         self.assertIn("warrantyServiceEnabled: true", html)
+        self.assertIn("warrantyEmailCheckEnabled: false", html)
+
+    async def test_redeem_page_switches_warranty_copy_for_email_check_mode(self):
+        request = self._build_request()
+        db = AsyncMock()
+
+        with patch(
+            "app.services.settings.settings_service.get_front_announcement_config",
+            new=AsyncMock(return_value={"enabled": False, "content": ""})
+        ), patch(
+            "app.services.settings.settings_service.get_customer_service_config",
+            new=AsyncMock(return_value={
+                "enabled": False,
+                "qr_code_url": "",
+                "link_url": "",
+                "link_text": "",
+                "text_content": ""
+            })
+        ), patch(
+            "app.services.settings.settings_service.get_purchase_link_config",
+            new=AsyncMock(return_value={
+                "enabled": False,
+                "url": "",
+                "button_text": ""
+            })
+        ), patch(
+            "app.services.settings.settings_service.get_warranty_service_config",
+            new=AsyncMock(return_value={"enabled": True})
+        ), patch(
+            "app.services.settings.settings_service.get_warranty_fake_success_config",
+            new=AsyncMock(return_value={"enabled": True})
+        ), patch(
+            "app.services.settings.settings_service.get_warranty_email_check_config",
+            new=AsyncMock(return_value={"enabled": True})
+        ), patch(
+            "app.services.settings.settings_service.get_number_pool_config",
+            new=AsyncMock(return_value={"enabled": False})
+        ), patch(
+            "app.services.team.TeamService.get_total_available_seats",
+            new=AsyncMock(return_value=12)
+        ):
+            response = await redeem_page(request=request, db=db)
+
+        html = response.body.decode("utf-8")
+
+        self.assertIn("输入邮箱查询质保资格", html)
+        self.assertIn("查询质保资格", html)
+        self.assertIn("系统仅判断该邮箱是否在质保邮箱列表内", html)
+        self.assertIn("warrantyEmailCheckEnabled: true", html)
+        self.assertIn("warrantyFakeSuccessEnabled: false", html)
 
     def test_redeem_js_does_not_expose_front_withdraw_action(self):
         js_path = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "redeem.js"

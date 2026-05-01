@@ -14,6 +14,7 @@ from app.services.admin_sidebar import (
     normalize_admin_sidebar_order,
 )
 from app.utils.storage import is_customer_service_upload_url, resolve_customer_service_upload_display_url
+from app.utils.rich_text import sanitize_rich_text
 import logging
 
 logger = logging.getLogger(__name__)
@@ -40,12 +41,18 @@ class SettingsService:
     WARRANTY_TIME_LIMIT_DAYS_KEY = "warranty_time_limit_days"
     WARRANTY_FAKE_SUCCESS_ENABLED_KEY = "warranty_fake_success_enabled"
     WARRANTY_FAKE_SUCCESS_REMAINING_SPOTS_KEY = "warranty_fake_success_remaining_spots"
+    WARRANTY_EMAIL_CHECK_ENABLED_KEY = "warranty_email_check_enabled"
+    WARRANTY_EMAIL_CHECK_MATCH_CONTENT_KEY = "warranty_email_check_match_content"
+    WARRANTY_EMAIL_CHECK_MISS_CONTENT_KEY = "warranty_email_check_miss_content"
     ADMIN_SIDEBAR_ORDER_KEY = "admin_sidebar_order"
     NUMBER_POOL_ENABLED_KEY = "number_pool_enabled"
     WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT = "usage_limit"
     WARRANTY_SUPER_CODE_TYPE_TIME_LIMIT = "time_limit"
     DEFAULT_WARRANTY_SERVICE_ENABLED = True
     DEFAULT_WARRANTY_FAKE_SUCCESS_ENABLED = False
+    DEFAULT_WARRANTY_EMAIL_CHECK_ENABLED = False
+    DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_CONTENT = "<p>该邮箱已在质保邮箱列表内，请按页面提示继续处理。</p>"
+    DEFAULT_WARRANTY_EMAIL_CHECK_MISS_CONTENT = "<p>未查询到该邮箱的质保记录，请核对邮箱或联系管理员处理。</p>"
     DEFAULT_TEAM_MAX_MEMBERS = 5
     DEFAULT_NUMBER_POOL_ENABLED = False
     DEFAULT_FRONT_ANNOUNCEMENT_ENABLED = False
@@ -569,6 +576,66 @@ class SettingsService:
                 return False
 
         return True
+
+    async def get_warranty_email_check_config(self, session: AsyncSession) -> Dict[str, str | bool]:
+        """
+        获取前台质保邮箱名单判定模式配置。
+        """
+        enabled_raw = await self.get_setting(
+            session,
+            self.WARRANTY_EMAIL_CHECK_ENABLED_KEY,
+            str(self.DEFAULT_WARRANTY_EMAIL_CHECK_ENABLED).lower()
+        )
+        match_content = await self.get_setting(
+            session,
+            self.WARRANTY_EMAIL_CHECK_MATCH_CONTENT_KEY,
+            self.DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_CONTENT
+        )
+        miss_content = await self.get_setting(
+            session,
+            self.WARRANTY_EMAIL_CHECK_MISS_CONTENT_KEY,
+            self.DEFAULT_WARRANTY_EMAIL_CHECK_MISS_CONTENT
+        )
+
+        sanitized_match_content = sanitize_rich_text(match_content)
+        sanitized_miss_content = sanitize_rich_text(miss_content)
+
+        return {
+            "enabled": self._parse_bool(
+                enabled_raw,
+                self.DEFAULT_WARRANTY_EMAIL_CHECK_ENABLED
+            ),
+            "match_content": sanitized_match_content or self.DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_CONTENT,
+            "miss_content": sanitized_miss_content or self.DEFAULT_WARRANTY_EMAIL_CHECK_MISS_CONTENT,
+        }
+
+    async def update_warranty_email_check_config(
+        self,
+        session: AsyncSession,
+        enabled: bool,
+        match_content: str = "",
+        miss_content: str = "",
+    ) -> bool:
+        """
+        更新前台质保邮箱名单判定模式配置。
+        """
+        sanitized_match_content = (
+            sanitize_rich_text(match_content)
+            or self.DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_CONTENT
+        )
+        sanitized_miss_content = (
+            sanitize_rich_text(miss_content)
+            or self.DEFAULT_WARRANTY_EMAIL_CHECK_MISS_CONTENT
+        )
+
+        return await self.update_settings(
+            session,
+            {
+                self.WARRANTY_EMAIL_CHECK_ENABLED_KEY: str(bool(enabled)).lower(),
+                self.WARRANTY_EMAIL_CHECK_MATCH_CONTENT_KEY: sanitized_match_content,
+                self.WARRANTY_EMAIL_CHECK_MISS_CONTENT_KEY: sanitized_miss_content,
+            }
+        )
 
     def _parse_warranty_fake_success_remaining_spots(self, value: Optional[str]) -> Optional[int]:
         parsed_value = self._parse_int(value, -1)
