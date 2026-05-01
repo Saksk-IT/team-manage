@@ -45,13 +45,25 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_warranty_emails_page_renders_entry(self):
         async with self.Session() as session:
+            linked_team = Team(
+                email="owner@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-linked",
+                team_name="Linked Team",
+                status="banned",
+                current_members=2,
+                max_members=5,
+            )
+            session.add(linked_team)
+            await session.flush()
             session.add(
                 WarrantyEmailEntry(
                     email="buyer@example.com",
                     remaining_claims=2,
                     expires_at=get_now() + timedelta(days=5),
                     source="manual",
-                    last_redeem_code="CODE-123"
+                    last_redeem_code="CODE-123",
+                    last_warranty_team_id=linked_team.id,
                 )
             )
             await session.commit()
@@ -67,6 +79,9 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("质保邮箱列表", html)
         self.assertIn("buyer@example.com", html)
         self.assertIn("CODE-123", html)
+        self.assertIn("Linked Team", html)
+        self.assertIn("封禁", html)
+        self.assertIn('class="status-badge status-banned"', html)
         self.assertIn('id="warrantyRemainingDays" class="form-control" min="0" value="30"', html)
         self.assertIn("质保邮箱列表</span>", html)
         self.assertIn("总质保邮箱", html)
@@ -139,6 +154,39 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("buyer@example.com", html)
         self.assertNotIn("other@example.com", html)
         self.assertIn('placeholder="搜索邮箱或兑换码"', html)
+
+    async def test_warranty_email_list_serializes_linked_team_status(self):
+        async with self.Session() as session:
+            linked_team = Team(
+                email="linked-owner@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-linked",
+                team_name="Linked Status Team",
+                status="full",
+                current_members=5,
+                max_members=5,
+            )
+            session.add(linked_team)
+            await session.flush()
+            session.add(
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=5),
+                    source="manual",
+                    last_redeem_code="CODE-TEAM",
+                    last_warranty_team_id=linked_team.id,
+                )
+            )
+            await session.commit()
+
+            entries = await warranty_service.list_warranty_email_entries(session)
+
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["last_warranty_team_id"], linked_team.id)
+        self.assertEqual(entries[0]["last_warranty_team_status"], "full")
+        self.assertEqual(entries[0]["last_warranty_team_status_label"], "已满")
+        self.assertEqual(entries[0]["last_warranty_team_name"], "Linked Status Team")
 
     async def test_warranty_emails_page_searches_only_list_order_code(self):
         async with self.Session() as session:

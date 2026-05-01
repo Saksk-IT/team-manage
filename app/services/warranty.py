@@ -130,7 +130,26 @@ class WarrantyService:
 
         return max(math.ceil(remaining_seconds / 86400), 0)
 
-    def serialize_warranty_email_entry(self, entry: WarrantyEmailEntry) -> Dict[str, Any]:
+    def _serialize_linked_team_summary(self, team: Optional[Team]) -> Optional[Dict[str, Any]]:
+        if not team:
+            return None
+
+        team_status = (team.status or "").strip().lower() or "no_record"
+        return {
+            "id": team.id,
+            "team_name": team.team_name,
+            "email": team.email,
+            "account_id": team.account_id,
+            "status": team_status,
+            "status_label": self.get_team_status_label(team_status),
+            "expires_at": team.expires_at.isoformat() if team.expires_at else None,
+        }
+
+    def serialize_warranty_email_entry(
+        self,
+        entry: WarrantyEmailEntry,
+        linked_team: Optional[Team] = None,
+    ) -> Dict[str, Any]:
         remaining_seconds = self._get_warranty_entry_remaining_seconds(entry)
         remaining_days = (
             max(math.ceil(remaining_seconds / 86400), 0)
@@ -151,6 +170,7 @@ class WarrantyService:
             status = "active"
 
         source = entry.source or "auto_redeem"
+        linked_team_info = self._serialize_linked_team_summary(linked_team)
 
         return {
             "id": entry.id,
@@ -164,6 +184,12 @@ class WarrantyService:
             "source_label": self.WARRANTY_EMAIL_SOURCE_LABELS.get(source, "未知来源"),
             "last_redeem_code": entry.last_redeem_code,
             "last_warranty_team_id": entry.last_warranty_team_id,
+            "last_warranty_team": linked_team_info,
+            "last_warranty_team_name": linked_team_info.get("team_name") if linked_team_info else None,
+            "last_warranty_team_email": linked_team_info.get("email") if linked_team_info else None,
+            "last_warranty_team_account_id": linked_team_info.get("account_id") if linked_team_info else None,
+            "last_warranty_team_status": linked_team_info.get("status") if linked_team_info else None,
+            "last_warranty_team_status_label": linked_team_info.get("status_label") if linked_team_info else None,
             "status": status,
             "status_label": self.WARRANTY_EMAIL_STATUS_LABELS.get(status, "未知"),
             "created_at": entry.created_at.isoformat() if entry.created_at else None,
@@ -533,7 +559,25 @@ class WarrantyService:
 
         stmt = stmt.order_by(WarrantyEmailEntry.updated_at.desc(), WarrantyEmailEntry.created_at.desc())
         result = await db_session.execute(stmt)
-        entries = [self.serialize_warranty_email_entry(entry) for entry in result.scalars().all()]
+        entry_models = list(result.scalars().all())
+        team_ids = {
+            int(entry.last_warranty_team_id)
+            for entry in entry_models
+            if entry.last_warranty_team_id
+        }
+        teams_by_id: Dict[int, Team] = {}
+        if team_ids:
+            team_result = await db_session.execute(
+                select(Team).where(Team.id.in_(team_ids))
+            )
+            teams_by_id = {team.id: team for team in team_result.scalars().all()}
+        entries = [
+            self.serialize_warranty_email_entry(
+                entry,
+                linked_team=teams_by_id.get(int(entry.last_warranty_team_id or 0)),
+            )
+            for entry in entry_models
+        ]
 
         if normalized_search:
             entries = [
@@ -606,6 +650,7 @@ class WarrantyService:
             entry.get("status_label"),
             entry.get("source_label"),
             entry.get("last_warranty_team_id"),
+            entry.get("last_warranty_team_status_label"),
         ]
         return any(
             normalized_search in str(value or "").lower()

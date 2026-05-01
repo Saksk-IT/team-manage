@@ -146,7 +146,29 @@
                     <td>{{ entry.expires_at|format_datetime_seconds if entry.expires_at else '-' }}</td>
                     <td>{{ entry.source_label }}</td>
                     <td>{{ entry.last_redeem_code or '-' }}</td>
-                    <td>{{ entry.last_warranty_team_id or '-' }}</td>
+                    <td>
+                        {% if entry.last_warranty_team_id %}
+                        <div class="warranty-linked-team">
+                            <div>
+                                <span class="text-muted small">ID：</span>{{ entry.last_warranty_team_id }}
+                            </div>
+                            {% if entry.last_warranty_team_name %}
+                            <div class="text-muted small">{{ entry.last_warranty_team_name }}</div>
+                            {% endif %}
+                            {% if entry.last_warranty_team_status %}
+                            <span
+                                class="status-badge status-{{ entry.last_warranty_team_status }}"
+                                title="关联 Team 当前状态：{{ entry.last_warranty_team_status_label }}">
+                                {{ entry.last_warranty_team_status_label }}
+                            </span>
+                            {% else %}
+                            <span class="status-badge status-info" title="关联 Team 记录不存在或已删除">Team 状态未知</span>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
                     <td>{{ entry.updated_at|format_datetime }}</td>
                     <td style="text-align: right;">
                         <div style="display: inline-flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
@@ -476,6 +498,13 @@
         color: var(--text-muted);
         font-size: 0.75rem;
         font-weight: 600;
+    }
+
+    .warranty-linked-team {
+        display: inline-flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        align-items: flex-start;
     }
 
     @media (max-width: 768px) {
