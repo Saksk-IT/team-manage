@@ -13,6 +13,7 @@ from starlette.requests import Request
 from app.routes.admin import (
     MAX_WARRANTY_EMAIL_CHECK_RICH_TEXT_LENGTH,
     WarrantyEmailCheckSettingsRequest,
+    code_generation_records_page,
     upload_warranty_email_check_image,
     update_warranty_email_check_settings,
     warranty_email_check_settings_page,
@@ -20,23 +21,11 @@ from app.routes.admin import (
 
 
 class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
-    def _build_request(self) -> Request:
-        return Request({"type": "http", "method": "GET", "path": "/admin/warranty-email-check", "headers": []})
+    def _build_request(self, path: str = "/admin/warranty-email-check") -> Request:
+        return Request({"type": "http", "method": "GET", "path": path, "headers": []})
 
     async def test_warranty_email_check_page_renders_sidebar_entry_and_rich_text_form(self):
         db = AsyncMock()
-        lock = SimpleNamespace(
-            email="buyer@example.com",
-            generated_redeem_code="TMW-GENERATED",
-            generated_redeem_code_remaining_days=30,
-            generated_redeem_code_entry_id=7,
-            generated_redeem_code_generated_at=None,
-        )
-        entry = SimpleNamespace(id=7, expires_at=None, remaining_claims=1)
-        execute_result = MagicMock()
-        execute_result.all.return_value = [(lock, entry)]
-        db.execute.return_value = execute_result
-
         with patch(
             "app.routes.admin.settings_service.get_warranty_email_check_config",
             new=AsyncMock(return_value={
@@ -93,9 +82,46 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("validationMessage", html)
         self.assertIn('id="sub2apiWarrantyBaseUrl"', html)
         self.assertIn("https://sub2api.example.com", html)
+        self.assertIn('href="/admin/code-generation-records"', html)
+        self.assertNotIn("最近生成记录", html)
+        self.assertNotIn("TMW-GENERATED", html)
+        db.execute.assert_not_called()
+
+    async def test_code_generation_records_page_renders_generated_codes(self):
+        db = AsyncMock()
+        lock = SimpleNamespace(
+            email="buyer@example.com",
+            generated_redeem_code="TMW-GENERATED",
+            generated_redeem_code_remaining_days=30,
+            generated_redeem_code_entry_id=7,
+            generated_redeem_code_generated_at=None,
+        )
+        entry = SimpleNamespace(id=7, expires_at=None, remaining_claims=1)
+        execute_result = MagicMock()
+        execute_result.all.return_value = [(lock, entry)]
+        db.execute.return_value = execute_result
+
+        with patch(
+            "app.routes.admin.settings_service.get_number_pool_config",
+            new=AsyncMock(return_value={"enabled": True})
+        ), patch(
+            "app.routes.admin.settings_service.get_admin_sidebar_order",
+            new=AsyncMock(return_value=None)
+        ):
+            response = await code_generation_records_page(
+                request=self._build_request("/admin/code-generation-records"),
+                db=db,
+                current_user={"username": "admin", "is_super_admin": True},
+            )
+
+        html = response.body.decode("utf-8")
+
         self.assertIn("兑换码生成记录", html)
+        self.assertIn('href="/admin/code-generation-records"', html)
+        self.assertIn('menu-item active', html)
         self.assertIn("TMW-GENERATED", html)
         self.assertIn("buyer@example.com", html)
+        self.assertIn("最近生成记录", html)
 
     async def test_update_warranty_email_check_settings_accepts_long_rich_text(self):
         db = AsyncMock()

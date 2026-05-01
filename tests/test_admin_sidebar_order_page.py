@@ -79,6 +79,8 @@ class AdminSidebarOrderPageTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('id="warrantyEmailCheckForm"', html)
         self.assertIn('data-menu-id="warranty_email_check"', html)
         self.assertIn('href="/admin/warranty-email-check"', html)
+        self.assertIn('data-menu-id="code_generation_records"', html)
+        self.assertIn('href="/admin/code-generation-records"', html)
         self.assertLess(html.index('data-menu-id="settings"'), html.index('data-menu-id="dashboard"'))
 
 

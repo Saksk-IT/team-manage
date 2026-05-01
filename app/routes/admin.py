@@ -3340,6 +3340,31 @@ async def settings_page(
         )
 
 
+async def _get_generated_redeem_code_records(db: AsyncSession) -> list[dict[str, Any]]:
+    generated_result = await db.execute(
+        select(WarrantyEmailTemplateLock, WarrantyEmailEntry)
+        .outerjoin(
+            WarrantyEmailEntry,
+            WarrantyEmailEntry.id == WarrantyEmailTemplateLock.generated_redeem_code_entry_id,
+        )
+        .where(WarrantyEmailTemplateLock.generated_redeem_code.isnot(None))
+        .order_by(WarrantyEmailTemplateLock.generated_redeem_code_generated_at.desc())
+        .limit(200)
+    )
+    return [
+        {
+            "email": lock.email,
+            "code": lock.generated_redeem_code,
+            "remaining_days": lock.generated_redeem_code_remaining_days,
+            "generated_at": lock.generated_redeem_code_generated_at,
+            "entry_id": lock.generated_redeem_code_entry_id,
+            "entry_expires_at": entry.expires_at if entry else None,
+            "entry_remaining_claims": entry.remaining_claims if entry else None,
+        }
+        for lock, entry in generated_result.all()
+    ]
+
+
 @router.get("/warranty-email-check", response_class=HTMLResponse)
 async def warranty_email_check_settings_page(
     request: Request,
@@ -3354,28 +3379,6 @@ async def warranty_email_check_settings_page(
 
         warranty_email_check_config = await settings_service.get_warranty_email_check_config(db)
         sub2api_warranty_redeem_config = await settings_service.get_sub2api_warranty_redeem_config(db)
-        generated_result = await db.execute(
-            select(WarrantyEmailTemplateLock, WarrantyEmailEntry)
-            .outerjoin(
-                WarrantyEmailEntry,
-                WarrantyEmailEntry.id == WarrantyEmailTemplateLock.generated_redeem_code_entry_id,
-            )
-            .where(WarrantyEmailTemplateLock.generated_redeem_code.isnot(None))
-            .order_by(WarrantyEmailTemplateLock.generated_redeem_code_generated_at.desc())
-            .limit(200)
-        )
-        generated_redeem_code_records = [
-            {
-                "email": lock.email,
-                "code": lock.generated_redeem_code,
-                "remaining_days": lock.generated_redeem_code_remaining_days,
-                "generated_at": lock.generated_redeem_code_generated_at,
-                "entry_id": lock.generated_redeem_code_entry_id,
-                "entry_expires_at": entry.expires_at if entry else None,
-                "entry_remaining_claims": entry.remaining_claims if entry else None,
-            }
-            for lock, entry in generated_result.all()
-        ]
 
         return templates.TemplateResponse(
             request,
@@ -3391,7 +3394,6 @@ async def warranty_email_check_settings_page(
                 warranty_email_check_match_templates=warranty_email_check_config.get("match_templates", []),
                 warranty_email_check_miss_templates=warranty_email_check_config.get("miss_templates", []),
                 sub2api_warranty_redeem_config=sub2api_warranty_redeem_config,
-                generated_redeem_code_records=generated_redeem_code_records,
             )
         )
 
@@ -3400,6 +3402,38 @@ async def warranty_email_check_settings_page(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取质保名单判定设置失败: {str(e)}"
+        )
+
+
+@router.get("/code-generation-records", response_class=HTMLResponse)
+async def code_generation_records_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """兑换码生成记录独立页。"""
+    try:
+        from app.main import templates
+
+        logger.info("管理员访问兑换码生成记录")
+
+        return templates.TemplateResponse(
+            request,
+            "admin/code_generation_records/index.html",
+            await _build_admin_template_context(
+                request,
+                db,
+                current_user,
+                "code_generation_records",
+                generated_redeem_code_records=await _get_generated_redeem_code_records(db),
+            )
+        )
+
+    except Exception as e:
+        logger.error("获取兑换码生成记录失败: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取兑换码生成记录失败: {str(e)}"
         )
 
 

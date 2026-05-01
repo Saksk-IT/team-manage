@@ -38,6 +38,7 @@ class AdminSidebarOrderSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(order, get_default_admin_sidebar_order())
         self.assertIn("team_member_snapshots", order)
         self.assertIn("warranty_email_check", order)
+        self.assertIn("code_generation_records", order)
 
 
     async def test_get_admin_sidebar_order_drops_legacy_warranty_team_item(self):
@@ -96,6 +97,16 @@ class AdminSidebarOrderSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(warranty_email_check_item["href"], "/admin/warranty-email-check")
         self.assertEqual(warranty_email_check_item["active_page"], "warranty_email_check")
         self.assertEqual(warranty_email_check_item["label"], "质保名单判定")
+
+    def test_code_generation_records_sidebar_item_links_to_standalone_page(self):
+        items = get_admin_sidebar_items(get_default_admin_sidebar_order())
+        code_generation_records_item = next(
+            item for item in items if item["id"] == "code_generation_records"
+        )
+
+        self.assertEqual(code_generation_records_item["href"], "/admin/code-generation-records")
+        self.assertEqual(code_generation_records_item["active_page"], "code_generation_records")
+        self.assertEqual(code_generation_records_item["label"], "兑换码生成记录")
 
 
 if __name__ == "__main__":

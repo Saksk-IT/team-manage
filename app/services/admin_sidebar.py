@@ -34,6 +34,13 @@ SUPER_ADMIN_SIDEBAR_ITEMS: tuple[AdminSidebarItem, ...] = (
         "clipboard-list",
         "质保提交记录",
     ),
+    AdminSidebarItem(
+        "code_generation_records",
+        "code_generation_records",
+        "/admin/code-generation-records",
+        "list-plus",
+        "兑换码生成记录",
+    ),
     AdminSidebarItem("codes", "codes", "/admin/codes", "ticket", "兑换码管理"),
     AdminSidebarItem("number_pool", "number_pool", "/admin/number-pool", "layers", "号池"),
     AdminSidebarItem("records", "records", "/admin/records", "file-text", "使用记录"),
