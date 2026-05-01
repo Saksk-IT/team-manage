@@ -201,6 +201,17 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("warrantyEmailCheckEnabled: true", html)
         self.assertIn("warrantyFakeSuccessEnabled: false", html)
 
+    def test_generated_warranty_code_renders_before_email_check_result_header(self):
+        js_path = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "redeem.js"
+        js = js_path.read_text(encoding="utf-8")
+        render_fn = js[js.index('function renderWarrantyEmailCheckResult'):]
+        result_markup = render_fn[render_fn.index('statusContainer.innerHTML = `'):]
+
+        self.assertLess(
+            result_markup.index('${generatedCodeHtml}'),
+            result_markup.index('质保资格查询结果')
+        )
+
     def test_redeem_js_does_not_expose_front_withdraw_action(self):
         js_path = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "redeem.js"
         js = js_path.read_text(encoding="utf-8")

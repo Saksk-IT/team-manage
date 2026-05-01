@@ -773,6 +773,7 @@ function renderWarrantyEmailCheckResult(data, email) {
     statusContainer.style.display = 'block';
     statusContainer.innerHTML = `
         <div class="status-panel status-panel--summary warranty-email-check-result">
+            ${generatedCodeHtml}
             <div class="status-panel__header">
                 <div class="status-panel__title">质保资格查询结果</div>
                 <span class="status-badge ${matched ? 'status-badge--success' : 'status-badge--warning'}">
@@ -788,7 +789,6 @@ function renderWarrantyEmailCheckResult(data, email) {
             <div class="status-panel__message ${matched ? 'status-panel__message--success' : 'status-panel__message--warning'}">
                 <div class="warranty-email-check-content">${contentHtml}</div>
             </div>
-            ${generatedCodeHtml}
         </div>
     `;
 
