@@ -27,6 +27,13 @@
             <p class="form-help">开启后，前台质保服务输入邮箱只判断该邮箱是否存在于质保邮箱列表，不再查询订单、刷新 Team 状态或提交质保。</p>
         </div>
 
+        <input
+            type="file"
+            id="warrantyEmailCheckImageInput"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            hidden
+        >
+
         <div class="form-group">
             <label for="warrantyEmailCheckMatchContent">邮箱在质保列表内时展示</label>
             <div class="rich-text-toolbar" aria-label="命中文案富文本工具栏">
@@ -35,6 +42,7 @@
                 <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="underline">下划线</button>
                 <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="insertUnorderedList">列表</button>
                 <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="createLink">链接</button>
+                <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="insertImage">图片</button>
             </div>
             <div
                 id="warrantyEmailCheckMatchContent"
@@ -44,7 +52,7 @@
                 aria-multiline="true"
                 data-placeholder="请输入命中质保邮箱列表时展示的内容"
             >{{ warranty_email_check_match_content | default('') | safe }}</div>
-            <p class="form-help">支持常用富文本：加粗、链接、列表、段落；保存时会自动清理不安全标签。</p>
+            <p class="form-help">支持常用富文本：加粗、链接、列表、段落、图片；可直接粘贴图片或点击“图片”上传，单张不超过 5MB。</p>
         </div>
 
         <div class="form-group">
@@ -55,6 +63,7 @@
                 <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="underline">下划线</button>
                 <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="insertUnorderedList">列表</button>
                 <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="createLink">链接</button>
+                <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="insertImage">图片</button>
             </div>
             <div
                 id="warrantyEmailCheckMissContent"
@@ -117,6 +126,15 @@
         pointer-events: none;
     }
 
+    .rich-text-editor img {
+        max-width: 100%;
+        height: auto;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-base);
+        display: block;
+        margin: 0.5rem 0;
+    }
+
     @media (max-width: 640px) {
         .rich-text-editor {
             min-height: 150px;
@@ -140,6 +158,59 @@
         return /^https?:\/\//i.test(url) ? url : `https://${url}`;
     }
 
+    function getActiveRichTextEditor() {
+        return document.getElementById(activeRichTextEditorId);
+    }
+
+    function insertHtmlIntoEditor(editor, html) {
+        if (!editor || !html) return;
+        editor.focus();
+        document.execCommand('insertHTML', false, html);
+    }
+
+    function buildImageHtml(url) {
+        const safeUrl = String(url || '').replace(/"/g, '&quot;');
+        return `<p><img src="${safeUrl}" alt="质保说明图片" style="max-width: 100%; height: auto;"></p>`;
+    }
+
+    async function uploadWarrantyRichTextImage(file) {
+        if (!file) return '';
+        if (!file.type || !file.type.startsWith('image/')) {
+            showToast('仅支持粘贴图片文件', 'error');
+            return '';
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            showToast('图片大小不能超过 5MB', 'error');
+            return '';
+        }
+
+        const formData = new FormData();
+        formData.append('image', file);
+
+        const response = await fetch('/admin/warranty-email-check/upload-image', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.success || !data.url) {
+            throw new Error(data.error || '图片上传失败');
+        }
+
+        return data.url;
+    }
+
+    async function insertWarrantyRichTextImage(file, editor = getActiveRichTextEditor()) {
+        try {
+            const imageUrl = await uploadWarrantyRichTextImage(file);
+            if (!imageUrl) return;
+            insertHtmlIntoEditor(editor, buildImageHtml(imageUrl));
+            showToast('图片已插入', 'success');
+        } catch (error) {
+            showToast(error.message || '图片上传失败', 'error');
+        }
+    }
+
     document.querySelectorAll('.rich-text-editor').forEach((editor) => {
         editor.addEventListener('focus', () => {
             activeRichTextEditorId = editor.id;
@@ -149,6 +220,15 @@
         });
         editor.addEventListener('keyup', () => {
             activeRichTextEditorId = editor.id;
+        });
+        editor.addEventListener('paste', async (event) => {
+            const imageItem = Array.from(event.clipboardData?.items || [])
+                .find((item) => item.kind === 'file' && item.type.startsWith('image/'));
+            if (!imageItem) return;
+
+            event.preventDefault();
+            activeRichTextEditorId = editor.id;
+            await insertWarrantyRichTextImage(imageItem.getAsFile(), editor);
         });
     });
 
@@ -165,9 +245,19 @@
                 document.execCommand(command, false, url);
                 return;
             }
+            if (command === 'insertImage') {
+                document.getElementById('warrantyEmailCheckImageInput')?.click();
+                return;
+            }
 
             document.execCommand(command, false, null);
         });
+    });
+
+    document.getElementById('warrantyEmailCheckImageInput')?.addEventListener('change', async (event) => {
+        const file = event.target.files?.[0];
+        await insertWarrantyRichTextImage(file);
+        event.target.value = '';
     });
 
     document.getElementById('warrantyEmailCheckForm')?.addEventListener('submit', async (event) => {

@@ -61,9 +61,11 @@ from app.services.email_whitelist import email_whitelist_service
 from app.services.auth import auth_service
 from app.utils.time_utils import get_now
 from app.utils.storage import (
+    build_warranty_rich_text_upload_url,
     build_customer_service_upload_url,
     customer_service_upload_exists,
     get_customer_service_upload_dir,
+    get_warranty_rich_text_upload_dir,
     is_customer_service_upload_url,
     resolve_customer_service_upload_display_url,
 )
@@ -71,12 +73,25 @@ from app.utils.storage import (
 logger = logging.getLogger(__name__)
 
 MAX_CUSTOMER_SERVICE_IMAGE_SIZE = 5 * 1024 * 1024
+MAX_WARRANTY_RICH_TEXT_IMAGE_SIZE = 5 * 1024 * 1024
 MAX_WARRANTY_EMAIL_CHECK_RICH_TEXT_LENGTH = 100_000
 ALLOWED_CUSTOMER_SERVICE_IMAGE_TYPES = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
     "image/webp": ".webp",
     "image/gif": ".gif",
+}
+ALLOWED_WARRANTY_RICH_TEXT_IMAGE_TYPES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
+IMAGE_SIGNATURES = {
+    "image/png": (b"\x89PNG\r\n\x1a\n",),
+    "image/jpeg": (b"\xff\xd8\xff",),
+    "image/webp": (b"RIFF",),
+    "image/gif": (b"GIF87a", b"GIF89a"),
 }
 
 # 创建路由器
@@ -828,6 +843,17 @@ def _is_valid_customer_service_image_url(value: str) -> bool:
         return customer_service_upload_exists(normalized_value)
 
     return _is_valid_http_url(normalized_value)
+
+
+def _has_valid_image_signature(file_bytes: bytes, content_type: str) -> bool:
+    signatures = IMAGE_SIGNATURES.get(content_type, ())
+    if not any(file_bytes.startswith(signature) for signature in signatures):
+        return False
+
+    if content_type == "image/webp":
+        return len(file_bytes) >= 12 and file_bytes[8:12] == b"WEBP"
+
+    return True
 
 
 def _build_batch_item_result(
@@ -5012,4 +5038,62 @@ async def update_warranty_email_check_settings(
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"更新失败: {str(e)}"}
+        )
+
+
+@router.post("/warranty-email-check/upload-image")
+async def upload_warranty_email_check_image(
+    image: UploadFile = File(...),
+    current_user: dict = Depends(require_admin)
+):
+    """上传质保名单判定富文本图片，返回站内图片地址。"""
+    try:
+        content_type = (image.content_type or "").lower().strip()
+        if content_type not in ALLOWED_WARRANTY_RICH_TEXT_IMAGE_TYPES:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "仅支持 PNG、JPG、WEBP、GIF 格式图片"}
+            )
+
+        file_bytes = await image.read()
+        if not file_bytes:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "图片内容不能为空"}
+            )
+
+        if len(file_bytes) > MAX_WARRANTY_RICH_TEXT_IMAGE_SIZE:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "图片大小不能超过 5MB"}
+            )
+
+        if not _has_valid_image_signature(file_bytes, content_type):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "图片内容与格式不匹配"}
+            )
+
+        suffix = ALLOWED_WARRANTY_RICH_TEXT_IMAGE_TYPES[content_type]
+        upload_dir = get_warranty_rich_text_upload_dir()
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"{uuid4().hex}{suffix}"
+        target_path = upload_dir / filename
+        target_path.write_bytes(file_bytes)
+
+        image_url = build_warranty_rich_text_upload_url(filename)
+        logger.info("管理员上传质保名单判定富文本图片成功: %s", image_url)
+
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": "图片上传成功",
+                "url": image_url,
+            }
+        )
+    except Exception as e:
+        logger.error("上传质保名单判定富文本图片失败: %s", e)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"上传失败: {str(e)}"}
         )

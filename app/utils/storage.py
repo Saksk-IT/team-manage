@@ -8,6 +8,8 @@ from app.config import BASE_DIR, settings
 
 CUSTOMER_SERVICE_UPLOAD_ROUTE_PREFIX = "/uploads/customer-service/"
 LEGACY_CUSTOMER_SERVICE_UPLOAD_ROUTE_PREFIX = "/static/uploads/customer-service/"
+WARRANTY_RICH_TEXT_UPLOAD_ROUTE_PREFIX = "/uploads/warranty-email-check/"
+WARRANTY_RICH_TEXT_UPLOAD_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 
 def get_database_file_path() -> Path:
@@ -37,6 +39,13 @@ def get_customer_service_upload_dir() -> Path:
     return get_uploads_root_dir() / "customer-service"
 
 
+def get_warranty_rich_text_upload_dir() -> Path:
+    """
+    获取质保名单判定富文本图片上传目录。
+    """
+    return get_uploads_root_dir() / "warranty-email-check"
+
+
 def get_legacy_customer_service_upload_dir() -> Path:
     """
     获取旧版客服二维码上传目录。
@@ -53,6 +62,36 @@ def build_customer_service_upload_url(filename: str) -> str:
         raise ValueError("无效的客服二维码文件名")
 
     return f"{CUSTOMER_SERVICE_UPLOAD_ROUTE_PREFIX}{normalized_filename}"
+
+
+def build_warranty_rich_text_upload_url(filename: str) -> str:
+    """
+    构建质保名单判定富文本图片访问地址。
+    """
+    normalized_filename = _extract_filename(filename)
+    if not normalized_filename:
+        raise ValueError("无效的质保富文本图片文件名")
+
+    return f"{WARRANTY_RICH_TEXT_UPLOAD_ROUTE_PREFIX}{normalized_filename}"
+
+
+def is_warranty_rich_text_upload_url(value: str) -> bool:
+    """
+    判断是否为站内质保名单判定富文本图片地址。
+    """
+    return bool(_extract_warranty_rich_text_uploaded_filename((value or "").strip()))
+
+
+def warranty_rich_text_upload_exists(value: str) -> bool:
+    """
+    判断站内质保名单判定富文本图片是否存在。
+    """
+    normalized_value = (value or "").strip()
+    filename = _extract_warranty_rich_text_uploaded_filename(normalized_value)
+    if not filename:
+        return False
+
+    return (get_warranty_rich_text_upload_dir() / filename).exists()
 
 
 def is_customer_service_upload_url(value: str) -> bool:
@@ -100,6 +139,24 @@ def _extract_uploaded_filename(value: str) -> Optional[str]:
             return _extract_filename(value[len(prefix):])
 
     return None
+
+
+def _extract_prefixed_filename(value: str, prefix: str) -> Optional[str]:
+    if not value.startswith(prefix):
+        return None
+
+    return _extract_filename(value[len(prefix):])
+
+
+def _extract_warranty_rich_text_uploaded_filename(value: str) -> Optional[str]:
+    filename = _extract_prefixed_filename(value, WARRANTY_RICH_TEXT_UPLOAD_ROUTE_PREFIX)
+    if not filename:
+        return None
+
+    if Path(filename).suffix.lower() not in WARRANTY_RICH_TEXT_UPLOAD_EXTENSIONS:
+        return None
+
+    return filename
 
 
 def _extract_filename(value: str) -> Optional[str]:

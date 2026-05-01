@@ -6,6 +6,9 @@ from html import unescape
 from typing import Final
 
 import bleach
+from bleach.css_sanitizer import CSSSanitizer
+
+from app.utils.storage import is_warranty_rich_text_upload_url
 
 ALLOWED_RICH_TEXT_TAGS: Final[list[str]] = [
     "p",
@@ -25,13 +28,35 @@ ALLOWED_RICH_TEXT_TAGS: Final[list[str]] = [
     "h4",
     "code",
     "pre",
+    "img",
 ]
 
 ALLOWED_RICH_TEXT_ATTRIBUTES: Final[dict[str, list[str]]] = {
     "a": ["href", "title", "target", "rel"],
+    "img": ["src", "alt", "title", "width", "height", "style"],
 }
 
 ALLOWED_RICH_TEXT_PROTOCOLS: Final[list[str]] = ["http", "https", "mailto"]
+ALLOWED_RICH_TEXT_CSS_PROPERTIES: Final[list[str]] = ["max-width", "height"]
+RICH_TEXT_CSS_SANITIZER: Final[CSSSanitizer] = CSSSanitizer(
+    allowed_css_properties=ALLOWED_RICH_TEXT_CSS_PROPERTIES
+)
+
+
+def _allow_rich_text_attribute(tag: str, name: str, value: str) -> bool:
+    if tag == "a":
+        return name in ALLOWED_RICH_TEXT_ATTRIBUTES["a"]
+
+    if tag != "img" or name not in ALLOWED_RICH_TEXT_ATTRIBUTES["img"]:
+        return False
+
+    if name == "src":
+        return is_warranty_rich_text_upload_url(value)
+
+    if name in {"width", "height"}:
+        return str(value or "").strip().isdigit()
+
+    return True
 
 
 def sanitize_rich_text(value: str | None) -> str:
@@ -43,10 +68,12 @@ def sanitize_rich_text(value: str | None) -> str:
     sanitized = bleach.clean(
         raw_value,
         tags=ALLOWED_RICH_TEXT_TAGS,
-        attributes=ALLOWED_RICH_TEXT_ATTRIBUTES,
+        attributes=_allow_rich_text_attribute,
         protocols=ALLOWED_RICH_TEXT_PROTOCOLS,
+        css_sanitizer=RICH_TEXT_CSS_SANITIZER,
         strip=True,
     )
+    sanitized = re.sub(r"<img(?![^>]*\ssrc=)[^>]*>", "", sanitized, flags=re.IGNORECASE)
     return bleach.linkify(
         sanitized,
         callbacks=[bleach.callbacks.nofollow, bleach.callbacks.target_blank],

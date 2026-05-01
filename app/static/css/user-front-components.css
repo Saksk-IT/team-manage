@@ -237,6 +237,13 @@
     text-underline-offset: 0.18em;
 }
 
+.warranty-email-check-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.75rem;
+    display: block;
+}
+
 .side-card {
     display: grid;
     gap: 0.9rem;

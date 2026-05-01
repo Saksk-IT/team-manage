@@ -52,6 +52,41 @@ class WarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("未通过", config["miss_content"])
         self.assertNotIn("<img", config["miss_content"])
 
+    async def test_update_warranty_email_check_config_keeps_uploaded_images(self):
+        image_path = os.path.join(os.path.dirname(self.db_path), "uploads", "warranty-email-check", "guide.png")
+        os.makedirs(os.path.dirname(image_path), exist_ok=True)
+        with open(image_path, "wb") as image_file:
+            image_file.write(b"fake-image")
+
+        async with self.Session() as session:
+            success = await settings_service.update_warranty_email_check_config(
+                session,
+                True,
+                '<p>通过</p><img src="/uploads/warranty-email-check/guide.png" alt="教程图片" style="max-width: 100%; height: auto;" onerror="alert(1)">',
+                '<p>未通过</p>',
+            )
+            config = await settings_service.get_warranty_email_check_config(session)
+
+        self.assertTrue(success)
+        self.assertIn('<img src="/uploads/warranty-email-check/guide.png"', config["match_content"])
+        self.assertIn('alt="教程图片"', config["match_content"])
+        self.assertIn("max-width: 100%;", config["match_content"])
+        self.assertNotIn("onerror", config["match_content"])
+
+    async def test_update_warranty_email_check_config_strips_non_image_upload_path(self):
+        async with self.Session() as session:
+            success = await settings_service.update_warranty_email_check_config(
+                session,
+                True,
+                '<p>通过</p><img src="/uploads/warranty-email-check/readme.txt" alt="非法文件">',
+                '<p>未通过</p>',
+            )
+            config = await settings_service.get_warranty_email_check_config(session)
+
+        self.assertTrue(success)
+        self.assertIn("通过", config["match_content"])
+        self.assertNotIn("<img", config["match_content"])
+
 
 if __name__ == "__main__":
     unittest.main()
