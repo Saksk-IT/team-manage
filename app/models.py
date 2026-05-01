@@ -246,6 +246,10 @@ class WarrantyEmailTemplateLock(Base):
     email = Column(String(255), unique=True, nullable=False, comment="质保查询邮箱（统一小写）")
     matched = Column(Boolean, default=False, nullable=False, comment="首次查询时是否命中质保邮箱列表")
     template_key = Column(String(100), nullable=False, comment="锁定的模板标识")
+    generated_redeem_code = Column(String(128), comment="名单判定命中后生成的 Sub2API 兑换码")
+    generated_redeem_code_remaining_days = Column(Integer, comment="生成兑换码时使用的订阅有效天数")
+    generated_redeem_code_entry_id = Column(Integer, ForeignKey("warranty_email_entries.id"), comment="生成兑换码依据的质保邮箱记录 ID")
+    generated_redeem_code_generated_at = Column(DateTime, comment="兑换码生成时间")
     created_at = Column(DateTime, default=get_now, nullable=False, comment="创建时间")
     updated_at = Column(DateTime, default=get_now, onupdate=get_now, nullable=False, comment="更新时间")
 

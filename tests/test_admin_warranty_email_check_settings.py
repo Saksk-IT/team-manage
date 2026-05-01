@@ -3,7 +3,8 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import UploadFile
 from starlette.datastructures import Headers
@@ -24,6 +25,17 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_warranty_email_check_page_renders_sidebar_entry_and_rich_text_form(self):
         db = AsyncMock()
+        lock = SimpleNamespace(
+            email="buyer@example.com",
+            generated_redeem_code="TMW-GENERATED",
+            generated_redeem_code_remaining_days=30,
+            generated_redeem_code_entry_id=7,
+            generated_redeem_code_generated_at=None,
+        )
+        entry = SimpleNamespace(id=7, expires_at=None, remaining_claims=1)
+        execute_result = MagicMock()
+        execute_result.all.return_value = [(lock, entry)]
+        db.execute.return_value = execute_result
 
         with patch(
             "app.routes.admin.settings_service.get_warranty_email_check_config",
@@ -43,6 +55,15 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
         ), patch(
             "app.routes.admin.settings_service.get_admin_sidebar_order",
             new=AsyncMock(return_value=None)
+        ), patch(
+            "app.routes.admin.settings_service.get_sub2api_warranty_redeem_config",
+            new=AsyncMock(return_value={
+                "base_url": "https://sub2api.example.com",
+                "admin_api_key": "admin-key",
+                "subscription_group_id": 12,
+                "code_prefix": "TMW",
+                "configured": True,
+            })
         ):
             response = await warranty_email_check_settings_page(
                 request=self._build_request(),
@@ -70,6 +91,11 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('\\u547d\\u4e2d B', html)
         self.assertIn("fetch('/admin/warranty-email-check'", html)
         self.assertIn("validationMessage", html)
+        self.assertIn('id="sub2apiWarrantyBaseUrl"', html)
+        self.assertIn("https://sub2api.example.com", html)
+        self.assertIn("兑换码生成记录", html)
+        self.assertIn("TMW-GENERATED", html)
+        self.assertIn("buyer@example.com", html)
 
     async def test_update_warranty_email_check_settings_accepts_long_rich_text(self):
         db = AsyncMock()
@@ -122,6 +148,44 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
         payload = json.loads(response.body.decode("utf-8"))
 
         mocked_update.assert_awaited_once_with(db, True, "<p>在列表</p>", "<p>不在列表</p>", match_templates, miss_templates)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["success"])
+
+
+    async def test_update_warranty_email_check_settings_saves_sub2api_config_when_provided(self):
+        db = AsyncMock()
+
+        with patch(
+            "app.routes.admin.settings_service.update_warranty_email_check_config",
+            new=AsyncMock(return_value=True),
+        ) as mocked_update, patch(
+            "app.routes.admin.settings_service.update_sub2api_warranty_redeem_config",
+            new=AsyncMock(return_value=True),
+        ) as mocked_sub2api_update:
+            response = await update_warranty_email_check_settings(
+                warranty_data=WarrantyEmailCheckSettingsRequest(
+                    enabled=True,
+                    match_content="<p>在列表</p>",
+                    miss_content="<p>不在列表</p>",
+                    sub2api_base_url="https://sub2api.example.com/",
+                    sub2api_admin_api_key="admin-key",
+                    sub2api_subscription_group_id=12,
+                    sub2api_code_prefix="tmw",
+                ),
+                db=db,
+                current_user={"username": "admin"},
+            )
+
+        payload = json.loads(response.body.decode("utf-8"))
+
+        mocked_update.assert_awaited_once_with(db, True, "<p>在列表</p>", "<p>不在列表</p>", [], [])
+        mocked_sub2api_update.assert_awaited_once_with(
+            db,
+            base_url="https://sub2api.example.com",
+            admin_api_key="admin-key",
+            subscription_group_id=12,
+            code_prefix="tmw",
+        )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["success"])
 

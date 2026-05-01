@@ -71,6 +71,7 @@ class UserRedeemTransitionOverlayTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("function setCustomerServicePromptOpen(isOpen)", script)
         self.assertIn("const warrantyEmailCheckEnabled =", script)
         self.assertIn("function renderWarrantyEmailCheckResult(data, email)", script)
+        self.assertIn("warrantyCheckParams.set('user_id', sub2apiUserId)", script)
         self.assertIn("function showCustomerServiceQrReminder()", script)
         self.assertEqual(script.count("showCustomerServiceQrReminder();"), 3)
         self.assertIn("openTransitionOverlay(", script)

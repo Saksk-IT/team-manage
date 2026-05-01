@@ -2,7 +2,7 @@
 质保相关路由
 处理用户质保查询请求
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,15 @@ from app.services.invite_queue import invite_queue_service
 from app.services.settings import settings_service
 from app.services.warranty import warranty_service
 from app.utils.rich_text import rich_text_to_plain_text
+
+
+def _parse_optional_positive_int(value) -> Optional[int]:
+    try:
+        parsed = int(str(value or "").strip())
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
 
 router = APIRouter(
     prefix="/warranty",
@@ -59,6 +68,10 @@ class WarrantyCheckResponse(BaseModel):
     matched: Optional[bool] = None
     content_html: Optional[str] = None
     template_key: Optional[str] = None
+    generated_redeem_code: Optional[str] = None
+    generated_redeem_code_remaining_days: Optional[int] = None
+    generated_redeem_code_reused: Optional[bool] = None
+    generated_redeem_code_error: Optional[str] = None
     latest_team: Optional[WarrantyLatestTeamInfo] = None
     warranty_info: Optional[dict] = None
     warranty_orders: List[dict] = Field(default_factory=list)
@@ -75,7 +88,8 @@ class WarrantyOrderStatusRequest(BaseModel):
 
 @router.post("/check", response_model=WarrantyCheckResponse)
 async def check_warranty(
-    request: WarrantyCheckRequest,
+    request: WarrantyCheckRequest = Body(...),
+    http_request: Request = None,
     db_session: AsyncSession = Depends(get_db)
 ):
     """
@@ -111,6 +125,32 @@ async def check_warranty(
             )
             or fallback_content
         )
+
+        generated_code = None
+        generated_code_remaining_days = None
+        generated_code_reused = None
+        generated_code_error = None
+        user_id = _parse_optional_positive_int(http_request.query_params.get("user_id") if http_request else None)
+        if bool(result.get("matched")):
+            if result.get("generated_redeem_code"):
+                generated_code = result.get("generated_redeem_code")
+                generated_code_remaining_days = result.get("generated_redeem_code_remaining_days")
+                generated_code_reused = True
+            else:
+                code_result = await warranty_service.ensure_warranty_email_check_redeem_code(
+                    db_session=db_session,
+                    email=request.email,
+                    user_id=user_id,
+                    template_lock=result.get("template_lock"),
+                    warranty_entry=result.get("selected_entry"),
+                )
+                if code_result.get("success"):
+                    generated_code = code_result.get("code")
+                    generated_code_remaining_days = code_result.get("remaining_days")
+                    generated_code_reused = bool(code_result.get("reused"))
+                else:
+                    generated_code_error = code_result.get("error") or "兑换码生成失败"
+
         return {
             "success": True,
             "can_claim": False,
@@ -118,6 +158,10 @@ async def check_warranty(
             "matched": bool(result.get("matched")),
             "content_html": content_html,
             "template_key": result.get("template_key"),
+            "generated_redeem_code": generated_code,
+            "generated_redeem_code_remaining_days": generated_code_remaining_days,
+            "generated_redeem_code_reused": generated_code_reused,
+            "generated_redeem_code_error": generated_code_error,
             "latest_team": None,
             "warranty_info": None,
             "warranty_orders": [],

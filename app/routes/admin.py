@@ -26,6 +26,8 @@ from app.models import (
     TeamRefreshRecord,
     RedemptionCode,
     WarrantyClaimRecord,
+    WarrantyEmailEntry,
+    WarrantyEmailTemplateLock,
 )
 from app.services.team import (
     TeamService,
@@ -3351,6 +3353,29 @@ async def warranty_email_check_settings_page(
         logger.info("管理员访问质保名单判定设置")
 
         warranty_email_check_config = await settings_service.get_warranty_email_check_config(db)
+        sub2api_warranty_redeem_config = await settings_service.get_sub2api_warranty_redeem_config(db)
+        generated_result = await db.execute(
+            select(WarrantyEmailTemplateLock, WarrantyEmailEntry)
+            .outerjoin(
+                WarrantyEmailEntry,
+                WarrantyEmailEntry.id == WarrantyEmailTemplateLock.generated_redeem_code_entry_id,
+            )
+            .where(WarrantyEmailTemplateLock.generated_redeem_code.isnot(None))
+            .order_by(WarrantyEmailTemplateLock.generated_redeem_code_generated_at.desc())
+            .limit(200)
+        )
+        generated_redeem_code_records = [
+            {
+                "email": lock.email,
+                "code": lock.generated_redeem_code,
+                "remaining_days": lock.generated_redeem_code_remaining_days,
+                "generated_at": lock.generated_redeem_code_generated_at,
+                "entry_id": lock.generated_redeem_code_entry_id,
+                "entry_expires_at": entry.expires_at if entry else None,
+                "entry_remaining_claims": entry.remaining_claims if entry else None,
+            }
+            for lock, entry in generated_result.all()
+        ]
 
         return templates.TemplateResponse(
             request,
@@ -3365,6 +3390,8 @@ async def warranty_email_check_settings_page(
                 warranty_email_check_miss_content=warranty_email_check_config["miss_content"],
                 warranty_email_check_match_templates=warranty_email_check_config.get("match_templates", []),
                 warranty_email_check_miss_templates=warranty_email_check_config.get("miss_templates", []),
+                sub2api_warranty_redeem_config=sub2api_warranty_redeem_config,
+                generated_redeem_code_records=generated_redeem_code_records,
             )
         )
 
@@ -3478,6 +3505,10 @@ class WarrantyFakeSuccessSettingsRequest(BaseModel):
 class WarrantyEmailCheckSettingsRequest(BaseModel):
     """前台质保邮箱名单判定模式请求"""
     enabled: bool = Field(..., description="是否启用质保邮箱名单判定模式")
+    sub2api_base_url: str = Field("", description="Sub2API 基础地址")
+    sub2api_admin_api_key: str = Field("", description="Sub2API Admin API Key")
+    sub2api_subscription_group_id: Optional[int] = Field(None, description="Sub2API 订阅分组 ID")
+    sub2api_code_prefix: str = Field("", description="自动生成兑换码前缀")
     match_content: str = Field(
         "",
         description="邮箱命中时展示的富文本",
@@ -5041,6 +5072,30 @@ async def update_warranty_email_check_settings(
             warranty_data.match_templates,
             warranty_data.miss_templates,
         )
+        fields_set = getattr(warranty_data, "model_fields_set", set())
+        has_sub2api_fields = any(
+            field_name in fields_set
+            for field_name in {
+                "sub2api_base_url",
+                "sub2api_admin_api_key",
+                "sub2api_subscription_group_id",
+                "sub2api_code_prefix",
+            }
+        )
+        if success and has_sub2api_fields:
+            base_url = (warranty_data.sub2api_base_url or "").strip().rstrip("/")
+            if base_url and not _is_valid_http_url(base_url):
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"success": False, "error": "Sub2API 基础地址必须是有效的 http/https 链接"}
+                )
+            success = await settings_service.update_sub2api_warranty_redeem_config(
+                db,
+                base_url=base_url,
+                admin_api_key=warranty_data.sub2api_admin_api_key,
+                subscription_group_id=warranty_data.sub2api_subscription_group_id,
+                code_prefix=warranty_data.sub2api_code_prefix,
+            )
 
         if success:
             return JSONResponse(content={"success": True, "message": "质保邮箱名单判定模式已保存"})

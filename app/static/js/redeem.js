@@ -753,6 +753,23 @@ function renderWarrantyEmailCheckResult(data, email) {
 
     const matched = Boolean(data?.matched);
     const contentHtml = String(data?.content_html || data?.message || '');
+    const generatedCode = data?.generated_redeem_code || '';
+    const generatedDays = data?.generated_redeem_code_remaining_days;
+    const generatedCodeError = data?.generated_redeem_code_error || '';
+    const generatedCodeHtml = matched && generatedCode ? `
+        <div class="status-panel__message status-panel__message--success warranty-generated-code">
+            <div class="warranty-generated-code__title">已自动生成质保兑换码</div>
+            <div class="warranty-generated-code__value">
+                <code>${escapeHtml(generatedCode)}</code>
+                <button type="button" class="btn btn-secondary btn-sm" id="copyGeneratedWarrantyCodeBtn" data-code="${escapeHtml(generatedCode)}">
+                    <i data-lucide="copy"></i> 复制
+                </button>
+            </div>
+            ${generatedDays ? `<div class="warranty-generated-code__meta">有效天数：${escapeHtml(String(generatedDays))} 天</div>` : ''}
+        </div>
+    ` : (matched && generatedCodeError ? `
+        <div class="status-panel__message status-panel__message--warning">${escapeHtml(generatedCodeError)}</div>
+    ` : '');
     statusContainer.style.display = 'block';
     statusContainer.innerHTML = `
         <div class="status-panel status-panel--summary warranty-email-check-result">
@@ -771,8 +788,13 @@ function renderWarrantyEmailCheckResult(data, email) {
             <div class="status-panel__message ${matched ? 'status-panel__message--success' : 'status-panel__message--warning'}">
                 <div class="warranty-email-check-content">${contentHtml}</div>
             </div>
+            ${generatedCodeHtml}
         </div>
     `;
+
+    statusContainer.querySelector('#copyGeneratedWarrantyCodeBtn')?.addEventListener('click', (event) => {
+        copyWarrantyCode(event.currentTarget.dataset.code || '');
+    });
 
     if (window.lucide) {
         lucide.createIcons();
@@ -1319,7 +1341,13 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
     openTransitionOverlay(WARRANTY_STATUS_LOADING_FLOW, { stageIndex: 0 });
 
     try {
-        const response = await fetch('/warranty/check', {
+        const warrantyCheckParams = new URLSearchParams();
+        const sub2apiUserId = new URLSearchParams(window.location.search).get('user_id');
+        if (sub2apiUserId) {
+            warrantyCheckParams.set('user_id', sub2apiUserId);
+        }
+        const warrantyCheckUrl = `/warranty/check${warrantyCheckParams.toString() ? `?${warrantyCheckParams.toString()}` : ''}`;
+        const response = await fetch(warrantyCheckUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

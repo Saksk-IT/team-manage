@@ -23,6 +23,7 @@ from app.models import (
     WarrantyEmailTemplateLock,
 )
 from app.services.settings import settings_service
+from app.services.sub2api_warranty_client import sub2api_warranty_redeem_client
 from app.services.team import IMPORT_STATUS_CLASSIFIED, TEAM_TYPE_STANDARD
 from app.services.team_refresh_record import SOURCE_USER_WARRANTY
 from app.utils.time_utils import get_now
@@ -2085,6 +2086,7 @@ class WarrantyService:
             matched=matched,
             templates=templates or [],
         )
+        selected_entry = entries[0] if entries else None
         return {
             "success": True,
             "email": normalized_email,
@@ -2092,6 +2094,108 @@ class WarrantyService:
             "matched_count": len(entries),
             "template_key": template_lock.template_key if template_lock else None,
             "template_matched": bool(template_lock.matched) if template_lock else matched,
+            "template_lock": template_lock,
+            "selected_entry": selected_entry,
+            "generated_redeem_code": (
+                template_lock.generated_redeem_code
+                if template_lock and template_lock.generated_redeem_code
+                else None
+            ),
+            "generated_redeem_code_remaining_days": (
+                template_lock.generated_redeem_code_remaining_days
+                if template_lock
+                else None
+            ),
+        }
+
+    async def ensure_warranty_email_check_redeem_code(
+        self,
+        db_session: AsyncSession,
+        *,
+        email: str,
+        user_id: Optional[int] = None,
+        template_lock: Optional[WarrantyEmailTemplateLock] = None,
+        warranty_entry: Optional[WarrantyEmailEntry] = None,
+        sub2api_config: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """为命中质保邮箱列表的查询生成并持久化 Sub2API 订阅兑换码。"""
+        normalized_email = self.normalize_email(email)
+        if not normalized_email:
+            return {"success": False, "error": "邮箱不能为空"}
+
+        try:
+            safe_user_id = int(user_id or 0)
+        except (TypeError, ValueError):
+            safe_user_id = 0
+
+        lock = template_lock or await self._get_warranty_email_template_lock(db_session, normalized_email)
+        if not lock:
+            return {"success": False, "error": "质保查询锁定记录不存在，请重新查询"}
+
+        if lock.generated_redeem_code:
+            return {
+                "success": True,
+                "code": lock.generated_redeem_code,
+                "remaining_days": lock.generated_redeem_code_remaining_days,
+                "entry_id": lock.generated_redeem_code_entry_id,
+                "reused": True,
+            }
+
+        entry = warranty_entry
+        if entry is None:
+            entries = await self.get_warranty_email_entries_for_email(db_session, normalized_email)
+            entry = entries[0] if entries else None
+        if entry is None:
+            return {"success": False, "error": "该邮箱未命中质保邮箱列表，无法生成兑换码"}
+
+        remaining_days = self._get_warranty_entry_remaining_days(entry)
+        if remaining_days is None or remaining_days <= 0:
+            return {"success": False, "error": "该质保邮箱剩余时间不足，无法生成兑换码"}
+
+        config = sub2api_config or await settings_service.get_sub2api_warranty_redeem_config(db_session)
+        if not config.get("configured"):
+            return {"success": False, "error": "Sub2API 质保兑换码配置未完成"}
+
+        generated_code = sub2api_warranty_redeem_client.build_code(
+            normalized_email,
+            entry.id,
+            config.get("code_prefix") or settings_service.DEFAULT_SUB2API_WARRANTY_CODE_PREFIX,
+        )
+        create_kwargs = {
+            "base_url": config.get("base_url") or "",
+            "admin_api_key": config.get("admin_api_key") or "",
+            "code": generated_code,
+            "group_id": int(config.get("subscription_group_id") or 0),
+            "validity_days": remaining_days,
+            "email": normalized_email,
+            "entry_id": entry.id,
+        }
+        create_result = await sub2api_warranty_redeem_client.create_subscription_code(
+            sub2api_user_id=safe_user_id if safe_user_id > 0 else None,
+            **create_kwargs,
+        )
+        if not create_result.get("success"):
+            return create_result
+
+        lock.generated_redeem_code = create_result.get("code") or generated_code
+        lock.generated_redeem_code_remaining_days = remaining_days
+        lock.generated_redeem_code_entry_id = entry.id
+        lock.generated_redeem_code_generated_at = create_result.get("generated_at") or get_now()
+        lock.updated_at = get_now()
+        try:
+            await db_session.commit()
+            await db_session.refresh(lock)
+        except Exception as exc:
+            await db_session.rollback()
+            logger.error("保存质保名单判定生成兑换码失败 email=%s error=%s", normalized_email, exc)
+            return {"success": False, "error": "兑换码已生成但本地保存失败，请稍后重试"}
+
+        return {
+            "success": True,
+            "code": lock.generated_redeem_code,
+            "remaining_days": remaining_days,
+            "entry_id": entry.id,
+            "reused": False,
         }
 
     async def _get_or_create_warranty_email_template_lock(
@@ -2110,6 +2214,15 @@ class WarrantyService:
             normalized_email,
         )
         if existing_lock:
+            if bool(existing_lock.matched) != bool(matched):
+                existing_lock.matched = matched
+                existing_lock.template_key = self._pick_warranty_email_check_template_key(
+                    templates,
+                    matched,
+                )
+                existing_lock.updated_at = get_now()
+                await db_session.commit()
+                await db_session.refresh(existing_lock)
             return existing_lock
 
         template_key = self._pick_warranty_email_check_template_key(templates, matched)

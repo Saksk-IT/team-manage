@@ -1,0 +1,142 @@
+- generic [active] [ref=e1]:
+  - contentinfo [ref=e3]:
+    - paragraph [ref=e4]:
+      - text: © 2026
+      - link "GPT Team 管理系统" [ref=e5] [cursor=pointer]:
+        - /url: https://github.com/tibbar213/team-manage
+      - text: v0.1.0
+  - generic:
+    - generic:
+      - generic:
+        - heading "导入 Team" [level=3]
+        - button "×"
+      - generic:
+        - generic:
+          - button "单个导入"
+          - button "批量导入"
+        - generic:
+          - generic:
+            - generic:
+              - generic: Access Token (AT) *
+              - textbox "eyJhbGciOiJSUzI1Ni..."
+              - text: 必填项，以 eyJ 开头的 JWT Token
+            - generic:
+              - generic: Refresh Token (RT)
+              - textbox "rt-..."
+              - text: 可选，用于自动刷新 AT
+            - generic:
+              - generic: Session Token
+              - textbox "eyJ..."
+              - text: 可选，作为备选刷新方式
+            - generic:
+              - generic: Client ID
+              - textbox "Client ID"
+              - text: 使用 Refresh Token 时必填
+            - generic:
+              - generic: 邮箱
+              - textbox "admin@example.com"
+              - text: 可选，如果不填写将从 Token 中自动提取
+            - generic:
+              - generic: Account ID
+              - textbox "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              - text: 可选，如果不填写将从 API 自动获取
+            - generic: 导入只会加入统一控制台 Team 池；普通/质保兑换码请在“兑换码管理”页面生成。
+            - button "导入"
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - heading "生成兑换码" [level=3] [ref=e10]
+        - paragraph [ref=e11]: 选择生成方式后，可用预设快速完成有效期与质保配置。
+      - button "关闭生成兑换码弹窗" [ref=e12] [cursor=pointer]: ×
+    - generic [ref=e13]:
+      - generic "兑换码生成容量" [ref=e14]:
+        - generic [ref=e15]:
+          - generic [ref=e16]: 可用席位
+          - strong [ref=e17]:
+            - generic [ref=e18]: "276"
+            - emphasis [ref=e19]: 个
+        - generic [ref=e20]:
+          - generic [ref=e21]: 未使用兑换码
+          - strong [ref=e22]:
+            - generic [ref=e23]: "171"
+            - emphasis [ref=e24]: 个
+        - generic [ref=e25]:
+          - generic [ref=e26]: 最多还能生成
+          - strong [ref=e27]:
+            - generic [ref=e28]: "105"
+            - emphasis [ref=e29]: 个
+        - paragraph [ref=e30]: 生成后未使用兑换码数不能超过可用席位数。
+      - generic [ref=e31]:
+        - button "单个生成" [ref=e32] [cursor=pointer]
+        - button "批量生成" [ref=e33] [cursor=pointer]
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - generic [ref=e37]: 自定义兑换码 (可选)
+          - textbox "留空则自动生成" [ref=e38]
+        - generic [ref=e39]:
+          - generic [ref=e40]:
+            - generic [ref=e41]: 生成预设
+            - generic [ref=e42]: 一键填入有效期、质保天数和次数，并自动勾选质保兑换码。
+          - generic "生成兑换码预设" [ref=e43]:
+            - button "应用7天体验预设" [ref=e45] [cursor=pointer]:
+              - generic [ref=e46]: 7天体验
+              - generic [ref=e47]: 有效期 7天 · 质保 7天 · 1次
+            - button "应用30天标准预设" [ref=e49] [cursor=pointer]:
+              - generic [ref=e50]: 30天标准
+              - generic [ref=e51]: 有效期 30天 · 质保 30天 · 10次
+            - button "应用90天长期预设" [ref=e53] [cursor=pointer]:
+              - generic [ref=e54]: 90天长期
+              - generic [ref=e55]: 有效期 90天 · 质保 90天 · 15次
+            - button "应用永久兑换预设" [ref=e57] [cursor=pointer]:
+              - generic [ref=e58]: 永久兑换
+              - generic [ref=e59]: 有效期 永久 · 质保 30天 · 10次
+          - generic [ref=e60]:
+            - textbox "自定义预设名称" [ref=e61]
+            - button "保存当前为预设" [ref=e62] [cursor=pointer]
+        - generic [ref=e63]:
+          - generic [ref=e64]: 有效期 (天数, 可选)
+          - spinbutton [ref=e65]
+        - generic [ref=e66]:
+          - generic [ref=e67] [cursor=pointer]:
+            - checkbox "质保兑换码（使用后加入质保邮箱列表）" [ref=e68]
+            - generic [ref=e69]: 质保兑换码（使用后加入质保邮箱列表）
+          - generic [ref=e70]: 兑换成功后会把使用邮箱加入质保邮箱列表，并赋予预设或下方设置的剩余天数和次数（默认 10 次质保次数）。
+        - button "生成兑换码" [ref=e72] [cursor=pointer]
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - heading "Team 成员管理" [level=3]
+        - button "×"
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic: 新增成员邮箱
+              - textbox "新增成员邮箱":
+                - /placeholder: user@example.com
+            - button "添加":
+              - img
+              - text: 添加
+        - generic:
+          - heading "已加入成员" [level=4]
+          - generic:
+            - table:
+              - rowgroup:
+                - row "邮箱 角色 加入时间 操作":
+                  - columnheader "邮箱"
+                  - columnheader "角色"
+                  - columnheader "加入时间"
+                  - columnheader "操作"
+              - rowgroup
+        - generic:
+          - heading "待加入成员 (邀请中)" [level=4]
+          - generic:
+            - table:
+              - rowgroup:
+                - row "邮箱 角色 邀请时间 操作":
+                  - columnheader "邮箱"
+                  - columnheader "角色"
+                  - columnheader "邀请时间"
+                  - columnheader "操作"
+              - rowgroup

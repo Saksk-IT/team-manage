@@ -46,6 +46,10 @@ class SettingsService:
     WARRANTY_EMAIL_CHECK_MISS_CONTENT_KEY = "warranty_email_check_miss_content"
     WARRANTY_EMAIL_CHECK_MATCH_TEMPLATES_KEY = "warranty_email_check_match_templates"
     WARRANTY_EMAIL_CHECK_MISS_TEMPLATES_KEY = "warranty_email_check_miss_templates"
+    SUB2API_WARRANTY_BASE_URL_KEY = "sub2api_warranty_base_url"
+    SUB2API_WARRANTY_ADMIN_API_KEY_KEY = "sub2api_warranty_admin_api_key"
+    SUB2API_WARRANTY_SUBSCRIPTION_GROUP_ID_KEY = "sub2api_warranty_subscription_group_id"
+    SUB2API_WARRANTY_CODE_PREFIX_KEY = "sub2api_warranty_code_prefix"
     ADMIN_SIDEBAR_ORDER_KEY = "admin_sidebar_order"
     NUMBER_POOL_ENABLED_KEY = "number_pool_enabled"
     WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT = "usage_limit"
@@ -57,6 +61,7 @@ class SettingsService:
     DEFAULT_WARRANTY_EMAIL_CHECK_MISS_CONTENT = "<p>未查询到该邮箱的质保记录，请核对邮箱或联系管理员处理。</p>"
     DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_TEMPLATE_NAME = "命中模板 1"
     DEFAULT_WARRANTY_EMAIL_CHECK_MISS_TEMPLATE_NAME = "未命中模板 1"
+    DEFAULT_SUB2API_WARRANTY_CODE_PREFIX = "TMW"
     DEFAULT_TEAM_MAX_MEMBERS = 5
     DEFAULT_NUMBER_POOL_ENABLED = False
     DEFAULT_FRONT_ANNOUNCEMENT_ENABLED = False
@@ -735,6 +740,67 @@ class SettingsService:
             "match_templates": match_templates,
             "miss_templates": miss_templates,
         }
+
+    def _normalize_sub2api_warranty_code_prefix(self, value: Optional[str]) -> str:
+        raw_value = (value or self.DEFAULT_SUB2API_WARRANTY_CODE_PREFIX).strip().upper()
+        normalized = "".join(ch for ch in raw_value if ch.isalnum() or ch == "-").strip("-")
+        return (normalized or self.DEFAULT_SUB2API_WARRANTY_CODE_PREFIX)[:24]
+
+    async def get_sub2api_warranty_redeem_config(self, session: AsyncSession) -> Dict[str, Any]:
+        """获取质保名单判定命中后创建 Sub2API 订阅兑换码的配置。"""
+        base_url = (await self.get_setting(session, self.SUB2API_WARRANTY_BASE_URL_KEY, "") or "").strip().rstrip("/")
+        admin_api_key = (await self.get_setting(session, self.SUB2API_WARRANTY_ADMIN_API_KEY_KEY, "") or "").strip()
+        group_id_raw = (await self.get_setting(session, self.SUB2API_WARRANTY_SUBSCRIPTION_GROUP_ID_KEY, "") or "").strip()
+        code_prefix_raw = await self.get_setting(
+            session,
+            self.SUB2API_WARRANTY_CODE_PREFIX_KEY,
+            self.DEFAULT_SUB2API_WARRANTY_CODE_PREFIX,
+        )
+
+        group_id: Optional[int] = None
+        try:
+            parsed_group_id = int(group_id_raw)
+            if parsed_group_id > 0:
+                group_id = parsed_group_id
+        except (TypeError, ValueError):
+            group_id = None
+
+        return {
+            "base_url": base_url,
+            "admin_api_key": admin_api_key,
+            "subscription_group_id": group_id,
+            "code_prefix": self._normalize_sub2api_warranty_code_prefix(code_prefix_raw),
+            "configured": bool(base_url and admin_api_key and group_id),
+        }
+
+    async def update_sub2api_warranty_redeem_config(
+        self,
+        session: AsyncSession,
+        base_url: str = "",
+        admin_api_key: str = "",
+        subscription_group_id: Optional[int] = None,
+        code_prefix: str = "",
+    ) -> bool:
+        """保存质保名单判定命中后创建 Sub2API 订阅兑换码的配置。"""
+        group_id_value = ""
+        if subscription_group_id is not None:
+            try:
+                group_id_int = int(subscription_group_id)
+            except (TypeError, ValueError):
+                raise ValueError("订阅分组 ID 必须为正整数")
+            if group_id_int <= 0:
+                raise ValueError("订阅分组 ID 必须为正整数")
+            group_id_value = str(group_id_int)
+
+        return await self.update_settings(
+            session,
+            {
+                self.SUB2API_WARRANTY_BASE_URL_KEY: (base_url or "").strip().rstrip("/"),
+                self.SUB2API_WARRANTY_ADMIN_API_KEY_KEY: (admin_api_key or "").strip(),
+                self.SUB2API_WARRANTY_SUBSCRIPTION_GROUP_ID_KEY: group_id_value,
+                self.SUB2API_WARRANTY_CODE_PREFIX_KEY: self._normalize_sub2api_warranty_code_prefix(code_prefix),
+            }
+        )
 
     async def update_warranty_email_check_config(
         self,

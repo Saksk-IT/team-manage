@@ -1,0 +1,121 @@
+- generic [active] [ref=e1]:
+  - contentinfo [ref=e2]:
+    - paragraph [ref=e3]:
+      - text: © 2026
+      - link "GPT Team 管理系统" [ref=e4] [cursor=pointer]:
+        - /url: https://github.com/tibbar213/team-manage
+      - text: v0.1.0
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - heading "导入 Team" [level=3] [ref=e8]
+      - button "×" [ref=e9]
+    - generic [ref=e10]:
+      - generic [ref=e11]:
+        - button "单个导入" [ref=e12]
+        - button "批量导入" [ref=e13]
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - generic [ref=e17]: Access Token (AT) *
+          - textbox "eyJhbGciOiJSUzI1Ni..." [ref=e18]
+          - text: 必填项，以 eyJ 开头的 JWT Token
+        - generic [ref=e19]:
+          - text: Refresh Token (RT)
+          - textbox "rt-..." [ref=e20]
+          - text: 可选，用于自动刷新 AT
+        - generic [ref=e21]:
+          - text: Session Token
+          - textbox "eyJ..." [ref=e22]
+          - text: 可选，作为备选刷新方式
+        - generic [ref=e23]:
+          - text: Client ID
+          - textbox "Client ID" [ref=e24]
+          - text: 使用 Refresh Token 时必填
+        - generic [ref=e25]:
+          - text: 邮箱
+          - textbox "admin@example.com" [ref=e26]
+          - text: 可选，如果不填写将从 Token 中自动提取
+        - generic [ref=e27]:
+          - text: Account ID
+          - textbox "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" [ref=e28]
+          - text: 可选，如果不填写将从 API 自动获取
+        - generic [ref=e29]: 导入只会加入统一控制台 Team 池；普通/质保兑换码请在“兑换码管理”页面生成。
+        - button "导入" [ref=e30]
+  - generic [ref=e32]:
+    - generic [ref=e33]:
+      - generic [ref=e34]:
+        - heading "生成兑换码" [level=3] [ref=e35]
+        - paragraph [ref=e36]: 选择生成方式后，可用预设快速完成有效期与质保配置。
+      - button "关闭生成兑换码弹窗" [ref=e37]: ×
+    - generic [ref=e38]:
+      - generic "兑换码生成容量" [ref=e39]:
+        - generic [ref=e40]:
+          - text: 可用席位
+          - strong [ref=e41]:
+            - text: "276"
+            - emphasis [ref=e42]: 个
+        - generic [ref=e43]:
+          - text: 未使用兑换码
+          - strong [ref=e44]:
+            - text: "171"
+            - emphasis [ref=e45]: 个
+        - generic [ref=e46]:
+          - text: 最多还能生成
+          - strong [ref=e47]:
+            - text: "105"
+            - emphasis [ref=e48]: 个
+        - paragraph [ref=e49]: 生成后未使用兑换码数不能超过可用席位数。
+      - generic [ref=e50]:
+        - button "单个生成" [ref=e51]
+        - button "批量生成" [ref=e52]
+      - generic [ref=e54]:
+        - generic [ref=e55]:
+          - text: 自定义兑换码 (可选)
+          - textbox "留空则自动生成" [ref=e56]
+        - generic [ref=e57]:
+          - generic [ref=e58]: 生成预设 一键填入有效期、质保天数和次数，并自动勾选质保兑换码。
+          - generic "生成兑换码预设"
+          - generic [ref=e59]:
+            - textbox "自定义预设名称" [ref=e60]
+            - button "保存当前为预设" [ref=e61]
+        - generic [ref=e62]:
+          - text: 有效期 (天数, 可选)
+          - spinbutton [ref=e63]
+        - generic [ref=e64]:
+          - generic [ref=e65]:
+            - checkbox "质保兑换码（使用后加入质保邮箱列表）" [ref=e66]
+            - text: 质保兑换码（使用后加入质保邮箱列表）
+          - text: 兑换成功后会把使用邮箱加入质保邮箱列表，并赋予预设或下方设置的剩余天数和次数（默认 10 次质保次数）。
+        - button "生成兑换码" [ref=e68]
+  - generic [ref=e70]:
+    - generic [ref=e71]:
+      - heading "Team 成员管理" [level=3] [ref=e73]
+      - button "×" [ref=e74]
+    - generic [ref=e75]:
+      - generic [ref=e77]:
+        - generic [ref=e78]:
+          - text: 新增成员邮箱
+          - textbox "新增成员邮箱" [ref=e79]:
+            - /placeholder: user@example.com
+        - button "添加" [ref=e80]:
+          - img [ref=e81]
+          - text: 添加
+      - generic [ref=e84]:
+        - heading "已加入成员" [level=4] [ref=e85]
+        - table [ref=e87]:
+          - rowgroup [ref=e88]:
+            - row "邮箱 角色 加入时间 操作" [ref=e89]:
+              - columnheader "邮箱" [ref=e90]
+              - columnheader "角色" [ref=e91]
+              - columnheader "加入时间" [ref=e92]
+              - columnheader "操作" [ref=e93]
+          - rowgroup
+      - generic [ref=e94]:
+        - heading "待加入成员 (邀请中)" [level=4] [ref=e95]
+        - table [ref=e97]:
+          - rowgroup [ref=e98]:
+            - row "邮箱 角色 邀请时间 操作" [ref=e99]:
+              - columnheader "邮箱" [ref=e100]
+              - columnheader "角色" [ref=e101]
+              - columnheader "邀请时间" [ref=e102]
+              - columnheader "操作" [ref=e103]
+          - rowgroup

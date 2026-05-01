@@ -751,3 +751,37 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+.warranty-generated-code {
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.85rem;
+    border: 1px solid rgba(52, 211, 153, 0.24);
+    border-radius: var(--radius-md);
+    background: rgba(52, 211, 153, 0.08);
+}
+
+.warranty-generated-code__title {
+    font-weight: 900;
+}
+
+.warranty-generated-code__value {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.warranty-generated-code__value code {
+    padding: 0.45rem 0.65rem;
+    border-radius: var(--radius-sm);
+    background: rgba(0, 0, 0, 0.22);
+    color: var(--text-main);
+    font-size: 1rem;
+    word-break: break-all;
+}
+
+.warranty-generated-code__meta {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}

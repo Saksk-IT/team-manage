@@ -3,12 +3,45 @@
 处理用户兑换页面
 """
 import logging
+from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 
 logger = logging.getLogger(__name__)
+
+
+def _build_purchase_link_url(base_url: str, request: Request) -> str:
+    normalized_url = (base_url or "").strip()
+    if not normalized_url:
+        return ""
+
+    try:
+        query_params = request.query_params
+    except KeyError:
+        return normalized_url
+
+    forwarded_keys = ["user_id", "token", "theme", "lang", "ui_mode"]
+    forwarded_params = {
+        key: query_params.get(key)
+        for key in forwarded_keys
+        if query_params.get(key)
+    }
+    if not forwarded_params:
+        return normalized_url
+    forwarded_params.setdefault("ui_mode", "embedded")
+
+    try:
+        parsed = urlparse(normalized_url)
+    except Exception:
+        return normalized_url
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return normalized_url
+
+    query_items = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query_items.update(forwarded_params)
+    return urlunparse(parsed._replace(query=urlencode(query_items)))
 
 # 创建路由器
 router = APIRouter(
@@ -56,6 +89,11 @@ async def redeem_page(
             number_pool_config = await settings_service.get_number_pool_config(db)
             redeem_team_type = TEAM_TYPE_NUMBER_POOL if number_pool_config.get("enabled") else TEAM_TYPE_STANDARD
             remaining_spots = await team_service.get_total_available_seats(db, team_type=redeem_team_type)
+
+        purchase_link_config = {
+            **purchase_link_config,
+            "url": _build_purchase_link_url(purchase_link_config.get("url", ""), request),
+        }
 
         logger.info(f"用户访问兑换页面，剩余车位: {remaining_spots}")
 

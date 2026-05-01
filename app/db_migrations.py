@@ -724,6 +724,20 @@ def run_auto_migration():
             ON warranty_email_template_locks (matched)
         """)
 
+        warranty_lock_generated_columns = {
+            "generated_redeem_code": "VARCHAR(128)",
+            "generated_redeem_code_remaining_days": "INTEGER",
+            "generated_redeem_code_entry_id": "INTEGER",
+            "generated_redeem_code_generated_at": "DATETIME",
+        }
+        for column_name, column_type in warranty_lock_generated_columns.items():
+            if not column_exists(cursor, "warranty_email_template_locks", column_name):
+                logger.info("添加 warranty_email_template_locks.%s 字段", column_name)
+                cursor.execute(
+                    f"ALTER TABLE warranty_email_template_locks ADD COLUMN {column_name} {column_type}"
+                )
+                migrations_applied.append(f"warranty_email_template_locks.{column_name}")
+
         migrations_applied.extend(migrate_unified_team_pool(cursor))
 
         if not table_exists(cursor, "warranty_claim_records"):

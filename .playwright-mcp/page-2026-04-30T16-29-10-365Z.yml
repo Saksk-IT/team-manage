@@ -1,0 +1,451 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e3]:
+      - heading "GPT Team 管理系统" [level=1] [ref=e6]
+      - generic [ref=e7]:
+        - generic [ref=e8]: 总管理员
+        - button "紧凑模式" [ref=e9] [cursor=pointer]:
+          - img [ref=e10]
+          - text: 紧凑模式
+        - button "登出" [ref=e13] [cursor=pointer]
+  - generic [ref=e14]:
+    - complementary [ref=e15]:
+      - list [ref=e16]:
+        - listitem [ref=e17]:
+          - link "控制台" [ref=e18] [cursor=pointer]:
+            - /url: /admin
+            - img [ref=e19]
+            - generic [ref=e24]: 控制台
+        - listitem [ref=e25]:
+          - link "导入记录" [ref=e26] [cursor=pointer]:
+            - /url: /admin/pending-teams
+            - img [ref=e27]
+            - generic [ref=e30]: 导入记录
+        - listitem [ref=e31]:
+          - link "邮箱白名单" [ref=e32] [cursor=pointer]:
+            - /url: /admin/email-whitelist
+            - img [ref=e33]
+            - generic [ref=e36]: 邮箱白名单
+        - listitem [ref=e37]:
+          - link "质保邮箱列表" [ref=e38] [cursor=pointer]:
+            - /url: /admin/warranty-emails
+            - img [ref=e39]
+            - generic [ref=e42]: 质保邮箱列表
+        - listitem [ref=e43]:
+          - link "兑换码管理" [ref=e44] [cursor=pointer]:
+            - /url: /admin/codes
+            - img [ref=e45]
+            - generic [ref=e47]: 兑换码管理
+        - listitem [ref=e48]:
+          - link "使用记录" [ref=e49] [cursor=pointer]:
+            - /url: /admin/records
+            - img [ref=e50]
+            - generic [ref=e53]: 使用记录
+        - listitem [ref=e54]:
+          - link "自动清理记录" [ref=e55] [cursor=pointer]:
+            - /url: /admin/team-cleanup-records
+            - generic [ref=e56]: 自动清理记录
+        - listitem [ref=e57]:
+          - link "前台页面" [ref=e58] [cursor=pointer]:
+            - /url: /admin/front-page
+            - img [ref=e59]
+            - generic [ref=e63]: 前台页面
+        - listitem [ref=e64]:
+          - link "系统设置" [ref=e65] [cursor=pointer]:
+            - /url: /admin/settings
+            - img [ref=e66]
+            - generic [ref=e69]: 系统设置
+        - listitem [ref=e70]:
+          - link "质保提交记录" [ref=e71] [cursor=pointer]:
+            - /url: /admin/warranty-claim-records
+            - img [ref=e72]
+            - generic [ref=e75]: 质保提交记录
+        - listitem [ref=e76]:
+          - link "子管理员" [ref=e77] [cursor=pointer]:
+            - /url: /admin/sub-admins
+            - img [ref=e78]
+            - generic [ref=e90]: 子管理员
+        - listitem [ref=e91]:
+          - link "成员快照" [ref=e92] [cursor=pointer]:
+            - /url: /admin/team-member-snapshots
+            - img [ref=e93]
+            - generic [ref=e97]: 成员快照
+        - listitem [ref=e98]:
+          - link "Team 刷新记录" [ref=e99] [cursor=pointer]:
+            - /url: /admin/team-refresh-records
+            - img [ref=e100]
+            - generic [ref=e105]: Team 刷新记录
+    - main [ref=e106]:
+      - heading "控制台" [level=2] [ref=e108]
+      - generic [ref=e109]:
+        - generic [ref=e110]:
+          - img [ref=e112]
+          - generic [ref=e117]:
+            - generic [ref=e118]: "1"
+            - generic [ref=e119]: Team 总数
+        - generic [ref=e120]:
+          - img [ref=e122]
+          - generic [ref=e125]:
+            - generic [ref=e126]: "0"
+            - generic [ref=e127]: 可用 Team
+        - generic [ref=e128]:
+          - img [ref=e130]
+          - generic [ref=e134]:
+            - generic [ref=e135]: "4"
+            - generic [ref=e136]: 所有席位
+        - generic [ref=e137]:
+          - img [ref=e139]
+          - generic [ref=e142]:
+            - generic [ref=e143]: "0"
+            - generic [ref=e144]: 可用席位
+      - generic [ref=e146]:
+        - generic [ref=e147]:
+          - generic [ref=e148]:
+            - heading "Team 列表" [level=3] [ref=e149]
+            - paragraph [ref=e150]: 筛选、搜索并批量维护 Team 账号。
+          - generic [ref=e151]:
+            - generic [ref=e153]:
+              - img [ref=e154]
+              - textbox "搜索邮箱 / Account ID / Team ID" [ref=e157]
+            - button "列设置" [ref=e159] [cursor=pointer]:
+              - img [ref=e160]
+              - text: 列设置
+            - button "导入 Team" [ref=e162] [cursor=pointer]:
+              - img [ref=e163]
+              - text: 导入 Team
+        - form "Team 多重筛选" [ref=e165]:
+          - generic [ref=e166]:
+            - generic [ref=e167]: 导入时间
+            - generic [ref=e168]:
+              - textbox "导入开始日期" [ref=e169]
+              - generic [ref=e170]: 至
+              - textbox "导入结束日期" [ref=e171]
+          - generic [ref=e172]:
+            - generic [ref=e173]: 到期时间
+            - generic [ref=e174]:
+              - textbox "到期开始日期" [ref=e175]
+              - generic [ref=e176]: 至
+              - textbox "到期结束日期" [ref=e177]
+          - generic [ref=e178]:
+            - generic [ref=e179]: 设备验证
+            - combobox "设备验证筛选" [ref=e180]:
+              - option "全部" [selected]
+              - option "已开启"
+              - option "未开启"
+          - generic [ref=e181]:
+            - generic [ref=e182]: 状态
+            - combobox "Team 状态筛选" [ref=e183]:
+              - option "全部" [selected]
+              - option "可用"
+              - option "已满"
+              - option "已过期"
+              - option "异常"
+              - option "已封禁"
+          - generic [ref=e184]:
+            - generic [ref=e185]: 成员数
+            - generic [ref=e186]:
+              - spinbutton "成员数最小值" [ref=e187]
+              - generic [ref=e188]: 至
+              - spinbutton "成员数最大值" [ref=e189]
+          - button "筛选" [ref=e191] [cursor=pointer]
+      - table [ref=e193]:
+        - rowgroup [ref=e194]:
+          - row "ID 邮箱 Account ID Team 名称 成员数 订阅计划 到期时间 设备验证 状态 操作" [ref=e195]:
+            - columnheader [ref=e196]:
+              - checkbox [ref=e197]
+            - columnheader "ID" [ref=e198]
+            - columnheader "邮箱" [ref=e199]
+            - columnheader "Account ID" [ref=e200]
+            - columnheader "Team 名称" [ref=e201]
+            - columnheader "成员数" [ref=e202]
+            - columnheader "订阅计划" [ref=e203]
+            - columnheader "到期时间" [ref=e204]
+            - columnheader "设备验证" [ref=e205]
+            - columnheader "状态" [ref=e206]
+            - columnheader "操作" [ref=e207]
+        - rowgroup [ref=e208]:
+          - row "2 cd1489442@wsaic.com 6bf0f4ea-9092-4ad9-a843-1d049a7ed7bc Wsaic 10/5 chatgptteamplan 2026-05-15 22:25 已开启 已封禁" [ref=e209]:
+            - cell [ref=e210]:
+              - checkbox [ref=e211]
+            - cell "2" [ref=e212]
+            - cell "cd1489442@wsaic.com" [ref=e213]:
+              - generic [ref=e216]: cd1489442@wsaic.com
+            - cell "6bf0f4ea-9092-4ad9-a843-1d049a7ed7bc" [ref=e217]
+            - cell "Wsaic" [ref=e218]
+            - cell "10/5" [ref=e219]
+            - cell "chatgptteamplan" [ref=e220]
+            - cell "2026-05-15 22:25" [ref=e221]
+            - cell "已开启" [ref=e222]:
+              - generic [ref=e223]: 已开启
+            - cell "已封禁" [ref=e224]:
+              - generic [ref=e225]: 已封禁
+            - cell [ref=e226]:
+              - generic [ref=e227]:
+                - button "查看成员" [ref=e228] [cursor=pointer]:
+                  - img [ref=e229]
+                - button "编辑" [ref=e234] [cursor=pointer]:
+                  - img [ref=e235]
+                - button "刷新" [ref=e237] [cursor=pointer]:
+                  - img [ref=e238]
+                - button "一键开启设备代码验证" [ref=e243] [cursor=pointer]:
+                  - img [ref=e244]
+                - button "删除" [ref=e247] [cursor=pointer]:
+                  - img [ref=e248]
+      - generic [ref=e252]:
+        - text: 每页
+        - combobox [ref=e253] [cursor=pointer]:
+          - option "20"
+          - option "50"
+          - option "100" [selected]
+  - generic:
+    - generic:
+      - generic:
+        - heading "编辑 Team 信息" [level=3]
+        - button "×"
+      - generic:
+        - generic:
+          - generic:
+            - generic: 邮箱 *
+            - textbox
+          - generic:
+            - generic: Access Token (AT) *
+            - generic:
+              - textbox
+              - button "刷新":
+                - img
+                - text: 刷新
+          - generic:
+            - generic: Refresh Token (RT)
+            - textbox
+          - generic:
+            - generic: Session Token
+            - textbox
+          - generic:
+            - generic: Client ID
+            - textbox
+          - generic:
+            - generic: Account ID *
+            - textbox
+          - generic:
+            - generic: Team 名称
+            - textbox
+          - generic:
+            - generic: 账号角色
+            - textbox "检测到的账号角色"
+          - generic:
+            - generic: 设备代码身份验证
+            - textbox "检测到的验证开启状态"
+          - generic:
+            - generic: 最大成员数 *
+            - spinbutton
+          - generic:
+            - generic: 状态 *
+            - combobox:
+              - option "活跃 (Active)" [selected]
+              - option "已满 (Full)"
+              - option "已过期 (Expired)"
+              - option "异常 (Error)"
+              - option "已封禁 (Banned)"
+          - button "保存修改"
+  - generic:
+    - generic:
+      - generic:
+        - heading "批量修改最大成员数" [level=3]
+        - button "×"
+      - generic:
+        - generic:
+          - text: 将修改已勾选的
+          - strong: "0"
+          - text: 个 Team。
+        - generic:
+          - generic:
+            - generic: 最大成员数 *
+            - spinbutton: "9"
+            - text: 如果当前成员数已经达到或超过新上限，Team 状态会自动变为“已满”。
+          - button "确认修改"
+  - generic:
+    - generic:
+      - generic:
+        - heading "批量操作结果" [level=3]
+        - button "×"
+      - generic:
+        - textbox "失败详情会显示在这里"
+        - generic:
+          - button "复制详情"
+          - button "关闭"
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - heading "批量操作进度" [level=3]
+          - text: 正在准备任务...
+        - button "×"
+      - generic:
+        - generic:
+          - generic:
+            - generic: 总数
+            - strong: "0"
+          - generic:
+            - generic: 已处理
+            - strong: "0"
+          - generic:
+            - generic: 成功
+            - strong: "0"
+          - generic:
+            - generic: 失败
+            - strong: "0"
+          - generic:
+            - generic: 剩余
+            - strong: "0"
+        - generic:
+          - generic:
+            - generic:
+              - generic: 当前阶段
+              - generic: 等待开始...
+            - generic: 0%
+          - generic: 任务尚未开始
+        - generic:
+          - generic: 账号处理明细
+          - generic:
+            - table:
+              - rowgroup:
+                - row "序号 账号 Team ID 当前阶段 状态 结果摘要":
+                  - columnheader "序号"
+                  - columnheader "账号"
+                  - columnheader "Team ID"
+                  - columnheader "当前阶段"
+                  - columnheader "状态"
+                  - columnheader "结果摘要"
+              - rowgroup
+      - generic:
+        - button "复制结果"
+        - generic:
+          - button "停止"
+          - button "关闭并刷新列表"
+  - generic:
+    - generic:
+      - generic:
+        - heading "导入 Team" [level=3]
+        - button "×"
+      - generic:
+        - generic:
+          - button "单个导入"
+          - button "批量导入"
+        - generic:
+          - generic:
+            - generic:
+              - generic: Access Token (AT) *
+              - textbox "eyJhbGciOiJSUzI1Ni..."
+              - text: 必填项，以 eyJ 开头的 JWT Token
+            - generic:
+              - generic: Refresh Token (RT)
+              - textbox "rt-..."
+              - text: 可选，用于自动刷新 AT
+            - generic:
+              - generic: Session Token
+              - textbox "eyJ..."
+              - text: 可选，作为备选刷新方式
+            - generic:
+              - generic: Client ID
+              - textbox "Client ID"
+              - text: 使用 Refresh Token 时必填
+            - generic:
+              - generic: 邮箱
+              - textbox "admin@example.com"
+              - text: 可选，如果不填写将从 Token 中自动提取
+            - generic:
+              - generic: Account ID
+              - textbox "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              - text: 可选，如果不填写将从 API 自动获取
+            - generic: 导入只会加入统一控制台 Team 池；普通/质保兑换码请在“兑换码管理”页面生成。
+            - button "导入"
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - heading "生成兑换码" [level=3]
+          - paragraph: 选择生成方式后，可按小时精确设置质保剩余时间。
+        - button "关闭生成兑换码弹窗": ×
+      - generic:
+        - generic "兑换码生成容量":
+          - generic:
+            - generic: 可用席位
+            - strong:
+              - generic: "0"
+              - emphasis: 个
+          - generic:
+            - generic: 未使用兑换码
+            - strong:
+              - generic: "0"
+              - emphasis: 个
+          - generic:
+            - generic: 最多还能生成
+            - strong:
+              - generic: "0"
+              - emphasis: 个
+          - paragraph: 生成后未使用兑换码数不能超过可用席位数。
+        - generic:
+          - button "单个生成"
+          - button "批量生成"
+        - generic:
+          - generic:
+            - generic:
+              - generic: 自定义兑换码 (可选)
+              - textbox "留空则自动生成"
+            - generic:
+              - generic:
+                - generic: 自定义生成预设
+                - generic: 仅显示你保存的自定义预设；系统不再提供固定预设。
+              - generic "生成兑换码预设":
+                - generic: 暂无自定义预设，可填写下方配置后保存。
+              - generic:
+                - textbox "自定义预设名称"
+                - button "保存当前为预设"
+            - generic:
+              - generic: 有效期 (天数, 可选)
+              - spinbutton
+            - generic:
+              - generic:
+                - checkbox "质保兑换码（使用后加入质保邮箱列表）"
+                - generic: 质保兑换码（使用后加入质保邮箱列表）
+              - generic: 兑换成功后会把使用邮箱加入质保邮箱列表，并赋予预设或下方设置的剩余时间和次数（默认 10 次质保次数）。
+            - generic:
+              - button "生成兑换码"
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - heading "Team 成员管理" [level=3]
+        - button "×"
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic: 新增成员邮箱
+              - textbox "新增成员邮箱":
+                - /placeholder: user@example.com
+            - button "添加":
+              - img
+              - text: 添加
+        - generic:
+          - heading "已加入成员" [level=4]
+          - generic:
+            - table:
+              - rowgroup:
+                - row "邮箱 角色 加入时间 操作":
+                  - columnheader "邮箱"
+                  - columnheader "角色"
+                  - columnheader "加入时间"
+                  - columnheader "操作"
+              - rowgroup
+        - generic:
+          - heading "待加入成员 (邀请中)" [level=4]
+          - generic:
+            - table:
+              - rowgroup:
+                - row "邮箱 角色 邀请时间 操作":
+                  - columnheader "邮箱"
+                  - columnheader "角色"
+                  - columnheader "邀请时间"
+                  - columnheader "操作"
+              - rowgroup

@@ -1,0 +1,340 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e3]:
+      - heading "GPT Team 管理系统" [level=1] [ref=e6]
+      - generic [ref=e7]:
+        - generic [ref=e8]: 总管理员
+        - button "紧凑模式" [ref=e9] [cursor=pointer]:
+          - img [ref=e10]
+          - text: 紧凑模式
+        - button "登出" [ref=e13] [cursor=pointer]
+  - generic [ref=e14]:
+    - complementary [ref=e15]:
+      - list [ref=e16]:
+        - listitem [ref=e17]:
+          - link "控制台" [ref=e18] [cursor=pointer]:
+            - /url: /admin
+            - img [ref=e19]
+            - generic [ref=e24]: 控制台
+        - listitem [ref=e25]:
+          - link "导入记录" [ref=e26] [cursor=pointer]:
+            - /url: /admin/pending-teams
+            - img [ref=e27]
+            - generic [ref=e30]: 导入记录
+        - listitem [ref=e31]:
+          - link "子管理员" [ref=e32] [cursor=pointer]:
+            - /url: /admin/sub-admins
+            - img [ref=e33]
+            - generic [ref=e45]: 子管理员
+        - listitem [ref=e46]:
+          - link "邮箱白名单" [ref=e47] [cursor=pointer]:
+            - /url: /admin/email-whitelist
+            - img [ref=e48]
+            - generic [ref=e51]: 邮箱白名单
+        - listitem [ref=e52]:
+          - link "质保邮箱列表" [ref=e53] [cursor=pointer]:
+            - /url: /admin/warranty-emails
+            - img [ref=e54]
+            - generic [ref=e57]: 质保邮箱列表
+        - listitem [ref=e58]:
+          - link "质保提交记录" [ref=e59] [cursor=pointer]:
+            - /url: /admin/warranty-claim-records
+            - img [ref=e60]
+            - generic [ref=e63]: 质保提交记录
+        - listitem [ref=e64]:
+          - link "兑换码管理" [ref=e65] [cursor=pointer]:
+            - /url: /admin/codes
+            - img [ref=e66]
+            - generic [ref=e68]: 兑换码管理
+        - listitem [ref=e69]:
+          - link "使用记录" [ref=e70] [cursor=pointer]:
+            - /url: /admin/records
+            - img [ref=e71]
+            - generic [ref=e74]: 使用记录
+        - listitem [ref=e75]:
+          - link "Team 刷新记录" [ref=e76] [cursor=pointer]:
+            - /url: /admin/team-refresh-records
+            - img [ref=e77]
+            - generic [ref=e82]: Team 刷新记录
+        - listitem [ref=e83]:
+          - link "自动清理记录" [ref=e84] [cursor=pointer]:
+            - /url: /admin/team-cleanup-records
+            - generic [ref=e85]: 自动清理记录
+        - listitem [ref=e86]:
+          - link "前台页面" [ref=e87] [cursor=pointer]:
+            - /url: /admin/front-page
+            - img [ref=e88]
+            - generic [ref=e92]: 前台页面
+        - listitem [ref=e93]:
+          - link "系统设置" [ref=e94] [cursor=pointer]:
+            - /url: /admin/settings
+            - img [ref=e95]
+            - generic [ref=e98]: 系统设置
+    - main [ref=e99]:
+      - heading "质保邮箱列表" [level=2] [ref=e101]
+      - generic [ref=e102]:
+        - heading "新增 / 编辑质保邮箱" [level=3] [ref=e104]
+        - generic [ref=e105]:
+          - generic [ref=e106]:
+            - generic [ref=e107]: 邮箱
+            - textbox "邮箱" [ref=e108]:
+              - /placeholder: user@example.com
+          - generic [ref=e109]:
+            - generic [ref=e110]: 剩余天数
+            - spinbutton "剩余天数" [ref=e111]: "30"
+            - paragraph [ref=e112]: 系统按“剩余天数 + 剩余次数”同时满足时才允许质保。
+          - generic [ref=e113]:
+            - generic [ref=e114]: 剩余次数
+            - spinbutton "剩余次数" [ref=e115]: "10"
+          - generic [ref=e116]:
+            - button "保存质保邮箱" [ref=e117] [cursor=pointer]
+            - button "清空表单" [ref=e118] [cursor=pointer]
+      - generic [ref=e119]:
+        - heading "邮箱列表" [level=3] [ref=e121]
+        - generic [ref=e122]:
+          - generic [ref=e123]:
+            - text: 关键词
+            - textbox "关键词" [ref=e124]:
+              - /placeholder: 搜索邮箱或兑换码
+          - generic [ref=e125]:
+            - text: 筛选状态
+            - combobox "筛选状态" [ref=e126]:
+              - option "全部状态" [selected]
+              - option "有效"
+              - option "次数耗尽"
+              - option "已过期"
+              - option "未启用"
+          - generic [ref=e127]:
+            - generic [ref=e128]: 剩余次数
+            - generic [ref=e129]:
+              - spinbutton [ref=e130]
+              - generic [ref=e131]: "-"
+              - spinbutton [ref=e132]
+          - generic [ref=e133]:
+            - generic [ref=e134]: 剩余天数
+            - generic [ref=e135]:
+              - spinbutton [ref=e136]
+              - generic [ref=e137]: "-"
+              - spinbutton [ref=e138]
+          - generic [ref=e139]:
+            - text: 来源
+            - combobox "来源" [ref=e140]:
+              - option "全部来源" [selected]
+              - option "质保兑换码自动入列"
+              - option "管理员手动维护"
+          - button "筛选" [ref=e142] [cursor=pointer]:
+            - img [ref=e143]
+            - text: 筛选
+        - paragraph [ref=e145]: 支持输入邮箱、最近普通兑换码，或历史已使用兑换码自动关联对应质保记录。
+        - table [ref=e147]:
+          - rowgroup [ref=e148]:
+            - row "邮箱 状态 剩余次数 剩余天数 来源 质保兑换码 / 最近普通兑换码 关联 Team / 最近质保席位 更新时间 操作" [ref=e149]:
+              - columnheader [ref=e150]:
+                - checkbox [ref=e151]
+              - columnheader "邮箱" [ref=e152]
+              - columnheader "状态" [ref=e153]
+              - columnheader "剩余次数" [ref=e154]
+              - columnheader "剩余天数" [ref=e155]
+              - columnheader "来源" [ref=e156]
+              - columnheader "质保兑换码 / 最近普通兑换码" [ref=e157]
+              - columnheader "关联 Team / 最近质保席位" [ref=e158]
+              - columnheader "更新时间" [ref=e159]
+              - columnheader "操作" [ref=e160]
+          - rowgroup [ref=e161]:
+            - row "buyer@example.com 有效 5 8 质保兑换码自动入列 CODE-A 2 2026-04-27 22:21 编辑 删除" [ref=e162]:
+              - cell [ref=e163]:
+                - checkbox [ref=e164]
+              - cell "buyer@example.com" [ref=e165]
+              - cell "有效" [ref=e166]:
+                - generic [ref=e167]: 有效
+              - cell "5" [ref=e168]
+              - cell "8" [ref=e169]
+              - cell "质保兑换码自动入列" [ref=e170]
+              - cell "CODE-A" [ref=e171]
+              - cell "2" [ref=e172]
+              - cell "2026-04-27 22:21" [ref=e173]
+              - cell "编辑 删除" [ref=e174]:
+                - generic [ref=e175]:
+                  - button "编辑" [ref=e176] [cursor=pointer]
+                  - button "删除" [ref=e177] [cursor=pointer]
+            - row "buyer@example.com 有效 2 26 质保兑换码自动入列 CODE-B 2 2026-04-24 22:21 编辑 删除" [ref=e178]:
+              - cell [ref=e179]:
+                - checkbox [ref=e180]
+              - cell "buyer@example.com" [ref=e181]
+              - cell "有效" [ref=e182]:
+                - generic [ref=e183]: 有效
+              - cell "2" [ref=e184]
+              - cell "26" [ref=e185]
+              - cell "质保兑换码自动入列" [ref=e186]
+              - cell "CODE-B" [ref=e187]
+              - cell "2" [ref=e188]
+              - cell "2026-04-24 22:21" [ref=e189]
+              - cell "编辑 删除" [ref=e190]:
+                - generic [ref=e191]:
+                  - button "编辑" [ref=e192] [cursor=pointer]
+                  - button "删除" [ref=e193] [cursor=pointer]
+      - generic:
+        - generic:
+          - generic:
+            - heading "批量修改剩余天数 / 次数" [level=3]
+            - button "×"
+          - generic:
+            - generic:
+              - text: 您正在批量修改
+              - strong: "0"
+              - text: 个质保邮箱。
+            - generic:
+              - generic:
+                - generic:
+                  - checkbox "修改剩余天数" [checked]
+                  - text: 修改剩余天数
+                - spinbutton: "30"
+              - generic:
+                - generic:
+                  - checkbox "修改剩余次数" [checked]
+                  - text: 修改剩余次数
+                - spinbutton: "10"
+              - paragraph: 可取消某一项勾选，仅修改另一项；剩余天数和剩余次数均为非负整数。
+              - button "保存批量修改"
+  - generic:
+    - generic:
+      - generic:
+        - heading "导入 Team" [level=3]
+        - button "×"
+      - generic:
+        - generic:
+          - button "单个导入"
+          - button "批量导入"
+        - generic:
+          - generic:
+            - generic:
+              - generic: Access Token (AT) *
+              - textbox "eyJhbGciOiJSUzI1Ni..."
+              - text: 必填项，以 eyJ 开头的 JWT Token
+            - generic:
+              - generic: Refresh Token (RT)
+              - textbox "rt-..."
+              - text: 可选，用于自动刷新 AT
+            - generic:
+              - generic: Session Token
+              - textbox "eyJ..."
+              - text: 可选，作为备选刷新方式
+            - generic:
+              - generic: Client ID
+              - textbox "Client ID"
+              - text: 使用 Refresh Token 时必填
+            - generic:
+              - generic: 邮箱
+              - textbox "admin@example.com"
+              - text: 可选，如果不填写将从 Token 中自动提取
+            - generic:
+              - generic: Account ID
+              - textbox "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              - text: 可选，如果不填写将从 API 自动获取
+            - generic: 导入只会加入统一控制台 Team 池；普通/质保兑换码请在“兑换码管理”页面生成。
+            - button "导入"
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - heading "生成兑换码" [level=3]
+          - paragraph: 选择生成方式后，可用预设快速完成有效期与质保配置。
+        - button "关闭生成兑换码弹窗": ×
+      - generic:
+        - generic "兑换码生成容量":
+          - generic:
+            - generic: 可用席位
+            - strong:
+              - generic: "0"
+              - emphasis: 个
+          - generic:
+            - generic: 未使用兑换码
+            - strong:
+              - generic: "0"
+              - emphasis: 个
+          - generic:
+            - generic: 最多还能生成
+            - strong:
+              - generic: "0"
+              - emphasis: 个
+          - paragraph: 生成后未使用兑换码数不能超过可用席位数。
+        - generic:
+          - button "单个生成"
+          - button "批量生成"
+        - generic:
+          - generic:
+            - generic:
+              - generic: 自定义兑换码 (可选)
+              - textbox "留空则自动生成"
+            - generic:
+              - generic:
+                - generic: 生成预设
+                - generic: 一键填入有效期、质保天数和质保次数，并自动勾选质保兑换码。
+              - generic "生成兑换码预设":
+                - generic:
+                  - button "应用7天体验预设":
+                    - generic: 7天体验
+                    - generic: 有效期 7天 · 质保 7天 · 1次
+                - generic:
+                  - button "应用30天标准预设":
+                    - generic: 30天标准
+                    - generic: 有效期 30天 · 质保 30天 · 10次
+                - generic:
+                  - button "应用90天长期预设":
+                    - generic: 90天长期
+                    - generic: 有效期 90天 · 质保 90天 · 15次
+                - generic:
+                  - button "应用永久兑换预设":
+                    - generic: 永久兑换
+                    - generic: 有效期 永久 · 质保 30天 · 10次
+              - generic:
+                - textbox "自定义预设名称"
+                - button "保存当前为预设"
+            - generic:
+              - generic: 有效期 (天数, 可选)
+              - spinbutton
+            - generic:
+              - generic:
+                - checkbox "质保兑换码（使用后加入质保邮箱列表）"
+                - generic: 质保兑换码（使用后加入质保邮箱列表）
+              - generic: 兑换成功后会把使用邮箱加入质保邮箱列表，并赋予预设或下方设置的剩余天数和次数（默认 10 次质保次数）。
+            - generic:
+              - button "生成兑换码"
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - heading "Team 成员管理" [level=3]
+        - button "×"
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic: 新增成员邮箱
+              - textbox "新增成员邮箱":
+                - /placeholder: user@example.com
+            - button "添加":
+              - img
+              - text: 添加
+        - generic:
+          - heading "已加入成员" [level=4]
+          - generic:
+            - table:
+              - rowgroup:
+                - row "邮箱 角色 加入时间 操作":
+                  - columnheader "邮箱"
+                  - columnheader "角色"
+                  - columnheader "加入时间"
+                  - columnheader "操作"
+              - rowgroup
+        - generic:
+          - heading "待加入成员 (邀请中)" [level=4]
+          - generic:
+            - table:
+              - rowgroup:
+                - row "邮箱 角色 邀请时间 操作":
+                  - columnheader "邮箱"
+                  - columnheader "角色"
+                  - columnheader "邀请时间"
+                  - columnheader "操作"
+              - rowgroup

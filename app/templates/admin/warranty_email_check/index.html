@@ -58,8 +58,77 @@
 
         <p class="form-help">支持常用富文本：加粗、链接、列表、段落、图片；可直接粘贴图片或点击“图片”上传，单张不超过 5MB。</p>
 
+        <div class="form-group sub2api-warranty-settings">
+            <label>命中后自动生成 Sub2API 订阅兑换码</label>
+            <p class="form-help">开启名单判定后，邮箱命中质保列表时，系统会按该邮箱剩余天数（向上取整）调用 Sub2API Admin API 生成一个未使用的订阅兑换码；同一邮箱后续查询复用同一兑换码。</p>
+            <div class="sub2api-warranty-grid">
+                <label class="form-group" for="sub2apiWarrantyBaseUrl">
+                    <span>Sub2API 基础地址</span>
+                    <input type="url" id="sub2apiWarrantyBaseUrl" class="form-control" placeholder="https://sub2api.example.com" value="{{ sub2api_warranty_redeem_config.base_url|default('') }}">
+                </label>
+                <label class="form-group" for="sub2apiWarrantyAdminApiKey">
+                    <span>Admin API Key</span>
+                    <input type="password" id="sub2apiWarrantyAdminApiKey" class="form-control" placeholder="admin-..." value="{{ sub2api_warranty_redeem_config.admin_api_key|default('') }}" autocomplete="off">
+                </label>
+                <label class="form-group" for="sub2apiWarrantyGroupId">
+                    <span>订阅分组 ID</span>
+                    <input type="number" id="sub2apiWarrantyGroupId" class="form-control" min="1" placeholder="12" value="{{ sub2api_warranty_redeem_config.subscription_group_id|default('', true) }}">
+                </label>
+                <label class="form-group" for="sub2apiWarrantyCodePrefix">
+                    <span>兑换码前缀</span>
+                    <input type="text" id="sub2apiWarrantyCodePrefix" class="form-control" maxlength="24" placeholder="TMW" value="{{ sub2api_warranty_redeem_config.code_prefix|default('TMW') }}">
+                </label>
+            </div>
+        </div>
+
         <button type="submit" class="btn btn-primary">保存邮箱名单判定</button>
     </form>
+</div>
+
+<div class="content-section">
+    <div class="section-header">
+        <h3>兑换码生成记录</h3>
+    </div>
+    <p class="form-help">仅展示最近 200 条由质保名单判定自动生成的 Sub2API 订阅兑换码。</p>
+
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>邮箱</th>
+                    <th>兑换码</th>
+                    <th>有效天数</th>
+                    <th>关联质保记录</th>
+                    <th>生成时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in generated_redeem_code_records %}
+                <tr>
+                    <td>{{ record.email }}</td>
+                    <td>
+                        <code class="generated-code-cell">{{ record.code }}</code>
+                    </td>
+                    <td>{{ record.remaining_days or '-' }}</td>
+                    <td>
+                        {% if record.entry_id %}
+                        <div>ID：{{ record.entry_id }}</div>
+                        <div class="record-muted">剩余次数：{{ record.entry_remaining_claims if record.entry_remaining_claims is not none else '-' }}</div>
+                        <div class="record-muted">到期：{{ record.entry_expires_at|format_datetime_seconds if record.entry_expires_at else '-' }}</div>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>{{ record.generated_at|format_datetime if record.generated_at else '-' }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="empty-state-cell">暂无自动生成记录</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}
 
@@ -155,6 +224,34 @@
         margin: 0.5rem 0;
     }
 
+    .sub2api-warranty-settings {
+        padding: 1rem;
+        border: 1px solid var(--border-base);
+        border-radius: var(--radius-lg);
+        background: var(--bg-surface);
+    }
+
+    .sub2api-warranty-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+        margin-top: 0.75rem;
+    }
+
+    .generated-code-cell {
+        display: inline-block;
+        max-width: 260px;
+        word-break: break-all;
+        padding: 0.25rem 0.45rem;
+        border-radius: var(--radius-sm);
+        background: rgba(255, 255, 255, 0.06);
+    }
+
+    .record-muted {
+        color: var(--text-muted);
+        font-size: 0.8125rem;
+    }
+
     @media (max-width: 640px) {
         .warranty-template-group__header,
         .warranty-template-card__header {
@@ -164,6 +261,10 @@
 
         .rich-text-editor {
             min-height: 150px;
+        }
+
+        .sub2api-warranty-grid {
+            grid-template-columns: 1fr;
         }
     }
 </style>
@@ -468,7 +569,19 @@
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ enabled, match_content, miss_content, match_templates, miss_templates })
+                body: JSON.stringify({
+                    enabled,
+                    match_content,
+                    miss_content,
+                    match_templates,
+                    miss_templates,
+                    sub2api_base_url: document.getElementById('sub2apiWarrantyBaseUrl')?.value?.trim() || '',
+                    sub2api_admin_api_key: document.getElementById('sub2apiWarrantyAdminApiKey')?.value?.trim() || '',
+                    sub2api_subscription_group_id: document.getElementById('sub2apiWarrantyGroupId')?.value
+                        ? Number(document.getElementById('sub2apiWarrantyGroupId').value)
+                        : null,
+                    sub2api_code_prefix: document.getElementById('sub2apiWarrantyCodePrefix')?.value?.trim() || ''
+                })
             });
 
             const data = await response.json();

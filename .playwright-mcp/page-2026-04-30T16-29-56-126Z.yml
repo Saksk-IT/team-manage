@@ -1,0 +1,797 @@
+- generic [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e3]:
+      - heading "GPT Team 管理系统" [level=1] [ref=e6]
+      - generic [ref=e7]:
+        - generic [ref=e8]: 总管理员
+        - button "紧凑模式" [ref=e9] [cursor=pointer]:
+          - img [ref=e10]
+          - text: 紧凑模式
+        - button "登出" [ref=e13] [cursor=pointer]
+  - generic [ref=e14]:
+    - complementary [ref=e15]:
+      - list [ref=e16]:
+        - listitem [ref=e17]:
+          - link "控制台" [ref=e18] [cursor=pointer]:
+            - /url: /admin
+            - img [ref=e19]
+            - generic [ref=e24]: 控制台
+        - listitem [ref=e25]:
+          - link "导入记录" [ref=e26] [cursor=pointer]:
+            - /url: /admin/pending-teams
+            - img [ref=e27]
+            - generic [ref=e30]: 导入记录
+        - listitem [ref=e31]:
+          - link "邮箱白名单" [ref=e32] [cursor=pointer]:
+            - /url: /admin/email-whitelist
+            - img [ref=e33]
+            - generic [ref=e36]: 邮箱白名单
+        - listitem [ref=e37]:
+          - link "质保邮箱列表" [ref=e38] [cursor=pointer]:
+            - /url: /admin/warranty-emails
+            - img [ref=e39]
+            - generic [ref=e42]: 质保邮箱列表
+        - listitem [ref=e43]:
+          - link "兑换码管理" [ref=e44] [cursor=pointer]:
+            - /url: /admin/codes
+            - img [ref=e45]
+            - generic [ref=e47]: 兑换码管理
+        - listitem [ref=e48]:
+          - link "使用记录" [ref=e49] [cursor=pointer]:
+            - /url: /admin/records
+            - img [ref=e50]
+            - generic [ref=e53]: 使用记录
+        - listitem [ref=e54]:
+          - link "自动清理记录" [ref=e55] [cursor=pointer]:
+            - /url: /admin/team-cleanup-records
+            - generic [ref=e56]: 自动清理记录
+        - listitem [ref=e57]:
+          - link "前台页面" [ref=e58] [cursor=pointer]:
+            - /url: /admin/front-page
+            - img [ref=e59]
+            - generic [ref=e63]: 前台页面
+        - listitem [ref=e64]:
+          - link "系统设置" [ref=e65] [cursor=pointer]:
+            - /url: /admin/settings
+            - img [ref=e66]
+            - generic [ref=e69]: 系统设置
+        - listitem [ref=e70]:
+          - link "质保提交记录" [ref=e71] [cursor=pointer]:
+            - /url: /admin/warranty-claim-records
+            - img [ref=e72]
+            - generic [ref=e75]: 质保提交记录
+        - listitem [ref=e76]:
+          - link "子管理员" [ref=e77] [cursor=pointer]:
+            - /url: /admin/sub-admins
+            - img [ref=e78]
+            - generic [ref=e90]: 子管理员
+        - listitem [ref=e91]:
+          - link "成员快照" [ref=e92] [cursor=pointer]:
+            - /url: /admin/team-member-snapshots
+            - img [ref=e93]
+            - generic [ref=e97]: 成员快照
+        - listitem [ref=e98]:
+          - link "Team 刷新记录" [ref=e99] [cursor=pointer]:
+            - /url: /admin/team-refresh-records
+            - img [ref=e100]
+            - generic [ref=e105]: Team 刷新记录
+    - main [ref=e106]:
+      - heading "兑换码管理" [level=2] [ref=e108]
+      - generic [ref=e109]:
+        - generic [ref=e110]:
+          - generic [ref=e111]: 🎫
+          - generic [ref=e112]:
+            - generic [ref=e113]: "14"
+            - generic [ref=e114]: 兑换码总数
+        - generic [ref=e115]:
+          - generic [ref=e116]: ✅
+          - generic [ref=e117]:
+            - generic [ref=e118]: "14"
+            - generic [ref=e119]: 未使用
+        - generic [ref=e120]:
+          - generic [ref=e121]: 📝
+          - generic [ref=e122]:
+            - generic [ref=e123]: "0"
+            - generic [ref=e124]: 已使用
+        - generic [ref=e125]:
+          - generic [ref=e126]: 💺
+          - generic [ref=e127]:
+            - generic [ref=e128]: "0"
+            - generic [ref=e129]: 可用席位
+      - generic [ref=e131]:
+        - generic [ref=e132]:
+          - generic [ref=e133]:
+            - generic [ref=e134]: 状态
+            - combobox "状态" [ref=e135]:
+              - option "全部状态" [selected]
+              - option "未使用"
+              - option "已使用（含质保中）"
+              - option "仅质保中"
+              - option "已过期"
+          - generic [ref=e136]:
+            - generic [ref=e137]: 兑换码类型
+            - combobox "兑换码类型" [ref=e138]:
+              - option "全部类型" [selected]
+              - option "普通兑换码"
+              - option "质保兑换码"
+          - generic [ref=e139]:
+            - generic [ref=e140]: 搜索
+            - textbox "搜索" [ref=e141]:
+              - /placeholder: 兑换码 / 邮箱
+          - generic [ref=e142]:
+            - generic [ref=e143]: 创建时间
+            - generic [ref=e144]:
+              - textbox "创建开始日期" [ref=e145]
+              - generic [ref=e146]: 至
+              - textbox "创建结束日期" [ref=e147]
+          - generic [ref=e148]:
+            - generic [ref=e149]: 质保时长
+            - spinbutton "质保时长" [ref=e150]
+          - generic [ref=e151]:
+            - generic [ref=e152]: 剩余时间
+            - generic [ref=e153]:
+              - spinbutton [ref=e154]
+              - generic [ref=e155]: 至
+              - spinbutton [ref=e156]
+          - generic [ref=e157]:
+            - generic [ref=e158]: 剩余次数
+            - generic [ref=e159]:
+              - spinbutton [ref=e160]
+              - generic [ref=e161]: 至
+              - spinbutton [ref=e162]
+          - generic [ref=e163]:
+            - button "筛选" [ref=e164] [cursor=pointer]:
+              - img [ref=e165]
+              - text: 筛选
+            - link "重置" [ref=e167] [cursor=pointer]:
+              - /url: /admin/codes
+        - generic [ref=e168]:
+          - button "列设置" [ref=e170] [cursor=pointer]:
+            - img [ref=e171]
+            - text: 列设置
+          - button "生成兑换码" [ref=e173] [cursor=pointer]:
+            - img [ref=e174]
+            - text: 生成兑换码
+          - button "批量改剩余" [ref=e176] [cursor=pointer]:
+            - img [ref=e177]
+            - text: 批量改剩余
+          - button "导出" [ref=e180] [cursor=pointer]:
+            - img [ref=e181]
+            - text: 导出
+      - generic [ref=e184]:
+        - table [ref=e186]:
+          - rowgroup [ref=e187]:
+            - row "兑换码 状态 创建时间 过期时间 使用者邮箱 使用时间 兑换码类型 质保时长 剩余时间 质保到期时间 剩余次数 操作" [ref=e188]:
+              - columnheader [ref=e189]:
+                - checkbox [ref=e190]
+              - columnheader "兑换码" [ref=e191]
+              - columnheader "状态" [ref=e192]
+              - columnheader "创建时间" [ref=e193]
+              - columnheader "过期时间" [ref=e194]
+              - columnheader "使用者邮箱" [ref=e195]
+              - columnheader "使用时间" [ref=e196]
+              - columnheader "兑换码类型" [ref=e197]
+              - columnheader "质保时长" [ref=e198]
+              - columnheader "剩余时间" [ref=e199]
+              - columnheader "质保到期时间" [ref=e200]
+              - columnheader "剩余次数" [ref=e201]
+              - columnheader "操作" [ref=e202]
+          - rowgroup [ref=e203]:
+            - row "F7LU-5EMA-6NHW-BMZM 未使用 2026-04-28 01:27 永久有效 - - 质保兑换码 30天 00:00:00 30天 00:00:00 - 10" [ref=e204]:
+              - cell [ref=e205]:
+                - checkbox [ref=e206]
+              - cell "F7LU-5EMA-6NHW-BMZM" [ref=e207]:
+                - generic [ref=e208]:
+                  - img [ref=e209]
+                  - code [ref=e211]: F7LU-5EMA-6NHW-BMZM
+              - cell "未使用" [ref=e212]:
+                - generic [ref=e213]: 未使用
+              - cell "2026-04-28 01:27" [ref=e214]
+              - cell "永久有效" [ref=e215]
+              - cell "-" [ref=e216]
+              - cell "-" [ref=e217]
+              - cell "质保兑换码" [ref=e218]:
+                - generic [ref=e219]: 质保兑换码
+              - cell "30天 00:00:00" [ref=e220]
+              - cell "30天 00:00:00" [ref=e221]
+              - cell "-" [ref=e222]
+              - cell "10" [ref=e223]
+              - cell [ref=e224]:
+                - generic [ref=e225]:
+                  - button "复制" [ref=e226] [cursor=pointer]:
+                    - img [ref=e227]
+                  - button "编辑" [ref=e230] [cursor=pointer]:
+                    - img [ref=e231]
+                  - button "删除" [ref=e233] [cursor=pointer]:
+                    - img [ref=e234]
+            - row "BH2S-R455-53NE-V3UG 未使用 2026-04-28 01:27 永久有效 - - 质保兑换码 30天 00:00:00 30天 00:00:00 - 10" [ref=e237]:
+              - cell [ref=e238]:
+                - checkbox [ref=e239]
+              - cell "BH2S-R455-53NE-V3UG" [ref=e240]:
+                - generic [ref=e241]:
+                  - img [ref=e242]
+                  - code [ref=e244]: BH2S-R455-53NE-V3UG
+              - cell "未使用" [ref=e245]:
+                - generic [ref=e246]: 未使用
+              - cell "2026-04-28 01:27" [ref=e247]
+              - cell "永久有效" [ref=e248]
+              - cell "-" [ref=e249]
+              - cell "-" [ref=e250]
+              - cell "质保兑换码" [ref=e251]:
+                - generic [ref=e252]: 质保兑换码
+              - cell "30天 00:00:00" [ref=e253]
+              - cell "30天 00:00:00" [ref=e254]
+              - cell "-" [ref=e255]
+              - cell "10" [ref=e256]
+              - cell [ref=e257]:
+                - generic [ref=e258]:
+                  - button "复制" [ref=e259] [cursor=pointer]:
+                    - img [ref=e260]
+                  - button "编辑" [ref=e263] [cursor=pointer]:
+                    - img [ref=e264]
+                  - button "删除" [ref=e266] [cursor=pointer]:
+                    - img [ref=e267]
+            - row "NS64-S2MN-MGA8-FHX7 未使用 2026-04-28 01:27 永久有效 - - 质保兑换码 30天 00:00:00 30天 00:00:00 - 10" [ref=e270]:
+              - cell [ref=e271]:
+                - checkbox [ref=e272]
+              - cell "NS64-S2MN-MGA8-FHX7" [ref=e273]:
+                - generic [ref=e274]:
+                  - img [ref=e275]
+                  - code [ref=e277]: NS64-S2MN-MGA8-FHX7
+              - cell "未使用" [ref=e278]:
+                - generic [ref=e279]: 未使用
+              - cell "2026-04-28 01:27" [ref=e280]
+              - cell "永久有效" [ref=e281]
+              - cell "-" [ref=e282]
+              - cell "-" [ref=e283]
+              - cell "质保兑换码" [ref=e284]:
+                - generic [ref=e285]: 质保兑换码
+              - cell "30天 00:00:00" [ref=e286]
+              - cell "30天 00:00:00" [ref=e287]
+              - cell "-" [ref=e288]
+              - cell "10" [ref=e289]
+              - cell [ref=e290]:
+                - generic [ref=e291]:
+                  - button "复制" [ref=e292] [cursor=pointer]:
+                    - img [ref=e293]
+                  - button "编辑" [ref=e296] [cursor=pointer]:
+                    - img [ref=e297]
+                  - button "删除" [ref=e299] [cursor=pointer]:
+                    - img [ref=e300]
+            - row "NWAY-FMYM-T586-S3MB 未使用 2026-04-28 01:27 永久有效 - - 质保兑换码 30天 00:00:00 30天 00:00:00 - 10" [ref=e303]:
+              - cell [ref=e304]:
+                - checkbox [ref=e305]
+              - cell "NWAY-FMYM-T586-S3MB" [ref=e306]:
+                - generic [ref=e307]:
+                  - img [ref=e308]
+                  - code [ref=e310]: NWAY-FMYM-T586-S3MB
+              - cell "未使用" [ref=e311]:
+                - generic [ref=e312]: 未使用
+              - cell "2026-04-28 01:27" [ref=e313]
+              - cell "永久有效" [ref=e314]
+              - cell "-" [ref=e315]
+              - cell "-" [ref=e316]
+              - cell "质保兑换码" [ref=e317]:
+                - generic [ref=e318]: 质保兑换码
+              - cell "30天 00:00:00" [ref=e319]
+              - cell "30天 00:00:00" [ref=e320]
+              - cell "-" [ref=e321]
+              - cell "10" [ref=e322]
+              - cell [ref=e323]:
+                - generic [ref=e324]:
+                  - button "复制" [ref=e325] [cursor=pointer]:
+                    - img [ref=e326]
+                  - button "编辑" [ref=e329] [cursor=pointer]:
+                    - img [ref=e330]
+                  - button "删除" [ref=e332] [cursor=pointer]:
+                    - img [ref=e333]
+            - row "MJ2R-94NZ-MGME-TLNX 未使用 2026-04-28 01:27 永久有效 - - 质保兑换码 30天 00:00:00 30天 00:00:00 - 10" [ref=e336]:
+              - cell [ref=e337]:
+                - checkbox [ref=e338]
+              - cell "MJ2R-94NZ-MGME-TLNX" [ref=e339]:
+                - generic [ref=e340]:
+                  - img [ref=e341]
+                  - code [ref=e343]: MJ2R-94NZ-MGME-TLNX
+              - cell "未使用" [ref=e344]:
+                - generic [ref=e345]: 未使用
+              - cell "2026-04-28 01:27" [ref=e346]
+              - cell "永久有效" [ref=e347]
+              - cell "-" [ref=e348]
+              - cell "-" [ref=e349]
+              - cell "质保兑换码" [ref=e350]:
+                - generic [ref=e351]: 质保兑换码
+              - cell "30天 00:00:00" [ref=e352]
+              - cell "30天 00:00:00" [ref=e353]
+              - cell "-" [ref=e354]
+              - cell "10" [ref=e355]
+              - cell [ref=e356]:
+                - generic [ref=e357]:
+                  - button "复制" [ref=e358] [cursor=pointer]:
+                    - img [ref=e359]
+                  - button "编辑" [ref=e362] [cursor=pointer]:
+                    - img [ref=e363]
+                  - button "删除" [ref=e365] [cursor=pointer]:
+                    - img [ref=e366]
+            - row "H2XW-VPJH-BWE3-TFXE 未使用 2026-04-28 01:27 永久有效 - - 质保兑换码 30天 00:00:00 30天 00:00:00 - 10" [ref=e369]:
+              - cell [ref=e370]:
+                - checkbox [ref=e371]
+              - cell "H2XW-VPJH-BWE3-TFXE" [ref=e372]:
+                - generic [ref=e373]:
+                  - img [ref=e374]
+                  - code [ref=e376]: H2XW-VPJH-BWE3-TFXE
+              - cell "未使用" [ref=e377]:
+                - generic [ref=e378]: 未使用
+              - cell "2026-04-28 01:27" [ref=e379]
+              - cell "永久有效" [ref=e380]
+              - cell "-" [ref=e381]
+              - cell "-" [ref=e382]
+              - cell "质保兑换码" [ref=e383]:
+                - generic [ref=e384]: 质保兑换码
+              - cell "30天 00:00:00" [ref=e385]
+              - cell "30天 00:00:00" [ref=e386]
+              - cell "-" [ref=e387]
+              - cell "10" [ref=e388]
+              - cell [ref=e389]:
+                - generic [ref=e390]:
+                  - button "复制" [ref=e391] [cursor=pointer]:
+                    - img [ref=e392]
+                  - button "编辑" [ref=e395] [cursor=pointer]:
+                    - img [ref=e396]
+                  - button "删除" [ref=e398] [cursor=pointer]:
+                    - img [ref=e399]
+            - row "JN2T-FYYT-P6EP-6BHS 未使用 2026-04-28 01:27 永久有效 - - 质保兑换码 30天 00:00:00 30天 00:00:00 - 10" [ref=e402]:
+              - cell [ref=e403]:
+                - checkbox [ref=e404]
+              - cell "JN2T-FYYT-P6EP-6BHS" [ref=e405]:
+                - generic [ref=e406]:
+                  - img [ref=e407]
+                  - code [ref=e409]: JN2T-FYYT-P6EP-6BHS
+              - cell "未使用" [ref=e410]:
+                - generic [ref=e411]: 未使用
+              - cell "2026-04-28 01:27" [ref=e412]
+              - cell "永久有效" [ref=e413]
+              - cell "-" [ref=e414]
+              - cell "-" [ref=e415]
+              - cell "质保兑换码" [ref=e416]:
+                - generic [ref=e417]: 质保兑换码
+              - cell "30天 00:00:00" [ref=e418]
+              - cell "30天 00:00:00" [ref=e419]
+              - cell "-" [ref=e420]
+              - cell "10" [ref=e421]
+              - cell [ref=e422]:
+                - generic [ref=e423]:
+                  - button "复制" [ref=e424] [cursor=pointer]:
+                    - img [ref=e425]
+                  - button "编辑" [ref=e428] [cursor=pointer]:
+                    - img [ref=e429]
+                  - button "删除" [ref=e431] [cursor=pointer]:
+                    - img [ref=e432]
+            - row "NR96-TGXM-BBPM-HNKU 未使用 2026-03-21 14:40 永久有效 - - 质保兑换码 30天 00:00:00 30天 00:00:00 - 10" [ref=e435]:
+              - cell [ref=e436]:
+                - checkbox [ref=e437]
+              - cell "NR96-TGXM-BBPM-HNKU" [ref=e438]:
+                - generic [ref=e439]:
+                  - img [ref=e440]
+                  - code [ref=e442]: NR96-TGXM-BBPM-HNKU
+              - cell "未使用" [ref=e443]:
+                - generic [ref=e444]: 未使用
+              - cell "2026-03-21 14:40" [ref=e445]
+              - cell "永久有效" [ref=e446]
+              - cell "-" [ref=e447]
+              - cell "-" [ref=e448]
+              - cell "质保兑换码" [ref=e449]:
+                - generic [ref=e450]: 质保兑换码
+              - cell "30天 00:00:00" [ref=e451]
+              - cell "30天 00:00:00" [ref=e452]
+              - cell "-" [ref=e453]
+              - cell "10" [ref=e454]
+              - cell [ref=e455]:
+                - generic [ref=e456]:
+                  - button "复制" [ref=e457] [cursor=pointer]:
+                    - img [ref=e458]
+                  - button "编辑" [ref=e461] [cursor=pointer]:
+                    - img [ref=e462]
+                  - button "删除" [ref=e464] [cursor=pointer]:
+                    - img [ref=e465]
+            - row "9RXX-D3VF-PSXQ-MYBT 未使用 2026-03-21 14:40 永久有效 - - 普通兑换码 - - - -" [ref=e468]:
+              - cell [ref=e469]:
+                - checkbox [ref=e470]
+              - cell "9RXX-D3VF-PSXQ-MYBT" [ref=e471]:
+                - generic [ref=e472]:
+                  - img [ref=e473]
+                  - code [ref=e475]: 9RXX-D3VF-PSXQ-MYBT
+              - cell "未使用" [ref=e476]:
+                - generic [ref=e477]: 未使用
+              - cell "2026-03-21 14:40" [ref=e478]
+              - cell "永久有效" [ref=e479]
+              - cell "-" [ref=e480]
+              - cell "-" [ref=e481]
+              - cell "普通兑换码" [ref=e482]:
+                - generic [ref=e483]: 普通兑换码
+              - cell "-" [ref=e484]
+              - cell "-" [ref=e485]
+              - cell "-" [ref=e486]
+              - cell "-" [ref=e487]
+              - cell [ref=e488]:
+                - generic [ref=e489]:
+                  - button "复制" [ref=e490] [cursor=pointer]:
+                    - img [ref=e491]
+                  - button "编辑" [ref=e494] [cursor=pointer]:
+                    - img [ref=e495]
+                  - button "删除" [ref=e497] [cursor=pointer]:
+                    - img [ref=e498]
+            - row "UMD8-MBMU-FFJU-PC52 未使用 2026-03-21 14:40 永久有效 - - 普通兑换码 - - - -" [ref=e501]:
+              - cell [ref=e502]:
+                - checkbox [ref=e503]
+              - cell "UMD8-MBMU-FFJU-PC52" [ref=e504]:
+                - generic [ref=e505]:
+                  - img [ref=e506]
+                  - code [ref=e508]: UMD8-MBMU-FFJU-PC52
+              - cell "未使用" [ref=e509]:
+                - generic [ref=e510]: 未使用
+              - cell "2026-03-21 14:40" [ref=e511]
+              - cell "永久有效" [ref=e512]
+              - cell "-" [ref=e513]
+              - cell "-" [ref=e514]
+              - cell "普通兑换码" [ref=e515]:
+                - generic [ref=e516]: 普通兑换码
+              - cell "-" [ref=e517]
+              - cell "-" [ref=e518]
+              - cell "-" [ref=e519]
+              - cell "-" [ref=e520]
+              - cell [ref=e521]:
+                - generic [ref=e522]:
+                  - button "复制" [ref=e523] [cursor=pointer]:
+                    - img [ref=e524]
+                  - button "编辑" [ref=e527] [cursor=pointer]:
+                    - img [ref=e528]
+                  - button "删除" [ref=e530] [cursor=pointer]:
+                    - img [ref=e531]
+            - row "T8BC-KFPH-FJAE-CBFK 未使用 2026-03-21 14:38 永久有效 - - 普通兑换码 - - - -" [ref=e534]:
+              - cell [ref=e535]:
+                - checkbox [ref=e536]
+              - cell "T8BC-KFPH-FJAE-CBFK" [ref=e537]:
+                - generic [ref=e538]:
+                  - img [ref=e539]
+                  - code [ref=e541]: T8BC-KFPH-FJAE-CBFK
+              - cell "未使用" [ref=e542]:
+                - generic [ref=e543]: 未使用
+              - cell "2026-03-21 14:38" [ref=e544]
+              - cell "永久有效" [ref=e545]
+              - cell "-" [ref=e546]
+              - cell "-" [ref=e547]
+              - cell "普通兑换码" [ref=e548]:
+                - generic [ref=e549]: 普通兑换码
+              - cell "-" [ref=e550]
+              - cell "-" [ref=e551]
+              - cell "-" [ref=e552]
+              - cell "-" [ref=e553]
+              - cell [ref=e554]:
+                - generic [ref=e555]:
+                  - button "复制" [ref=e556] [cursor=pointer]:
+                    - img [ref=e557]
+                  - button "编辑" [ref=e560] [cursor=pointer]:
+                    - img [ref=e561]
+                  - button "删除" [ref=e563] [cursor=pointer]:
+                    - img [ref=e564]
+            - row "Z7A5-7DBN-LK8F-DVXS 未使用 2026-03-21 14:38 永久有效 - - 普通兑换码 - - - -" [ref=e567]:
+              - cell [ref=e568]:
+                - checkbox [ref=e569]
+              - cell "Z7A5-7DBN-LK8F-DVXS" [ref=e570]:
+                - generic [ref=e571]:
+                  - img [ref=e572]
+                  - code [ref=e574]: Z7A5-7DBN-LK8F-DVXS
+              - cell "未使用" [ref=e575]:
+                - generic [ref=e576]: 未使用
+              - cell "2026-03-21 14:38" [ref=e577]
+              - cell "永久有效" [ref=e578]
+              - cell "-" [ref=e579]
+              - cell "-" [ref=e580]
+              - cell "普通兑换码" [ref=e581]:
+                - generic [ref=e582]: 普通兑换码
+              - cell "-" [ref=e583]
+              - cell "-" [ref=e584]
+              - cell "-" [ref=e585]
+              - cell "-" [ref=e586]
+              - cell [ref=e587]:
+                - generic [ref=e588]:
+                  - button "复制" [ref=e589] [cursor=pointer]:
+                    - img [ref=e590]
+                  - button "编辑" [ref=e593] [cursor=pointer]:
+                    - img [ref=e594]
+                  - button "删除" [ref=e596] [cursor=pointer]:
+                    - img [ref=e597]
+            - row "TVKS-6ABL-8DS4-QQ9Q 未使用 2026-03-21 14:38 永久有效 - - 普通兑换码 - - - -" [ref=e600]:
+              - cell [ref=e601]:
+                - checkbox [ref=e602]
+              - cell "TVKS-6ABL-8DS4-QQ9Q" [ref=e603]:
+                - generic [ref=e604]:
+                  - img [ref=e605]
+                  - code [ref=e607]: TVKS-6ABL-8DS4-QQ9Q
+              - cell "未使用" [ref=e608]:
+                - generic [ref=e609]: 未使用
+              - cell "2026-03-21 14:38" [ref=e610]
+              - cell "永久有效" [ref=e611]
+              - cell "-" [ref=e612]
+              - cell "-" [ref=e613]
+              - cell "普通兑换码" [ref=e614]:
+                - generic [ref=e615]: 普通兑换码
+              - cell "-" [ref=e616]
+              - cell "-" [ref=e617]
+              - cell "-" [ref=e618]
+              - cell "-" [ref=e619]
+              - cell [ref=e620]:
+                - generic [ref=e621]:
+                  - button "复制" [ref=e622] [cursor=pointer]:
+                    - img [ref=e623]
+                  - button "编辑" [ref=e626] [cursor=pointer]:
+                    - img [ref=e627]
+                  - button "删除" [ref=e629] [cursor=pointer]:
+                    - img [ref=e630]
+            - row "EJV5-XBZM-U4K3-6DTT 未使用 2026-03-21 14:38 永久有效 - - 普通兑换码 - - - -" [ref=e633]:
+              - cell [ref=e634]:
+                - checkbox [ref=e635]
+              - cell "EJV5-XBZM-U4K3-6DTT" [ref=e636]:
+                - generic [ref=e637]:
+                  - img [ref=e638]
+                  - code [ref=e640]: EJV5-XBZM-U4K3-6DTT
+              - cell "未使用" [ref=e641]:
+                - generic [ref=e642]: 未使用
+              - cell "2026-03-21 14:38" [ref=e643]
+              - cell "永久有效" [ref=e644]
+              - cell "-" [ref=e645]
+              - cell "-" [ref=e646]
+              - cell "普通兑换码" [ref=e647]:
+                - generic [ref=e648]: 普通兑换码
+              - cell "-" [ref=e649]
+              - cell "-" [ref=e650]
+              - cell "-" [ref=e651]
+              - cell "-" [ref=e652]
+              - cell [ref=e653]:
+                - generic [ref=e654]:
+                  - button "复制" [ref=e655] [cursor=pointer]:
+                    - img [ref=e656]
+                  - button "编辑" [ref=e659] [cursor=pointer]:
+                    - img [ref=e660]
+                  - button "删除" [ref=e662] [cursor=pointer]:
+                    - img [ref=e663]
+        - generic [ref=e667]:
+          - text: 每页
+          - combobox [ref=e668] [cursor=pointer]:
+            - option "20"
+            - option "50"
+            - option "100" [selected]
+      - generic:
+        - generic:
+          - generic:
+            - heading "批量修改质保剩余" [level=3]
+            - button "×"
+          - generic:
+            - generic:
+              - generic: 将修改当前筛选结果中的未使用质保兑换码。
+              - text: 普通兑换码、已使用兑换码和已过期兑换码会自动跳过。
+            - generic:
+              - generic:
+                - generic: 剩余时间 *
+                - generic:
+                  - spinbutton "剩余天数": "30"
+                  - generic: 天
+                  - spinbutton "剩余小时": "0"
+                  - generic: 小时
+                - generic "质保剩余时间快捷值":
+                  - button "1小时"
+                  - button "1天"
+                  - button "7天"
+                  - button "30天"
+              - generic:
+                - generic: 剩余次数 *
+                - spinbutton: "10"
+                - generic "质保剩余次数快捷值":
+                  - button "1次"
+                  - button "7次"
+                  - button "10次"
+                  - button "15次"
+              - button "确认修改"
+      - generic:
+        - generic:
+          - generic:
+            - heading "批量修改质保" [level=3]
+            - button "×"
+          - generic:
+            - generic:
+              - text: 您正在批量修改
+              - strong: "0"
+              - text: 个兑换码的质保信息。
+            - generic: 仅支持修改未使用的兑换码，已使用/已过期的历史兑换码不会被改写。
+            - generic:
+              - generic:
+                - generic:
+                  - checkbox "质保兑换码（使用后加入质保邮箱列表）"
+                  - generic: 质保兑换码（使用后加入质保邮箱列表）
+                - text: 兑换成功后会把使用邮箱加入质保邮箱列表，并赋予下方设置的剩余时间和默认 10 次质保次数；如需调整次数，请使用“修改剩余”。
+              - button "保存修改"
+      - generic:
+        - generic:
+          - generic:
+            - heading "编辑兑换码" [level=3]
+            - button "×"
+          - generic:
+            - generic:
+              - generic:
+                - generic: 兑换码
+                - textbox
+              - generic: 仅未使用的兑换码支持切换为质保兑换码或取消质保。
+              - generic:
+                - generic:
+                  - checkbox "质保兑换码（使用后加入质保邮箱列表）"
+                  - generic: 质保兑换码（使用后加入质保邮箱列表）
+                - text: 兑换成功后会把使用邮箱加入质保邮箱列表，并赋予下方设置的剩余时间和默认 10 次质保次数；如需调整次数，请使用“修改剩余”。
+              - button "保存修改"
+      - generic:
+        - generic:
+          - generic:
+            - heading "导出兑换码" [level=3]
+            - button "×"
+          - generic:
+            - generic:
+              - generic: 将导出当前筛选结果。
+              - text: 如果已勾选兑换码，则优先导出勾选项。
+            - generic:
+              - generic:
+                - generic: 导出格式
+                - generic:
+                  - radio "Excel 下载 导出完整表格信息" [checked]
+                  - generic:
+                    - strong: Excel 下载
+                    - generic: 导出完整表格信息
+                - generic:
+                  - radio "复制兑换码 仅复制兑换码，一行一个"
+                  - generic:
+                    - strong: 复制兑换码
+                    - generic: 仅复制兑换码，一行一个
+              - button "确认导出"
+  - generic:
+    - generic:
+      - generic:
+        - heading "导入 Team" [level=3]
+        - button "×"
+      - generic:
+        - generic:
+          - button "单个导入"
+          - button "批量导入"
+        - generic:
+          - generic:
+            - generic:
+              - generic: Access Token (AT) *
+              - textbox "eyJhbGciOiJSUzI1Ni..."
+              - text: 必填项，以 eyJ 开头的 JWT Token
+            - generic:
+              - generic: Refresh Token (RT)
+              - textbox "rt-..."
+              - text: 可选，用于自动刷新 AT
+            - generic:
+              - generic: Session Token
+              - textbox "eyJ..."
+              - text: 可选，作为备选刷新方式
+            - generic:
+              - generic: Client ID
+              - textbox "Client ID"
+              - text: 使用 Refresh Token 时必填
+            - generic:
+              - generic: 邮箱
+              - textbox "admin@example.com"
+              - text: 可选，如果不填写将从 Token 中自动提取
+            - generic:
+              - generic: Account ID
+              - textbox "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              - text: 可选，如果不填写将从 API 自动获取
+            - generic: 导入只会加入统一控制台 Team 池；普通/质保兑换码请在“兑换码管理”页面生成。
+            - button "导入"
+  - generic [ref=e671]:
+    - generic [ref=e672]:
+      - generic [ref=e673]:
+        - heading "生成兑换码" [level=3] [ref=e674]
+        - paragraph [ref=e675]: 选择生成方式后，可按小时精确设置质保剩余时间。
+      - button "关闭生成兑换码弹窗" [ref=e676] [cursor=pointer]: ×
+    - generic [ref=e677]:
+      - generic "兑换码生成容量" [ref=e678]:
+        - generic [ref=e679]:
+          - generic [ref=e680]: 可用席位
+          - strong [ref=e681]:
+            - generic [ref=e682]: "0"
+            - emphasis [ref=e683]: 个
+        - generic [ref=e684]:
+          - generic [ref=e685]: 未使用兑换码
+          - strong [ref=e686]:
+            - generic [ref=e687]: "14"
+            - emphasis [ref=e688]: 个
+        - generic [ref=e689]:
+          - generic [ref=e690]: 最多还能生成
+          - strong [ref=e691]:
+            - generic [ref=e692]: "0"
+            - emphasis [ref=e693]: 个
+        - paragraph [ref=e694]: 生成后未使用兑换码数不能超过可用席位数。
+      - generic [ref=e695]:
+        - button "单个生成" [ref=e696] [cursor=pointer]
+        - button "批量生成" [ref=e697] [cursor=pointer]
+      - generic [ref=e699]:
+        - generic [ref=e700]:
+          - generic [ref=e701]: 自定义兑换码 (可选)
+          - textbox "留空则自动生成" [ref=e702]
+        - generic [ref=e703]:
+          - generic [ref=e704]:
+            - generic [ref=e705]: 自定义生成预设
+            - generic [ref=e706]: 仅显示你保存的自定义预设；系统不再提供固定预设。
+          - generic "生成兑换码预设" [ref=e707]:
+            - generic [ref=e708]: 暂无自定义预设，可填写下方配置后保存。
+          - generic [ref=e709]:
+            - textbox "自定义预设名称" [ref=e710]
+            - button "保存当前为预设" [ref=e711] [cursor=pointer]
+        - generic [ref=e712]:
+          - generic [ref=e713]: 有效期 (天数, 可选)
+          - spinbutton [ref=e714]
+        - generic [ref=e715]:
+          - generic [ref=e716] [cursor=pointer]:
+            - checkbox "质保兑换码（使用后加入质保邮箱列表）" [checked] [ref=e717]
+            - generic [ref=e718]: 质保兑换码（使用后加入质保邮箱列表）
+          - generic [ref=e719]: 兑换成功后会把使用邮箱加入质保邮箱列表，并赋予预设或下方设置的剩余时间和次数（默认 10 次质保次数）。
+        - generic [ref=e723]:
+          - generic [ref=e724]:
+            - generic [ref=e725]: 质保邮箱初始剩余时间 *
+            - generic [ref=e726]:
+              - spinbutton "质保剩余天数" [ref=e727]: "0"
+              - generic [ref=e728]: 天
+              - spinbutton "质保剩余小时" [ref=e729]: "1"
+              - generic [ref=e730]: 小时
+            - generic "质保剩余时间快捷值" [ref=e731]:
+              - button "1小时" [active] [ref=e732] [cursor=pointer]
+              - button "1天" [ref=e733] [cursor=pointer]
+              - button "7天" [ref=e734] [cursor=pointer]
+              - button "30天" [ref=e735] [cursor=pointer]
+          - generic [ref=e736]:
+            - generic [ref=e737]: 质保邮箱初始剩余次数 *
+            - spinbutton [ref=e738]: "10"
+            - generic "质保剩余次数快捷值" [ref=e739]:
+              - button "1次" [ref=e740] [cursor=pointer]
+              - button "7次" [ref=e741] [cursor=pointer]
+              - button "10次" [ref=e742] [cursor=pointer]
+              - button "15次" [ref=e743] [cursor=pointer]
+        - button "生成兑换码" [ref=e721] [cursor=pointer]
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - heading "Team 成员管理" [level=3]
+        - button "×"
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic: 新增成员邮箱
+              - textbox "新增成员邮箱":
+                - /placeholder: user@example.com
+            - button "添加":
+              - img
+              - text: 添加
+        - generic:
+          - heading "已加入成员" [level=4]
+          - generic:
+            - table:
+              - rowgroup:
+                - row "邮箱 角色 加入时间 操作":
+                  - columnheader "邮箱"
+                  - columnheader "角色"
+                  - columnheader "加入时间"
+                  - columnheader "操作"
+              - rowgroup
+        - generic:
+          - heading "待加入成员 (邀请中)" [level=4]
+          - generic:
+            - table:
+              - rowgroup:
+                - row "邮箱 角色 邀请时间 操作":
+                  - columnheader "邮箱"
+                  - columnheader "角色"
+                  - columnheader "邀请时间"
+                  - columnheader "操作"
+              - rowgroup

@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import AsyncMock, patch
 
+from starlette.requests import Request
+
 from fastapi import HTTPException
 
 from app.routes.warranty import (
@@ -14,6 +16,15 @@ from app.routes.warranty import (
 
 
 class WarrantyCheckRouteTests(unittest.IsolatedAsyncioTestCase):
+    def _build_request(self, query_string: bytes = b"") -> Request:
+        return Request({
+            "type": "http",
+            "method": "POST",
+            "path": "/warranty/check",
+            "query_string": query_string,
+            "headers": [],
+        })
+
     async def test_check_warranty_returns_order_list(self):
         db = AsyncMock()
 
@@ -54,6 +65,7 @@ class WarrantyCheckRouteTests(unittest.IsolatedAsyncioTestCase):
         ) as mocked_status:
             result = await check_warranty(
                 request=WarrantyCheckRequest(email="buyer@example.com"),
+                http_request=self._build_request(),
                 db_session=db
             )
 
@@ -123,6 +135,7 @@ class WarrantyCheckRouteTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(HTTPException) as ctx:
                 await check_warranty(
                     request=WarrantyCheckRequest(email="buyer@example.com"),
+                    http_request=self._build_request(),
                     db_session=db
                 )
 
