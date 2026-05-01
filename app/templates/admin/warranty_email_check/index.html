@@ -5,7 +5,7 @@
 {% block content %}
 <div class="page-header">
     <h2>质保名单判定</h2>
-    <p class="page-subtitle">控制前台质保服务的邮箱名单判定模式，并编辑命中 / 未命中时展示给用户的富文本内容。</p>
+    <p class="page-subtitle">控制前台质保服务的邮箱名单判定模式，并维护命中 / 未命中时随机展示且按邮箱锁定的富文本模板。</p>
 </div>
 
 <div class="content-section">
@@ -24,7 +24,7 @@
                 >
                 <span>启用邮箱名单判定模式</span>
             </label>
-            <p class="form-help">开启后，前台质保服务输入邮箱只判断该邮箱是否存在于质保邮箱列表，不再查询订单、刷新 Team 状态或提交质保。</p>
+            <p class="form-help">开启后，前台质保服务输入邮箱只判断该邮箱是否存在于质保邮箱列表，不再查询订单、刷新 Team 状态或提交质保；首次查询会随机锁定一个模板，后续同邮箱固定展示该模板。</p>
         </div>
 
         <input
@@ -34,46 +34,29 @@
             hidden
         >
 
-        <div class="form-group">
-            <label for="warrantyEmailCheckMatchContent">邮箱在质保列表内时展示</label>
-            <div class="rich-text-toolbar" aria-label="命中文案富文本工具栏">
-                <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="bold">加粗</button>
-                <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="italic">斜体</button>
-                <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="underline">下划线</button>
-                <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="insertUnorderedList">列表</button>
-                <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="createLink">链接</button>
-                <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="insertImage">图片</button>
+        <div class="form-group warranty-template-group" data-template-group="match">
+            <div class="warranty-template-group__header">
+                <div>
+                    <label>邮箱在质保列表内时随机模板</label>
+                    <p class="form-help">至少保留 1 个模板；邮箱首次命中后会随机锁定其中一个。</p>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" data-add-template="match">新增命中模板</button>
             </div>
-            <div
-                id="warrantyEmailCheckMatchContent"
-                class="rich-text-editor"
-                contenteditable="true"
-                role="textbox"
-                aria-multiline="true"
-                data-placeholder="请输入命中质保邮箱列表时展示的内容"
-            >{{ warranty_email_check_match_content | default('') | safe }}</div>
-            <p class="form-help">支持常用富文本：加粗、链接、列表、段落、图片；可直接粘贴图片或点击“图片”上传，单张不超过 5MB。</p>
+            <div id="warrantyEmailCheckMatchTemplates" class="warranty-template-list"></div>
         </div>
 
-        <div class="form-group">
-            <label for="warrantyEmailCheckMissContent">邮箱不在质保列表内时展示</label>
-            <div class="rich-text-toolbar" aria-label="未命中文案富文本工具栏">
-                <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="bold">加粗</button>
-                <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="italic">斜体</button>
-                <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="underline">下划线</button>
-                <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="insertUnorderedList">列表</button>
-                <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="createLink">链接</button>
-                <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="insertImage">图片</button>
+        <div class="form-group warranty-template-group" data-template-group="miss">
+            <div class="warranty-template-group__header">
+                <div>
+                    <label>邮箱不在质保列表内时随机模板</label>
+                    <p class="form-help">至少保留 1 个模板；邮箱首次未命中后会随机锁定其中一个。</p>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" data-add-template="miss">新增未命中模板</button>
             </div>
-            <div
-                id="warrantyEmailCheckMissContent"
-                class="rich-text-editor"
-                contenteditable="true"
-                role="textbox"
-                aria-multiline="true"
-                data-placeholder="请输入未命中质保邮箱列表时展示的内容"
-            >{{ warranty_email_check_miss_content | default('') | safe }}</div>
+            <div id="warrantyEmailCheckMissTemplates" class="warranty-template-list"></div>
         </div>
+
+        <p class="form-help">支持常用富文本：加粗、链接、列表、段落、图片；可直接粘贴图片或点击“图片”上传，单张不超过 5MB。</p>
 
         <button type="submit" class="btn btn-primary">保存邮箱名单判定</button>
     </form>
@@ -101,6 +84,43 @@
         flex-wrap: wrap;
         gap: 0.5rem;
         margin: 0.5rem 0;
+    }
+
+    .warranty-template-group {
+        display: grid;
+        gap: 0.85rem;
+    }
+
+    .warranty-template-group__header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .warranty-template-list {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .warranty-template-card {
+        display: grid;
+        gap: 0.75rem;
+        padding: 1rem;
+        border: 1px solid var(--border-base);
+        border-radius: var(--radius-lg);
+        background: var(--bg-surface);
+    }
+
+    .warranty-template-card__header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .warranty-template-name {
+        width: 100%;
     }
 
     .rich-text-editor {
@@ -136,6 +156,12 @@
     }
 
     @media (max-width: 640px) {
+        .warranty-template-group__header,
+        .warranty-template-card__header {
+            grid-template-columns: 1fr;
+            display: grid;
+        }
+
         .rich-text-editor {
             min-height: 150px;
         }
@@ -145,11 +171,64 @@
 
 {% block extra_js %}
 <script>
-    let activeRichTextEditorId = 'warrantyEmailCheckMatchContent';
+    const warrantyEmailCheckTemplateState = {
+        match: {{ warranty_email_check_match_templates|default([])|tojson }},
+        miss: {{ warranty_email_check_miss_templates|default([])|tojson }}
+    };
+    const warrantyEmailCheckLegacyContent = {
+        match: {{ warranty_email_check_match_content|default('')|tojson }},
+        miss: {{ warranty_email_check_miss_content|default('')|tojson }}
+    };
+    const warrantyEmailCheckLabels = {
+        match: { title: '命中模板', placeholder: '请输入命中质保邮箱列表时展示的内容' },
+        miss: { title: '未命中模板', placeholder: '请输入未命中质保邮箱列表时展示的内容' }
+    };
+    const warrantyEmailCheckContainers = {
+        match: 'warrantyEmailCheckMatchTemplates',
+        miss: 'warrantyEmailCheckMissTemplates'
+    };
+    const warrantyEmailCheckDefaultIds = { match: 'match-default', miss: 'miss-default' };
+    let activeRichTextEditorId = '';
+    let activeRichTextType = 'match';
 
-    function getRichTextEditorHtml(editorId) {
-        const editor = document.getElementById(editorId);
-        return (editor?.innerHTML || '').trim();
+    function normalizeTemplateList(type, templates) {
+        const list = Array.isArray(templates) ? templates : [];
+        const normalized = list
+            .filter((template) => String(template?.content || '').trim())
+            .map((template, index) => ({
+                id: String(template.id || `${type}-${Date.now()}-${index}`).trim(),
+                name: String(template.name || `${warrantyEmailCheckLabels[type].title} ${index + 1}`).trim(),
+                content: String(template.content || '').trim()
+            }));
+
+        if (normalized.length > 0) {
+            return normalized;
+        }
+
+        return [{
+            id: warrantyEmailCheckDefaultIds[type],
+            name: `${warrantyEmailCheckLabels[type].title} 1`,
+            content: warrantyEmailCheckLegacyContent[type] || '<p></p>'
+        }];
+    }
+
+    function escapeAttribute(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    function getTemplateEditorId(type, index) {
+        return `warrantyEmailCheck${type === 'match' ? 'Match' : 'Miss'}Content${index}`;
+    }
+
+    function createTemplateId(type) {
+        if (window.crypto?.randomUUID) {
+            return `${type}-${window.crypto.randomUUID()}`;
+        }
+        return `${type}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     }
 
     function normalizeRichTextUrl(value) {
@@ -211,15 +290,18 @@
         }
     }
 
-    document.querySelectorAll('.rich-text-editor').forEach((editor) => {
+    function bindRichTextEditor(editor, type) {
         editor.addEventListener('focus', () => {
             activeRichTextEditorId = editor.id;
+            activeRichTextType = type;
         });
         editor.addEventListener('mouseup', () => {
             activeRichTextEditorId = editor.id;
+            activeRichTextType = type;
         });
         editor.addEventListener('keyup', () => {
             activeRichTextEditorId = editor.id;
+            activeRichTextType = type;
         });
         editor.addEventListener('paste', async (event) => {
             const imageItem = Array.from(event.clipboardData?.items || [])
@@ -228,31 +310,135 @@
 
             event.preventDefault();
             activeRichTextEditorId = editor.id;
+            activeRichTextType = type;
             await insertWarrantyRichTextImage(imageItem.getAsFile(), editor);
         });
-    });
+    }
 
-    document.querySelectorAll('[data-rich-text-command]').forEach((button) => {
-        button.addEventListener('click', () => {
-            const command = button.dataset.richTextCommand;
-            const editor = document.getElementById(activeRichTextEditorId);
-            if (!editor || !command) return;
+    function handleRichTextCommand(command, type) {
+        const editor = document.getElementById(activeRichTextEditorId) || document.querySelector(`[data-template-type="${type}"] .rich-text-editor`);
+        if (!editor || !command) return;
 
-            editor.focus();
-            if (command === 'createLink') {
-                const url = normalizeRichTextUrl(window.prompt('请输入链接地址（仅支持 http/https）'));
-                if (!url) return;
-                document.execCommand(command, false, url);
-                return;
-            }
-            if (command === 'insertImage') {
-                document.getElementById('warrantyEmailCheckImageInput')?.click();
-                return;
-            }
+        activeRichTextEditorId = editor.id;
+        activeRichTextType = type;
+        editor.focus();
+        if (command === 'createLink') {
+            const url = normalizeRichTextUrl(window.prompt('请输入链接地址（仅支持 http/https）'));
+            if (!url) return;
+            document.execCommand(command, false, url);
+            return;
+        }
+        if (command === 'insertImage') {
+            document.getElementById('warrantyEmailCheckImageInput')?.click();
+            return;
+        }
 
-            document.execCommand(command, false, null);
+        document.execCommand(command, false, null);
+    }
+
+    function renderTemplateCard(type, template, index, totalCount) {
+        const editorId = getTemplateEditorId(type, index);
+        const label = warrantyEmailCheckLabels[type];
+        const safeName = escapeAttribute(template.name || `${label.title} ${index + 1}`);
+        return `
+            <div class="warranty-template-card" data-template-type="${type}" data-template-index="${index}" data-template-id="${escapeAttribute(template.id)}">
+                <div class="warranty-template-card__header">
+                    <input type="text" class="form-control warranty-template-name" value="${safeName}" maxlength="80" aria-label="${label.title}名称">
+                    <button type="button" class="btn btn-danger btn-sm" data-remove-template="${type}" data-template-index="${index}" ${totalCount <= 1 ? 'disabled' : ''}>删除模板</button>
+                </div>
+                <div class="rich-text-toolbar" aria-label="${label.title}富文本工具栏">
+                    <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="bold" data-command-type="${type}">加粗</button>
+                    <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="italic" data-command-type="${type}">斜体</button>
+                    <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="underline" data-command-type="${type}">下划线</button>
+                    <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="insertUnorderedList" data-command-type="${type}">列表</button>
+                    <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="createLink" data-command-type="${type}">链接</button>
+                    <button type="button" class="btn btn-secondary btn-xs" data-rich-text-command="insertImage" data-command-type="${type}">图片</button>
+                </div>
+                <div
+                    id="${editorId}"
+                    class="rich-text-editor"
+                    contenteditable="true"
+                    role="textbox"
+                    aria-multiline="true"
+                    data-placeholder="${label.placeholder}"
+                >${template.content || ''}</div>
+            </div>
+        `;
+    }
+
+    function renderTemplateGroup(type) {
+        const container = document.getElementById(warrantyEmailCheckContainers[type]);
+        if (!container) return;
+
+        warrantyEmailCheckTemplateState[type] = normalizeTemplateList(type, warrantyEmailCheckTemplateState[type]);
+        const templates = warrantyEmailCheckTemplateState[type];
+        container.innerHTML = templates
+            .map((template, index) => renderTemplateCard(type, template, index, templates.length))
+            .join('');
+
+        container.querySelectorAll('.rich-text-editor').forEach((editor) => bindRichTextEditor(editor, type));
+        container.querySelectorAll('[data-rich-text-command]').forEach((button) => {
+            button.addEventListener('click', () => handleRichTextCommand(button.dataset.richTextCommand, button.dataset.commandType || type));
         });
-    });
+        container.querySelectorAll('[data-remove-template]').forEach((button) => {
+            button.addEventListener('click', () => removeTemplate(button.dataset.removeTemplate, Number(button.dataset.templateIndex)));
+        });
+
+        if (!activeRichTextEditorId && templates.length > 0) {
+            activeRichTextEditorId = getTemplateEditorId(type, 0);
+            activeRichTextType = type;
+        }
+    }
+
+    function syncTemplateStateFromDom(type) {
+        const container = document.getElementById(warrantyEmailCheckContainers[type]);
+        if (!container) return [];
+
+        const templates = Array.from(container.querySelectorAll('.warranty-template-card')).map((card, index) => ({
+            id: card.dataset.templateId || createTemplateId(type),
+            name: card.querySelector('.warranty-template-name')?.value?.trim() || `${warrantyEmailCheckLabels[type].title} ${index + 1}`,
+            content: card.querySelector('.rich-text-editor')?.innerHTML?.trim() || ''
+        }));
+        warrantyEmailCheckTemplateState[type] = templates;
+        return templates;
+    }
+
+    function addTemplate(type) {
+        syncTemplateStateFromDom(type);
+        const nextIndex = warrantyEmailCheckTemplateState[type].length + 1;
+        warrantyEmailCheckTemplateState[type] = [
+            ...warrantyEmailCheckTemplateState[type],
+            {
+                id: createTemplateId(type),
+                name: `${warrantyEmailCheckLabels[type].title} ${nextIndex}`,
+                content: '<p></p>'
+            }
+        ];
+        renderTemplateGroup(type);
+        activeRichTextEditorId = getTemplateEditorId(type, nextIndex - 1);
+        activeRichTextType = type;
+        document.getElementById(activeRichTextEditorId)?.focus();
+    }
+
+    function removeTemplate(type, index) {
+        syncTemplateStateFromDom(type);
+        if (warrantyEmailCheckTemplateState[type].length <= 1) {
+            showToast('至少保留一个模板', 'warning');
+            return;
+        }
+        warrantyEmailCheckTemplateState[type] = warrantyEmailCheckTemplateState[type]
+            .filter((_, itemIndex) => itemIndex !== index);
+        activeRichTextEditorId = '';
+        renderTemplateGroup(type);
+    }
+
+    function collectTemplatePayload(type) {
+        return normalizeTemplateList(type, syncTemplateStateFromDom(type)).map((template, index) => ({
+            id: template.id || `${type}-${index + 1}`,
+            name: template.name || `${warrantyEmailCheckLabels[type].title} ${index + 1}`,
+            content: template.content
+        }));
+    }
 
     document.getElementById('warrantyEmailCheckImageInput')?.addEventListener('change', async (event) => {
         const file = event.target.files?.[0];
@@ -260,12 +446,21 @@
         event.target.value = '';
     });
 
+    document.querySelectorAll('[data-add-template]').forEach((button) => {
+        button.addEventListener('click', () => addTemplate(button.dataset.addTemplate));
+    });
+
+    renderTemplateGroup('match');
+    renderTemplateGroup('miss');
+
     document.getElementById('warrantyEmailCheckForm')?.addEventListener('submit', async (event) => {
         event.preventDefault();
 
         const enabled = document.getElementById('warrantyEmailCheckEnabled').checked;
-        const match_content = getRichTextEditorHtml('warrantyEmailCheckMatchContent');
-        const miss_content = getRichTextEditorHtml('warrantyEmailCheckMissContent');
+        const match_templates = collectTemplatePayload('match');
+        const miss_templates = collectTemplatePayload('miss');
+        const match_content = match_templates[0]?.content || '';
+        const miss_content = miss_templates[0]?.content || '';
 
         try {
             const response = await fetch('/admin/warranty-email-check', {
@@ -273,7 +468,7 @@
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ enabled, match_content, miss_content })
+                body: JSON.stringify({ enabled, match_content, miss_content, match_templates, miss_templates })
             });
 
             const data = await response.json();

@@ -31,6 +31,11 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
                 "enabled": True,
                 "match_content": "<p><strong>在列表</strong></p>",
                 "miss_content": "<p>不在列表</p>",
+                "match_templates": [
+                    {"id": "match-a", "name": "命中 A", "content": "<p><strong>在列表</strong></p>"},
+                    {"id": "match-b", "name": "命中 B", "content": "<p>命中 B</p>"},
+                ],
+                "miss_templates": [{"id": "miss-a", "name": "未命中 A", "content": "<p>不在列表</p>"}],
             })
         ), patch(
             "app.routes.admin.settings_service.get_number_pool_config",
@@ -50,14 +55,19 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("质保名单判定", html)
         self.assertIn('href="/admin/warranty-email-check"', html)
         self.assertIn('id="warrantyEmailCheckForm"', html)
-        self.assertIn('id="warrantyEmailCheckMatchContent"', html)
+        self.assertIn('id="warrantyEmailCheckMatchTemplates"', html)
+        self.assertIn('data-add-template="match"', html)
+        self.assertIn('data-add-template="miss"', html)
         self.assertIn('class="rich-text-editor"', html)
         self.assertIn('data-rich-text-command="bold"', html)
         self.assertIn('data-rich-text-command="createLink"', html)
         self.assertIn('data-rich-text-command="insertImage"', html)
         self.assertIn("uploadWarrantyRichTextImage", html)
+        self.assertIn("normalizeTemplateList", html)
+        self.assertIn("match_templates", html)
         self.assertIn("/admin/warranty-email-check/upload-image", html)
-        self.assertIn("<p><strong>在列表</strong></p>", html)
+        self.assertIn('\\u003cp\\u003e\\u003cstrong\\u003e', html)
+        self.assertIn('\\u547d\\u4e2d B', html)
         self.assertIn("fetch('/admin/warranty-email-check'", html)
         self.assertIn("validationMessage", html)
 
@@ -83,12 +93,15 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
 
         payload = json.loads(response.body.decode("utf-8"))
 
-        mocked_update.assert_awaited_once_with(db, True, long_content, "<p>未命中</p>")
+        mocked_update.assert_awaited_once_with(db, True, long_content, "<p>未命中</p>", [], [])
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["success"])
 
     async def test_update_warranty_email_check_settings_returns_success(self):
         db = AsyncMock()
+
+        match_templates = [{"id": "match-a", "name": "命中 A", "content": "<p>在列表</p>"}]
+        miss_templates = [{"id": "miss-a", "name": "未命中 A", "content": "<p>不在列表</p>"}]
 
         with patch(
             "app.routes.admin.settings_service.update_warranty_email_check_config",
@@ -99,6 +112,8 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
                     enabled=True,
                     match_content="<p>在列表</p>",
                     miss_content="<p>不在列表</p>",
+                    match_templates=match_templates,
+                    miss_templates=miss_templates,
                 ),
                 db=db,
                 current_user={"username": "admin"},
@@ -106,7 +121,7 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
 
         payload = json.loads(response.body.decode("utf-8"))
 
-        mocked_update.assert_awaited_once_with(db, True, "<p>在列表</p>", "<p>不在列表</p>")
+        mocked_update.assert_awaited_once_with(db, True, "<p>在列表</p>", "<p>不在列表</p>", match_templates, miss_templates)
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["success"])
 

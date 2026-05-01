@@ -693,6 +693,37 @@ def run_auto_migration():
                   AND last_warranty_team_id IS NOT NULL
             """)
 
+        if not table_exists(cursor, "warranty_email_template_locks"):
+            logger.info("创建 warranty_email_template_locks 表")
+            cursor.execute("""
+                CREATE TABLE warranty_email_template_locks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email VARCHAR(255) NOT NULL UNIQUE,
+                    matched BOOLEAN NOT NULL DEFAULT 0,
+                    template_key VARCHAR(100) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+            """)
+            cursor.execute("""
+                CREATE UNIQUE INDEX idx_warranty_email_template_locks_email
+                ON warranty_email_template_locks (email)
+            """)
+            cursor.execute("""
+                CREATE INDEX idx_warranty_email_template_locks_matched
+                ON warranty_email_template_locks (matched)
+            """)
+            migrations_applied.append("warranty_email_template_locks")
+
+        cursor.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_warranty_email_template_locks_email
+            ON warranty_email_template_locks (email)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_warranty_email_template_locks_matched
+            ON warranty_email_template_locks (matched)
+        """)
+
         migrations_applied.extend(migrate_unified_team_pool(cursor))
 
         if not table_exists(cursor, "warranty_claim_records"):

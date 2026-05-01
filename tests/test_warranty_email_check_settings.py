@@ -87,6 +87,45 @@ class WarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("通过", config["match_content"])
         self.assertNotIn("<img", config["match_content"])
 
+    async def test_update_warranty_email_check_config_supports_template_lists(self):
+        async with self.Session() as session:
+            success = await settings_service.update_warranty_email_check_config(
+                session,
+                True,
+                match_templates=[
+                    {"id": "match-a", "name": "命中 A", "content": "<p>A</p>"},
+                    {"id": "match-b", "name": "命中 B", "content": "<p><script>bad()</script>B</p>"},
+                ],
+                miss_templates=[
+                    {"id": "miss-a", "name": "未命中 A", "content": "<p>未命中</p>"},
+                ],
+            )
+            config = await settings_service.get_warranty_email_check_config(session)
+
+        self.assertTrue(success)
+        self.assertEqual([item["id"] for item in config["match_templates"]], ["match-a", "match-b"])
+        self.assertEqual(config["match_templates"][0]["content"], "<p>A</p>")
+        self.assertIn("B", config["match_templates"][1]["content"])
+        self.assertNotIn("<script", config["match_templates"][1]["content"])
+        self.assertEqual(config["match_content"], "<p>A</p>")
+        self.assertEqual(config["miss_templates"][0]["id"], "miss-a")
+
+    async def test_get_warranty_email_check_config_falls_back_to_legacy_content_as_template(self):
+        async with self.Session() as session:
+            success = await settings_service.update_warranty_email_check_config(
+                session,
+                True,
+                "<p>旧命中</p>",
+                "<p>旧未命中</p>",
+            )
+            config = await settings_service.get_warranty_email_check_config(session)
+
+        self.assertTrue(success)
+        self.assertEqual(config["match_templates"][0]["id"], "match-default")
+        self.assertEqual(config["match_templates"][0]["content"], "<p>旧命中</p>")
+        self.assertEqual(config["miss_templates"][0]["id"], "miss-default")
+        self.assertEqual(config["miss_templates"][0]["content"], "<p>旧未命中</p>")
+
 
 if __name__ == "__main__":
     unittest.main()

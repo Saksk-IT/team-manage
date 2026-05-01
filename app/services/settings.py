@@ -5,7 +5,7 @@
 import json
 import secrets
 import string
-from typing import Optional, Dict, Sequence
+from typing import Any, Optional, Dict, Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Setting
@@ -44,6 +44,8 @@ class SettingsService:
     WARRANTY_EMAIL_CHECK_ENABLED_KEY = "warranty_email_check_enabled"
     WARRANTY_EMAIL_CHECK_MATCH_CONTENT_KEY = "warranty_email_check_match_content"
     WARRANTY_EMAIL_CHECK_MISS_CONTENT_KEY = "warranty_email_check_miss_content"
+    WARRANTY_EMAIL_CHECK_MATCH_TEMPLATES_KEY = "warranty_email_check_match_templates"
+    WARRANTY_EMAIL_CHECK_MISS_TEMPLATES_KEY = "warranty_email_check_miss_templates"
     ADMIN_SIDEBAR_ORDER_KEY = "admin_sidebar_order"
     NUMBER_POOL_ENABLED_KEY = "number_pool_enabled"
     WARRANTY_SUPER_CODE_TYPE_USAGE_LIMIT = "usage_limit"
@@ -53,6 +55,8 @@ class SettingsService:
     DEFAULT_WARRANTY_EMAIL_CHECK_ENABLED = False
     DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_CONTENT = "<p>该邮箱已在质保邮箱列表内，请按页面提示继续处理。</p>"
     DEFAULT_WARRANTY_EMAIL_CHECK_MISS_CONTENT = "<p>未查询到该邮箱的质保记录，请核对邮箱或联系管理员处理。</p>"
+    DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_TEMPLATE_NAME = "命中模板 1"
+    DEFAULT_WARRANTY_EMAIL_CHECK_MISS_TEMPLATE_NAME = "未命中模板 1"
     DEFAULT_TEAM_MAX_MEMBERS = 5
     DEFAULT_NUMBER_POOL_ENABLED = False
     DEFAULT_FRONT_ANNOUNCEMENT_ENABLED = False
@@ -207,6 +211,105 @@ class SettingsService:
             return int(str(value).strip())
         except (TypeError, ValueError, AttributeError):
             return default
+
+    def _build_warranty_email_check_template(
+        self,
+        template_id: str,
+        name: str,
+        content: str,
+    ) -> Dict[str, str]:
+        return {
+            "id": (template_id or "").strip(),
+            "name": (name or "").strip(),
+            "content": content or "",
+        }
+
+    def _get_default_warranty_email_check_templates(self, matched: bool) -> list[Dict[str, str]]:
+        return [
+            self._build_warranty_email_check_template(
+                "match-default" if matched else "miss-default",
+                self.DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_TEMPLATE_NAME
+                if matched
+                else self.DEFAULT_WARRANTY_EMAIL_CHECK_MISS_TEMPLATE_NAME,
+                self.DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_CONTENT
+                if matched
+                else self.DEFAULT_WARRANTY_EMAIL_CHECK_MISS_CONTENT,
+            )
+        ]
+
+    def _normalize_warranty_email_check_templates(
+        self,
+        templates: Sequence[Dict[str, Any]] | None,
+        matched: bool,
+    ) -> list[Dict[str, str]]:
+        normalized_templates: list[Dict[str, str]] = []
+        used_ids: set[str] = set()
+        prefix = "match" if matched else "miss"
+
+        for index, item in enumerate(templates or [], start=1):
+            if not isinstance(item, dict):
+                continue
+
+            sanitized_content = sanitize_rich_text(str(item.get("content") or ""))
+            if not sanitized_content:
+                continue
+
+            raw_id = str(item.get("id") or "").strip()[:80]
+            template_id = raw_id or f"{prefix}-{index}"
+            if template_id in used_ids:
+                template_id = f"{template_id}-{index}"
+            used_ids.add(template_id)
+
+            default_name = f"{'命中' if matched else '未命中'}模板 {index}"
+            template_name = str(item.get("name") or "").strip()[:80] or default_name
+            normalized_templates.append(
+                self._build_warranty_email_check_template(
+                    template_id,
+                    template_name,
+                    sanitized_content,
+                )
+            )
+
+        return normalized_templates or self._get_default_warranty_email_check_templates(matched)
+
+    def _parse_warranty_email_check_templates(
+        self,
+        value: Optional[str],
+        matched: bool,
+        legacy_content: str,
+    ) -> list[Dict[str, str]]:
+        try:
+            parsed_value = json.loads(value or "[]")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            parsed_value = []
+
+        templates = parsed_value if isinstance(parsed_value, list) else []
+        legacy_template = self._build_warranty_email_check_template(
+            "match-default" if matched else "miss-default",
+            self.DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_TEMPLATE_NAME
+            if matched
+            else self.DEFAULT_WARRANTY_EMAIL_CHECK_MISS_TEMPLATE_NAME,
+            legacy_content,
+        )
+        return self._normalize_warranty_email_check_templates(
+            templates or [legacy_template],
+            matched,
+        )
+
+    def get_warranty_email_check_template_content(
+        self,
+        templates: Sequence[Dict[str, str]],
+        template_key: Optional[str],
+    ) -> Optional[str]:
+        normalized_key = (template_key or "").strip()
+        if not normalized_key:
+            return None
+
+        for template in templates or []:
+            if (template.get("id") or "").strip() == normalized_key:
+                return template.get("content") or ""
+
+        return None
 
     async def get_front_announcement_config(self, session: AsyncSession) -> Dict[str, str | bool]:
         """
@@ -577,7 +680,7 @@ class SettingsService:
 
         return True
 
-    async def get_warranty_email_check_config(self, session: AsyncSession) -> Dict[str, str | bool]:
+    async def get_warranty_email_check_config(self, session: AsyncSession) -> Dict[str, Any]:
         """
         获取前台质保邮箱名单判定模式配置。
         """
@@ -596,17 +699,41 @@ class SettingsService:
             self.WARRANTY_EMAIL_CHECK_MISS_CONTENT_KEY,
             self.DEFAULT_WARRANTY_EMAIL_CHECK_MISS_CONTENT
         )
+        match_templates_raw = await self.get_setting(
+            session,
+            self.WARRANTY_EMAIL_CHECK_MATCH_TEMPLATES_KEY,
+            ""
+        )
+        miss_templates_raw = await self.get_setting(
+            session,
+            self.WARRANTY_EMAIL_CHECK_MISS_TEMPLATES_KEY,
+            ""
+        )
 
         sanitized_match_content = sanitize_rich_text(match_content)
         sanitized_miss_content = sanitize_rich_text(miss_content)
+        safe_match_content = sanitized_match_content or self.DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_CONTENT
+        safe_miss_content = sanitized_miss_content or self.DEFAULT_WARRANTY_EMAIL_CHECK_MISS_CONTENT
+        match_templates = self._parse_warranty_email_check_templates(
+            match_templates_raw,
+            True,
+            safe_match_content,
+        )
+        miss_templates = self._parse_warranty_email_check_templates(
+            miss_templates_raw,
+            False,
+            safe_miss_content,
+        )
 
         return {
             "enabled": self._parse_bool(
                 enabled_raw,
                 self.DEFAULT_WARRANTY_EMAIL_CHECK_ENABLED
             ),
-            "match_content": sanitized_match_content or self.DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_CONTENT,
-            "miss_content": sanitized_miss_content or self.DEFAULT_WARRANTY_EMAIL_CHECK_MISS_CONTENT,
+            "match_content": match_templates[0]["content"],
+            "miss_content": miss_templates[0]["content"],
+            "match_templates": match_templates,
+            "miss_templates": miss_templates,
         }
 
     async def update_warranty_email_check_config(
@@ -615,18 +742,44 @@ class SettingsService:
         enabled: bool,
         match_content: str = "",
         miss_content: str = "",
+        match_templates: Sequence[Dict[str, Any]] | None = None,
+        miss_templates: Sequence[Dict[str, Any]] | None = None,
     ) -> bool:
         """
         更新前台质保邮箱名单判定模式配置。
         """
-        sanitized_match_content = (
-            sanitize_rich_text(match_content)
-            or self.DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_CONTENT
+        raw_match_templates = (
+            match_templates
+            if match_templates
+            else [
+                self._build_warranty_email_check_template(
+                    "match-default",
+                    self.DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_TEMPLATE_NAME,
+                    match_content,
+                )
+            ]
         )
-        sanitized_miss_content = (
-            sanitize_rich_text(miss_content)
-            or self.DEFAULT_WARRANTY_EMAIL_CHECK_MISS_CONTENT
+        raw_miss_templates = (
+            miss_templates
+            if miss_templates
+            else [
+                self._build_warranty_email_check_template(
+                    "miss-default",
+                    self.DEFAULT_WARRANTY_EMAIL_CHECK_MISS_TEMPLATE_NAME,
+                    miss_content,
+                )
+            ]
         )
+        sanitized_match_templates = self._normalize_warranty_email_check_templates(
+            raw_match_templates,
+            True,
+        )
+        sanitized_miss_templates = self._normalize_warranty_email_check_templates(
+            raw_miss_templates,
+            False,
+        )
+        sanitized_match_content = sanitized_match_templates[0]["content"]
+        sanitized_miss_content = sanitized_miss_templates[0]["content"]
 
         return await self.update_settings(
             session,
@@ -634,6 +787,14 @@ class SettingsService:
                 self.WARRANTY_EMAIL_CHECK_ENABLED_KEY: str(bool(enabled)).lower(),
                 self.WARRANTY_EMAIL_CHECK_MATCH_CONTENT_KEY: sanitized_match_content,
                 self.WARRANTY_EMAIL_CHECK_MISS_CONTENT_KEY: sanitized_miss_content,
+                self.WARRANTY_EMAIL_CHECK_MATCH_TEMPLATES_KEY: json.dumps(
+                    sanitized_match_templates,
+                    ensure_ascii=False,
+                ),
+                self.WARRANTY_EMAIL_CHECK_MISS_TEMPLATES_KEY: json.dumps(
+                    sanitized_miss_templates,
+                    ensure_ascii=False,
+                ),
             }
         )
 

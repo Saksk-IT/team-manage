@@ -58,6 +58,7 @@ class WarrantyCheckResponse(BaseModel):
     mode: str = "orders"
     matched: Optional[bool] = None
     content_html: Optional[str] = None
+    template_key: Optional[str] = None
     latest_team: Optional[WarrantyLatestTeamInfo] = None
     warranty_info: Optional[dict] = None
     warranty_orders: List[dict] = Field(default_factory=list)
@@ -86,21 +87,37 @@ async def check_warranty(
         result = await warranty_service.check_warranty_email_membership(
             db_session=db_session,
             email=request.email,
+            match_templates=email_check_config.get("match_templates", []),
+            miss_templates=email_check_config.get("miss_templates", []),
         )
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error") or "状态查询失败")
 
-        content_html = (
+        template_matched = bool(result.get("template_matched", result.get("matched")))
+        templates = (
+            email_check_config.get("match_templates", [])
+            if template_matched
+            else email_check_config.get("miss_templates", [])
+        )
+        fallback_content = (
             email_check_config.get("match_content")
-            if result.get("matched")
+            if template_matched
             else email_check_config.get("miss_content")
         ) or ""
+        content_html = (
+            settings_service.get_warranty_email_check_template_content(
+                templates,
+                result.get("template_key"),
+            )
+            or fallback_content
+        )
         return {
             "success": True,
             "can_claim": False,
             "mode": "email_check",
             "matched": bool(result.get("matched")),
             "content_html": content_html,
+            "template_key": result.get("template_key"),
             "latest_team": None,
             "warranty_info": None,
             "warranty_orders": [],

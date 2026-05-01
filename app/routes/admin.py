@@ -3363,6 +3363,8 @@ async def warranty_email_check_settings_page(
                 warranty_email_check_enabled=warranty_email_check_config["enabled"],
                 warranty_email_check_match_content=warranty_email_check_config["match_content"],
                 warranty_email_check_miss_content=warranty_email_check_config["miss_content"],
+                warranty_email_check_match_templates=warranty_email_check_config.get("match_templates", []),
+                warranty_email_check_miss_templates=warranty_email_check_config.get("miss_templates", []),
             )
         )
 
@@ -3485,6 +3487,16 @@ class WarrantyEmailCheckSettingsRequest(BaseModel):
         "",
         description="邮箱未命中时展示的富文本",
         max_length=MAX_WARRANTY_EMAIL_CHECK_RICH_TEXT_LENGTH,
+    )
+    match_templates: List[Dict[str, str]] = Field(
+        default_factory=list,
+        max_length=20,
+        description="邮箱命中时随机展示并锁定的模板列表",
+    )
+    miss_templates: List[Dict[str, str]] = Field(
+        default_factory=list,
+        max_length=20,
+        description="邮箱未命中时随机展示并锁定的模板列表",
     )
 
 
@@ -5013,10 +5025,12 @@ async def update_warranty_email_check_settings(
     """更新前台质保邮箱名单判定模式配置。"""
     try:
         logger.info(
-            "管理员更新质保邮箱名单判定模式: enabled=%s match_len=%s miss_len=%s",
+            "管理员更新质保邮箱名单判定模式: enabled=%s match_len=%s miss_len=%s match_templates=%s miss_templates=%s",
             warranty_data.enabled,
             len((warranty_data.match_content or "").strip()),
             len((warranty_data.miss_content or "").strip()),
+            len(warranty_data.match_templates or []),
+            len(warranty_data.miss_templates or []),
         )
 
         success = await settings_service.update_warranty_email_check_config(
@@ -5024,6 +5038,8 @@ async def update_warranty_email_check_settings(
             warranty_data.enabled,
             warranty_data.match_content,
             warranty_data.miss_content,
+            warranty_data.match_templates,
+            warranty_data.miss_templates,
         )
 
         if success:

@@ -5,9 +5,11 @@
 import logging
 import asyncio
 import math
+import secrets
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from sqlalchemy import select, and_, or_, delete, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,6 +20,7 @@ from app.models import (
     TeamMemberSnapshot,
     WarrantyClaimRecord,
     WarrantyEmailEntry,
+    WarrantyEmailTemplateLock,
 )
 from app.services.settings import settings_service
 from app.services.team import IMPORT_STATUS_CLASSIFIED, TEAM_TYPE_STANDARD
@@ -2014,10 +2017,12 @@ class WarrantyService:
     async def check_warranty_email_membership(
         self,
         db_session: AsyncSession,
-        email: str
+        email: str,
+        match_templates: Optional[List[Dict[str, Any]]] = None,
+        miss_templates: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
-        仅判定邮箱是否存在于质保邮箱列表，不触发订单/Team 查询逻辑。
+        仅判定邮箱是否存在于质保邮箱列表，并为首次查询邮箱随机锁定一个展示模板。
         """
         normalized_email = self.normalize_email(email)
         if not normalized_email:
@@ -2027,12 +2032,89 @@ class WarrantyService:
             db_session,
             normalized_email
         )
+        matched = bool(entries)
+        templates = match_templates if matched else miss_templates
+        template_lock = await self._get_or_create_warranty_email_template_lock(
+            db_session=db_session,
+            email=normalized_email,
+            matched=matched,
+            templates=templates or [],
+        )
         return {
             "success": True,
             "email": normalized_email,
-            "matched": bool(entries),
+            "matched": matched,
             "matched_count": len(entries),
+            "template_key": template_lock.template_key if template_lock else None,
+            "template_matched": bool(template_lock.matched) if template_lock else matched,
         }
+
+    async def _get_or_create_warranty_email_template_lock(
+        self,
+        db_session: AsyncSession,
+        email: str,
+        matched: bool,
+        templates: List[Dict[str, Any]],
+    ) -> Optional[WarrantyEmailTemplateLock]:
+        normalized_email = self.normalize_email(email)
+        if not normalized_email:
+            return None
+
+        existing_lock = await self._get_warranty_email_template_lock(
+            db_session,
+            normalized_email,
+        )
+        if existing_lock:
+            return existing_lock
+
+        template_key = self._pick_warranty_email_check_template_key(templates, matched)
+        now = get_now()
+        template_lock = WarrantyEmailTemplateLock(
+            email=normalized_email,
+            matched=matched,
+            template_key=template_key,
+            created_at=now,
+            updated_at=now,
+        )
+        db_session.add(template_lock)
+
+        try:
+            await db_session.commit()
+            await db_session.refresh(template_lock)
+            return template_lock
+        except IntegrityError:
+            await db_session.rollback()
+            return await self._get_warranty_email_template_lock(
+                db_session,
+                normalized_email,
+            )
+
+    async def _get_warranty_email_template_lock(
+        self,
+        db_session: AsyncSession,
+        email: str,
+    ) -> Optional[WarrantyEmailTemplateLock]:
+        result = await db_session.execute(
+            select(WarrantyEmailTemplateLock).where(
+                WarrantyEmailTemplateLock.email == self.normalize_email(email)
+            )
+        )
+        return result.scalar_one_or_none()
+
+    def _pick_warranty_email_check_template_key(
+        self,
+        templates: List[Dict[str, Any]],
+        matched: bool,
+    ) -> str:
+        template_ids = [
+            str(template.get("id") or "").strip()
+            for template in templates or []
+            if str(template.get("id") or "").strip()
+        ]
+        if not template_ids:
+            return "match-default" if matched else "miss-default"
+
+        return secrets.choice(template_ids)
 
     async def _create_warranty_record(
         self,

@@ -17,10 +17,15 @@ class WarrantyEmailCheckRouteTests(unittest.IsolatedAsyncioTestCase):
                 "enabled": True,
                 "match_content": "<p><strong>已在列表</strong></p>",
                 "miss_content": "<p>不在列表</p>",
+                "match_templates": [
+                    {"id": "match-a", "name": "命中 A", "content": "<p><strong>模板 A</strong></p>"},
+                    {"id": "match-b", "name": "命中 B", "content": "<p>模板 B</p>"},
+                ],
+                "miss_templates": [{"id": "miss-a", "name": "未命中 A", "content": "<p>不在列表</p>"}],
             })
         ), patch(
             "app.routes.warranty.warranty_service.check_warranty_email_membership",
-            new=AsyncMock(return_value={"success": True, "matched": True, "matched_count": 1})
+            new=AsyncMock(return_value={"success": True, "matched": True, "matched_count": 1, "template_key": "match-a"})
         ) as mocked_membership, patch(
             "app.routes.warranty.warranty_service.get_warranty_claim_status",
             new=AsyncMock()
@@ -30,13 +35,22 @@ class WarrantyEmailCheckRouteTests(unittest.IsolatedAsyncioTestCase):
                 db_session=db,
             )
 
-        mocked_membership.assert_awaited_once_with(db_session=db, email="buyer@example.com")
+        mocked_membership.assert_awaited_once_with(
+            db_session=db,
+            email="buyer@example.com",
+            match_templates=[
+                {"id": "match-a", "name": "命中 A", "content": "<p><strong>模板 A</strong></p>"},
+                {"id": "match-b", "name": "命中 B", "content": "<p>模板 B</p>"},
+            ],
+            miss_templates=[{"id": "miss-a", "name": "未命中 A", "content": "<p>不在列表</p>"}],
+        )
         mocked_order_status.assert_not_awaited()
         self.assertTrue(result["success"])
         self.assertEqual(result["mode"], "email_check")
         self.assertTrue(result["matched"])
-        self.assertEqual(result["content_html"], "<p><strong>已在列表</strong></p>")
-        self.assertEqual(result["message"], "已在列表")
+        self.assertEqual(result["content_html"], "<p><strong>模板 A</strong></p>")
+        self.assertEqual(result["message"], "模板 A")
+        self.assertEqual(result["template_key"], "match-a")
         self.assertEqual(result["warranty_orders"], [])
 
     async def test_check_warranty_returns_miss_content_when_email_not_matched(self):
@@ -51,10 +65,12 @@ class WarrantyEmailCheckRouteTests(unittest.IsolatedAsyncioTestCase):
                 "enabled": True,
                 "match_content": "<p>已在列表</p>",
                 "miss_content": "<p><em>不在列表</em></p>",
+                "match_templates": [{"id": "match-a", "name": "命中 A", "content": "<p>已在列表</p>"}],
+                "miss_templates": [{"id": "miss-a", "name": "未命中 A", "content": "<p><em>未命中模板</em></p>"}],
             })
         ), patch(
             "app.routes.warranty.warranty_service.check_warranty_email_membership",
-            new=AsyncMock(return_value={"success": True, "matched": False, "matched_count": 0})
+            new=AsyncMock(return_value={"success": True, "matched": False, "matched_count": 0, "template_key": "miss-a"})
         ):
             result = await check_warranty(
                 request=WarrantyCheckRequest(email="buyer@example.com"),
@@ -62,8 +78,9 @@ class WarrantyEmailCheckRouteTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertFalse(result["matched"])
-        self.assertEqual(result["content_html"], "<p><em>不在列表</em></p>")
-        self.assertEqual(result["message"], "不在列表")
+        self.assertEqual(result["content_html"], "<p><em>未命中模板</em></p>")
+        self.assertEqual(result["message"], "未命中模板")
+        self.assertEqual(result["template_key"], "miss-a")
 
     async def test_claim_warranty_rejects_when_email_check_mode_enabled(self):
         from fastapi import HTTPException

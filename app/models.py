@@ -238,6 +238,23 @@ class WarrantyEmailEntry(Base):
     )
 
 
+class WarrantyEmailTemplateLock(Base):
+    """质保名单判定邮箱模板锁定表"""
+    __tablename__ = "warranty_email_template_locks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), unique=True, nullable=False, comment="质保查询邮箱（统一小写）")
+    matched = Column(Boolean, default=False, nullable=False, comment="首次查询时是否命中质保邮箱列表")
+    template_key = Column(String(100), nullable=False, comment="锁定的模板标识")
+    created_at = Column(DateTime, default=get_now, nullable=False, comment="创建时间")
+    updated_at = Column(DateTime, default=get_now, onupdate=get_now, nullable=False, comment="更新时间")
+
+    __table_args__ = (
+        Index("idx_warranty_email_template_locks_email", "email", unique=True),
+        Index("idx_warranty_email_template_locks_matched", "matched"),
+    )
+
+
 class EmailWhitelistEntry(Base):
     """邮箱白名单表"""
     __tablename__ = "warranty_team_whitelist_entries"
