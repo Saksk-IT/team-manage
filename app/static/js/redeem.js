@@ -758,7 +758,7 @@ function renderWarrantyEmailCheckResult(data, email) {
     const generatedCodeError = data?.generated_redeem_code_error || '';
     const generatedCodeHtml = matched && generatedCode ? `
         <div class="status-panel__message status-panel__message--success warranty-generated-code">
-            <div class="warranty-generated-code__title">已自动生成质保兑换码</div>
+            <div class="warranty-generated-code__title">已自动生成中转网站订阅兑换码</div>
             <div class="warranty-generated-code__value">
                 <code>${escapeHtml(generatedCode)}</code>
                 <button type="button" class="btn btn-secondary btn-sm" id="copyGeneratedWarrantyCodeBtn" data-code="${escapeHtml(generatedCode)}">
