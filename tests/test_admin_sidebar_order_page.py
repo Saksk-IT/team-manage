@@ -56,13 +56,6 @@ class AdminSidebarOrderPageTests(unittest.IsolatedAsyncioTestCase):
                 "app.routes.admin.settings_service.get_warranty_fake_success_config",
                 new=AsyncMock(return_value={"enabled": False})
             ), patch(
-                "app.routes.admin.settings_service.get_warranty_email_check_config",
-                new=AsyncMock(return_value={
-                    "enabled": False,
-                    "match_content": "<p>在列表</p>",
-                    "miss_content": "<p>不在列表</p>",
-                })
-            ), patch(
                 "app.routes.admin.settings_service.get_number_pool_config",
                 new=AsyncMock(return_value={"enabled": False})
             ), patch(
@@ -83,7 +76,9 @@ class AdminSidebarOrderPageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="sidebarOrderForm"', html)
         self.assertIn('data-menu-id="settings"', html)
         self.assertIn("后台侧边栏排序", html)
-        self.assertIn('id="warrantyEmailCheckForm"', html)
+        self.assertNotIn('id="warrantyEmailCheckForm"', html)
+        self.assertIn('data-menu-id="warranty_email_check"', html)
+        self.assertIn('href="/admin/warranty-email-check"', html)
         self.assertLess(html.index('data-menu-id="settings"'), html.index('data-menu-id="dashboard"'))
 
 

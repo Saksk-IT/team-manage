@@ -37,6 +37,7 @@ class AdminSidebarOrderSettingsTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(order, get_default_admin_sidebar_order())
         self.assertIn("team_member_snapshots", order)
+        self.assertIn("warranty_email_check", order)
 
 
     async def test_get_admin_sidebar_order_drops_legacy_warranty_team_item(self):
@@ -85,6 +86,16 @@ class AdminSidebarOrderSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("number_pool", [item["id"] for item in hidden_items])
         self.assertIn("number_pool", [item["id"] for item in visible_items])
         self.assertNotIn("number_pool", [item["id"] for item in user_hidden_items])
+
+    def test_warranty_email_check_sidebar_item_links_to_standalone_page(self):
+        items = get_admin_sidebar_items(get_default_admin_sidebar_order())
+        warranty_email_check_item = next(
+            item for item in items if item["id"] == "warranty_email_check"
+        )
+
+        self.assertEqual(warranty_email_check_item["href"], "/admin/warranty-email-check")
+        self.assertEqual(warranty_email_check_item["active_page"], "warranty_email_check")
+        self.assertEqual(warranty_email_check_item["label"], "质保名单判定")
 
 
 if __name__ == "__main__":

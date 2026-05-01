@@ -3272,7 +3272,6 @@ async def settings_page(
         default_team_max_members = await settings_service.get_default_team_max_members(db)
         warranty_service_config = await settings_service.get_warranty_service_config(db)
         warranty_fake_success_config = await settings_service.get_warranty_fake_success_config(db)
-        warranty_email_check_config = await settings_service.get_warranty_email_check_config(db)
         number_pool_config = await settings_service.get_number_pool_config(db)
         admin_sidebar_order = await _resolve_admin_sidebar_order(db, current_user)
         admin_sidebar_order = admin_sidebar_order or get_default_admin_sidebar_order()
@@ -3294,9 +3293,6 @@ async def settings_page(
                 default_team_max_members=default_team_max_members,
                 warranty_service_enabled=warranty_service_config["enabled"],
                 warranty_fake_success_enabled=warranty_fake_success_config["enabled"],
-                warranty_email_check_enabled=warranty_email_check_config["enabled"],
-                warranty_email_check_match_content=warranty_email_check_config["match_content"],
-                warranty_email_check_miss_content=warranty_email_check_config["miss_content"],
                 number_pool_enabled=number_pool_config["enabled"],
                 webhook_url=await settings_service.get_setting(db, "webhook_url", ""),
                 low_stock_threshold=await settings_service.get_setting(db, "low_stock_threshold", "10"),
@@ -3312,6 +3308,42 @@ async def settings_page(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取系统设置失败: {str(e)}"
+        )
+
+
+@router.get("/warranty-email-check", response_class=HTMLResponse)
+async def warranty_email_check_settings_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """质保邮箱名单判定独立设置页。"""
+    try:
+        from app.main import templates
+
+        logger.info("管理员访问质保名单判定设置")
+
+        warranty_email_check_config = await settings_service.get_warranty_email_check_config(db)
+
+        return templates.TemplateResponse(
+            request,
+            "admin/warranty_email_check/index.html",
+            await _build_admin_template_context(
+                request,
+                db,
+                current_user,
+                "warranty_email_check",
+                warranty_email_check_enabled=warranty_email_check_config["enabled"],
+                warranty_email_check_match_content=warranty_email_check_config["match_content"],
+                warranty_email_check_miss_content=warranty_email_check_config["miss_content"],
+            )
+        )
+
+    except Exception as e:
+        logger.error("获取质保名单判定设置失败: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取质保名单判定设置失败: {str(e)}"
         )
 
 
@@ -4936,6 +4968,7 @@ async def update_warranty_fake_success_settings(
         )
 
 
+@router.post("/warranty-email-check")
 @router.post("/settings/warranty-email-check")
 async def update_warranty_email_check_settings(
     warranty_data: WarrantyEmailCheckSettingsRequest,

@@ -271,55 +271,6 @@
 </div>
 
 
-<!-- 前台质保邮箱名单判定 -->
-<div class="content-section">
-    <div class="section-header">
-        <h3>前台质保邮箱名单判定</h3>
-    </div>
-
-    <form id="warrantyEmailCheckForm" class="settings-form">
-        <div class="form-group">
-            <label class="checkbox-label">
-                <input
-                    type="checkbox"
-                    id="warrantyEmailCheckEnabled"
-                    name="enabled"
-                    {% if warranty_email_check_enabled %}checked{% endif %}
-                >
-                <span>启用邮箱名单判定模式</span>
-            </label>
-            <p class="form-help">开启后，前台质保服务输入邮箱只判断该邮箱是否存在于质保邮箱列表，不再查询订单、刷新 Team 状态或提交质保。</p>
-        </div>
-
-        <div class="form-group">
-            <label for="warrantyEmailCheckMatchContent">邮箱在质保列表内时展示</label>
-            <div
-                id="warrantyEmailCheckMatchContent"
-                class="rich-text-editor"
-                contenteditable="true"
-                role="textbox"
-                aria-multiline="true"
-                data-placeholder="请输入命中质保邮箱列表时展示的内容"
-            >{{ warranty_email_check_match_content | default('') | safe }}</div>
-            <p class="form-help">支持常用富文本：加粗、链接、列表、段落；保存时会自动清理不安全标签。</p>
-        </div>
-
-        <div class="form-group">
-            <label for="warrantyEmailCheckMissContent">邮箱不在质保列表内时展示</label>
-            <div
-                id="warrantyEmailCheckMissContent"
-                class="rich-text-editor"
-                contenteditable="true"
-                role="textbox"
-                aria-multiline="true"
-                data-placeholder="请输入未命中质保邮箱列表时展示的内容"
-            >{{ warranty_email_check_miss_content | default('') | safe }}</div>
-        </div>
-
-        <button type="submit" class="btn btn-primary">保存邮箱名单判定</button>
-    </form>
-</div>
-
 <!-- Webhook 配置 -->
 <div class="content-section">
     <div class="section-header">
@@ -370,27 +321,6 @@
         margin-top: 0.375rem;
     }
 
-    .rich-text-editor {
-        min-height: 150px;
-        padding: 0.875rem;
-        border: 1px solid var(--border-base);
-        border-radius: var(--radius-md);
-        background: var(--bg-surface);
-        color: var(--text-primary);
-        line-height: 1.65;
-        outline: none;
-    }
-
-    .rich-text-editor:focus {
-        border-color: var(--primary);
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
-    }
-
-    .rich-text-editor:empty::before {
-        content: attr(data-placeholder);
-        color: var(--text-muted);
-        pointer-events: none;
-    }
 
     .sidebar-order-list {
         display: grid;
@@ -914,39 +844,6 @@
         }
     });
 
-    function getRichTextEditorHtml(editorId) {
-        const editor = document.getElementById(editorId);
-        return (editor?.innerHTML || '').trim();
-    }
-
-    // 质保邮箱名单判定模式
-    document.getElementById('warrantyEmailCheckForm')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        const enabled = document.getElementById('warrantyEmailCheckEnabled').checked;
-        const match_content = getRichTextEditorHtml('warrantyEmailCheckMatchContent');
-        const miss_content = getRichTextEditorHtml('warrantyEmailCheckMissContent');
-
-        try {
-            const response = await fetch('/admin/settings/warranty-email-check', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ enabled, match_content, miss_content })
-            });
-
-            const data = await response.json();
-
-            if (response.ok && data.success) {
-                showToast('质保邮箱名单判定模式已保存', 'success');
-            } else {
-                showToast(data.error || '保存失败', 'error');
-            }
-        } catch (error) {
-            showToast('网络错误', 'error');
-        }
-    });
 
     // Webhook 配置表单
     document.getElementById('webhookForm').addEventListener('submit', async (e) => {

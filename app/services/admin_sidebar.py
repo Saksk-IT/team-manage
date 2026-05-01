@@ -21,6 +21,13 @@ SUPER_ADMIN_SIDEBAR_ITEMS: tuple[AdminSidebarItem, ...] = (
     AdminSidebarItem("email_whitelist", "email_whitelist", "/admin/email-whitelist", "shield-check", "邮箱白名单"),
     AdminSidebarItem("warranty_emails", "warranty_emails", "/admin/warranty-emails", "key-round", "质保邮箱列表"),
     AdminSidebarItem(
+        "warranty_email_check",
+        "warranty_email_check",
+        "/admin/warranty-email-check",
+        "message-square-text",
+        "质保名单判定",
+    ),
+    AdminSidebarItem(
         "warranty_claim_records",
         "warranty_claim_records",
         "/admin/warranty-claim-records",
