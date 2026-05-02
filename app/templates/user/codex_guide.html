@@ -41,9 +41,9 @@
                 <div class="hero-card__content">
                     <div class="hero-card__eyebrow">Codex API access guide</div>
                     <h1 id="guideTitle">兑换中转 API Key，并接入 Codex</h1>
-                    <p class="subtitle">当 GPT Team 服务不可用时，可按本教程使用补偿兑换码获取中转 API Key，再通过 Codex 的 API 登录继续使用；中转号池支持 gpt-5.5。</p>
+                    <p class="subtitle">目前 GPT Team 已全部失效，后续可按本教程兑换中转 API Key，再通过 Codex 的 API 登录继续使用；中转使用纯血 Plus 号池，并支持 gpt-5.5。</p>
                     <div class="hero-card__badges" aria-label="教程要点">
-                        <span class="spots-badge"><i data-lucide="ticket-check"></i><span>先兑换补偿码</span></span>
+                        <span class="spots-badge"><i data-lucide="ticket-check"></i><span>先兑换中转码</span></span>
                         <span class="spots-badge spots-badge--success"><i data-lucide="key-round"></i><span>生成 API Key</span></span>
                         <span class="spots-badge"><i data-lucide="sparkles"></i><span>支持 gpt-5.5</span></span>
                         <span class="spots-badge"><i data-lucide="laptop"></i><span>Windows / Mac 通用</span></span>
@@ -61,7 +61,7 @@
                         <ol class="codex-guide-toc">
                             <li><a href="#notice">使用前说明</a></li>
                             <li><a href="#register">注册中转账户</a></li>
-                            <li><a href="#redeem">兑换补偿码</a></li>
+                            <li><a href="#redeem">兑换中转码</a></li>
                             <li><a href="#createKey">创建 API 密钥</a></li>
                             <li><a href="#installCodex">下载 Codex</a></li>
                             <li><a href="#configureCodex">配置 Codex 文件</a></li>
@@ -77,7 +77,14 @@
                             <span class="codex-step-index">说明</span>
                             <div>
                                 <h2>使用前请先确认</h2>
-                                <p>兑换码来自中转服务，并已按质保剩余时间更新。页面中的密钥截图已脱敏，请务必使用你自己页面中生成的 API Key。</p>
+                                <p>本教程同时适用于按邮箱质保剩余时间补发的中转兑换码，以及在链动小铺购买的额度包兑换码。页面中的密钥截图已脱敏，请务必使用你自己页面中生成的 API Key。</p>
+                            </div>
+                        </div>
+                        <div class="codex-alert codex-alert--important">
+                            <i data-lucide="badge-alert"></i>
+                            <div>
+                                <strong>额度包兑换码必须选择 GPT-Plus。</strong>
+                                <span>质保补发的中转兑换码选择“质保补偿”；链动小铺购买的额度包兑换码是余额制，新建 API Key 选择分组时必须选“GPT-Plus”，不能选“质保补偿”，否则无法使用。</span>
                             </div>
                         </div>
                         <div class="codex-alert codex-alert--warning">
@@ -119,7 +126,7 @@
                             <span class="codex-step-index">02</span>
                             <div>
                                 <h2>在兑换页面输入兑换码</h2>
-                                <p>登录后进入兑换页面，输入提供给你的补偿兑换码并点击“兑换”。</p>
+                                <p>登录后进入兑换页面，输入提供给你的中转兑换码或额度包兑换码并点击“兑换”。</p>
                             </div>
                         </div>
                         <figure class="codex-figure">
@@ -149,7 +156,7 @@
                                 <div class="codex-key-step__copy">
                                     <span class="codex-key-step__badge">3.1</span>
                                     <h3>创建密钥</h3>
-                                    <p>进入“API 密钥”页面，点击“创建密钥”。</p>
+                                    <p>进入“API 密钥”页面，点击“创建密钥”，名称可按自己需要随便填写。</p>
                                 </div>
                                 <figure class="codex-key-step__media codex-key-step__media--wide">
                                     <img src="/static/img/codex-guide/image-2.png" alt="API 密钥页面创建密钥按钮" loading="lazy">
@@ -161,7 +168,7 @@
                                 <div class="codex-key-step__copy">
                                     <span class="codex-key-step__badge">3.2</span>
                                     <h3>选择正确分组</h3>
-                                    <p>质保补偿码选“质保补偿”；链动小铺余额制选“GPT-Plus”。</p>
+                                    <p>质保补发的中转码选“质保补偿”；链动小铺额度包选“GPT-Plus”。</p>
                                 </div>
                                 <figure class="codex-key-step__media codex-key-step__media--tall">
                                     <img src="/static/img/codex-guide/image-13.png" alt="创建密钥弹窗中选择 API 分组" loading="lazy">
@@ -296,7 +303,7 @@
                             <li><i data-lucide="check-circle-2"></i><span>编辑配置前是否已经完全关闭 Codex？</span></li>
                             <li><i data-lucide="check-circle-2"></i><span><code>config.toml</code> 和 <code>auth.json</code> 是否放在同一个 <code>.codex</code> 目录？</span></li>
                             <li><i data-lucide="check-circle-2"></i><span>是否粘贴了你自己生成的 API Key，而不是教程截图中的示例？</span></li>
-                            <li><i data-lucide="check-circle-2"></i><span>创建密钥时是否按来源选择正确分组：质保补偿码选“质保补偿”，链动小铺余额制选“GPT-Plus”？</span></li>
+                            <li><i data-lucide="check-circle-2"></i><span>创建密钥时是否按来源选择正确分组：质保补发的中转码选“质保补偿”，链动小铺额度包选“GPT-Plus”？</span></li>
                         </ul>
                     </section>
 

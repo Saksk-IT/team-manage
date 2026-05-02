@@ -149,6 +149,15 @@
     color: var(--warning);
 }
 
+.codex-alert--important {
+    border-color: rgba(251, 113, 133, 0.28);
+    background: linear-gradient(145deg, rgba(251, 113, 133, 0.14), rgba(214, 180, 111, 0.08));
+}
+
+.codex-alert--important i {
+    color: var(--danger);
+}
+
 .codex-link-card {
     display: inline-flex;
     align-items: center;
