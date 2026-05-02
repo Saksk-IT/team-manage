@@ -358,3 +358,114 @@
     margin: 0;
     padding-left: 1.2rem;
 }
+
+/* API key creation flow: keep mixed-size screenshots aligned and readable. */
+.codex-key-flow {
+    display: grid;
+    gap: 1rem;
+}
+
+.codex-key-step {
+    display: grid;
+    grid-template-columns: minmax(180px, 0.42fr) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: center;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 22px;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.codex-key-step--focus {
+    border-color: rgba(214, 180, 111, 0.28);
+    background: linear-gradient(145deg, rgba(214, 180, 111, 0.1), rgba(0, 0, 0, 0.15));
+}
+
+.codex-key-step__copy {
+    display: grid;
+    gap: 0.5rem;
+    align-content: center;
+}
+
+.codex-key-step__badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    min-width: 2.5rem;
+    min-height: 2rem;
+    padding: 0 0.6rem;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary-hover);
+    font-size: 0.86rem;
+    font-weight: 950;
+}
+
+.codex-key-step__copy h3 {
+    margin: 0;
+    color: var(--text-main);
+    font-size: 1.08rem;
+    letter-spacing: -0.02em;
+}
+
+.codex-key-step__copy p {
+    margin: 0;
+    color: var(--text-muted);
+    line-height: 1.7;
+}
+
+.codex-key-step__media {
+    display: grid;
+    gap: 0.6rem;
+    margin: 0;
+}
+
+.codex-key-step__media img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 420px;
+    object-fit: contain;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: var(--shadow-md);
+}
+
+.codex-key-step__media--wide img {
+    max-height: 260px;
+}
+
+.codex-key-step__media--tall img {
+    width: min(100%, 420px);
+    justify-self: center;
+    max-height: 470px;
+}
+
+.codex-key-step__media figcaption,
+.codex-config-result figcaption {
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    line-height: 1.6;
+}
+
+.codex-config-result {
+    padding: 1rem;
+    border: 1px solid rgba(214, 180, 111, 0.2);
+    border-radius: 22px;
+    background: rgba(214, 180, 111, 0.06);
+}
+
+@media (max-width: 760px) {
+    .codex-key-step {
+        grid-template-columns: 1fr;
+        padding: 0.85rem;
+    }
+
+    .codex-key-step__media--wide img,
+    .codex-key-step__media--tall img {
+        width: 100%;
+        max-height: none;
+    }
+}

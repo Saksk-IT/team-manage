@@ -25,6 +25,9 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("codex-provider-sync/releases", html)
         self.assertIn("支持 gpt-5.5", html)
         self.assertIn("返回兑换页", html)
+        self.assertIn('class="codex-key-flow"', html)
+        self.assertIn('class="codex-key-step codex-key-step--focus"', html)
+        self.assertIn("分组决定密钥使用的权益来源", html)
 
     def test_redeem_page_links_to_codex_guide(self):
         template = Path("app/templates/user/redeem.html").read_text(encoding="utf-8")

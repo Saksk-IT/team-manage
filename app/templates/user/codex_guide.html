@@ -136,20 +136,6 @@
                                 <p>在“API 密钥”页面新建密钥，按兑换码来源选择对应分组，然后点击“使用密钥”获取后续配置内容。</p>
                             </div>
                         </div>
-                        <div class="codex-mini-steps">
-                            <article>
-                                <strong>3.1 创建密钥</strong>
-                                <span>点击“创建密钥”。</span>
-                            </article>
-                            <article>
-                                <strong>3.2 选择分组</strong>
-                                <span>质保补偿码选“质保补偿”；链动小铺余额制选“GPT-Plus”。</span>
-                            </article>
-                            <article>
-                                <strong>3.3 使用密钥</strong>
-                                <span>进入使用密钥弹窗，复制自己的配置内容。</span>
-                            </article>
-                        </div>
                         <div class="codex-alert codex-alert--info">
                             <i data-lucide="info"></i>
                             <div>
@@ -157,23 +143,48 @@
                                 <span>“质保补偿”是订阅制度，不需要消耗余额；在“链动小铺”购买的是余额制，应选择“GPT-Plus”分组。</span>
                             </div>
                         </div>
-                        <div class="codex-image-grid codex-image-grid--three">
-                            <figure class="codex-figure">
-                                <img src="/static/img/codex-guide/image-2.png" alt="API 密钥页面创建密钥按钮" loading="lazy">
-                                <figcaption>点击“创建密钥”。</figcaption>
-                            </figure>
-                            <figure class="codex-figure">
-                                <img src="/static/img/codex-guide/image-13.png" alt="创建密钥弹窗中选择 API 分组" loading="lazy">
-                                <figcaption>按来源选择分组：质保补偿码选“质保补偿”，链动小铺余额制选“GPT-Plus”。</figcaption>
-                            </figure>
-                            <figure class="codex-figure">
-                                <img src="/static/img/codex-guide/image-4.png" alt="密钥列表使用密钥入口" loading="lazy">
-                                <figcaption>点击“使用密钥”。</figcaption>
-                            </figure>
+
+                        <div class="codex-key-flow" aria-label="API 密钥创建步骤">
+                            <article class="codex-key-step">
+                                <div class="codex-key-step__copy">
+                                    <span class="codex-key-step__badge">3.1</span>
+                                    <h3>创建密钥</h3>
+                                    <p>进入“API 密钥”页面，点击“创建密钥”。</p>
+                                </div>
+                                <figure class="codex-key-step__media codex-key-step__media--wide">
+                                    <img src="/static/img/codex-guide/image-2.png" alt="API 密钥页面创建密钥按钮" loading="lazy">
+                                    <figcaption>如果列表为空，直接点击页面中的“创建密钥”。</figcaption>
+                                </figure>
+                            </article>
+
+                            <article class="codex-key-step codex-key-step--focus">
+                                <div class="codex-key-step__copy">
+                                    <span class="codex-key-step__badge">3.2</span>
+                                    <h3>选择正确分组</h3>
+                                    <p>质保补偿码选“质保补偿”；链动小铺余额制选“GPT-Plus”。</p>
+                                </div>
+                                <figure class="codex-key-step__media codex-key-step__media--tall">
+                                    <img src="/static/img/codex-guide/image-13.png" alt="创建密钥弹窗中选择 API 分组" loading="lazy">
+                                    <figcaption>分组决定密钥使用的权益来源，选错会影响后续可用额度。</figcaption>
+                                </figure>
+                            </article>
+
+                            <article class="codex-key-step">
+                                <div class="codex-key-step__copy">
+                                    <span class="codex-key-step__badge">3.3</span>
+                                    <h3>使用密钥</h3>
+                                    <p>创建后回到密钥列表，点击“使用密钥”。</p>
+                                </div>
+                                <figure class="codex-key-step__media codex-key-step__media--wide">
+                                    <img src="/static/img/codex-guide/image-4.png" alt="密钥列表使用密钥入口" loading="lazy">
+                                    <figcaption>进入弹窗后，复制自己的 Codex 配置内容。</figcaption>
+                                </figure>
+                            </article>
                         </div>
-                        <figure class="codex-figure">
+
+                        <figure class="codex-figure codex-config-result">
                             <img src="/static/img/codex-guide/image-5.png" alt="使用 API 密钥弹窗中的 Codex 配置示例，密钥已脱敏" loading="lazy">
-                            <figcaption>复制你自己的 <code>config.toml</code> 和 <code>auth.json</code> 内容；截图中的 API Key 已脱敏。</figcaption>
+                            <figcaption>最终复制你自己的 <code>config.toml</code> 和 <code>auth.json</code> 内容；截图中的 API Key 已脱敏。</figcaption>
                         </figure>
                     </section>
 
