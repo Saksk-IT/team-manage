@@ -41,10 +41,11 @@
                 <div class="hero-card__content">
                     <div class="hero-card__eyebrow">Codex API access guide</div>
                     <h1 id="guideTitle">兑换中转 API Key，并接入 Codex</h1>
-                    <p class="subtitle">当 GPT Team 服务不可用时，可按本教程使用补偿兑换码获取中转 API Key，再通过 Codex 的 API 登录继续使用。</p>
+                    <p class="subtitle">当 GPT Team 服务不可用时，可按本教程使用补偿兑换码获取中转 API Key，再通过 Codex 的 API 登录继续使用；中转号池支持 gpt-5.5。</p>
                     <div class="hero-card__badges" aria-label="教程要点">
                         <span class="spots-badge"><i data-lucide="ticket-check"></i><span>先兑换补偿码</span></span>
                         <span class="spots-badge spots-badge--success"><i data-lucide="key-round"></i><span>生成 API Key</span></span>
+                        <span class="spots-badge"><i data-lucide="sparkles"></i><span>支持 gpt-5.5</span></span>
                         <span class="spots-badge"><i data-lucide="laptop"></i><span>Windows / Mac 通用</span></span>
                     </div>
                 </div>
@@ -65,6 +66,7 @@
                             <li><a href="#installCodex">下载 Codex</a></li>
                             <li><a href="#configureCodex">配置 Codex 文件</a></li>
                             <li><a href="#loginCodex">API 登录 Codex</a></li>
+                            <li><a href="#faq">常见问题</a></li>
                         </ol>
                     </section>
                 </aside>
@@ -131,7 +133,7 @@
                             <span class="codex-step-index">03</span>
                             <div>
                                 <h2>创建并查看 API 密钥</h2>
-                                <p>在“API 密钥”页面新建密钥，分组选择“质保补偿”，然后点击“使用密钥”获取后续配置内容。</p>
+                                <p>在“API 密钥”页面新建密钥，按兑换码来源选择对应分组，然后点击“使用密钥”获取后续配置内容。</p>
                             </div>
                         </div>
                         <div class="codex-mini-steps">
@@ -141,12 +143,19 @@
                             </article>
                             <article>
                                 <strong>3.2 选择分组</strong>
-                                <span>名称可自定义，分组选择“质保补偿”。</span>
+                                <span>质保补偿码选“质保补偿”；链动小铺余额制选“GPT-Plus”。</span>
                             </article>
                             <article>
                                 <strong>3.3 使用密钥</strong>
                                 <span>进入使用密钥弹窗，复制自己的配置内容。</span>
                             </article>
+                        </div>
+                        <div class="codex-alert codex-alert--info">
+                            <i data-lucide="info"></i>
+                            <div>
+                                <strong>分组选择规则。</strong>
+                                <span>“质保补偿”是订阅制度，不需要消耗余额；在“链动小铺”购买的是余额制，应选择“GPT-Plus”分组。</span>
+                            </div>
                         </div>
                         <div class="codex-image-grid codex-image-grid--three">
                             <figure class="codex-figure">
@@ -154,8 +163,8 @@
                                 <figcaption>点击“创建密钥”。</figcaption>
                             </figure>
                             <figure class="codex-figure">
-                                <img src="/static/img/codex-guide/image-3.png" alt="创建密钥弹窗选择质保补偿分组" loading="lazy">
-                                <figcaption>分组选择“质保补偿”。</figcaption>
+                                <img src="/static/img/codex-guide/image-13.png" alt="创建密钥弹窗中选择 API 分组" loading="lazy">
+                                <figcaption>按来源选择分组：质保补偿码选“质保补偿”，链动小铺余额制选“GPT-Plus”。</figcaption>
                             </figure>
                             <figure class="codex-figure">
                                 <img src="/static/img/codex-guide/image-4.png" alt="密钥列表使用密钥入口" loading="lazy">
@@ -276,8 +285,43 @@
                             <li><i data-lucide="check-circle-2"></i><span>编辑配置前是否已经完全关闭 Codex？</span></li>
                             <li><i data-lucide="check-circle-2"></i><span><code>config.toml</code> 和 <code>auth.json</code> 是否放在同一个 <code>.codex</code> 目录？</span></li>
                             <li><i data-lucide="check-circle-2"></i><span>是否粘贴了你自己生成的 API Key，而不是教程截图中的示例？</span></li>
-                            <li><i data-lucide="check-circle-2"></i><span>创建密钥时分组是否选择“质保补偿”？</span></li>
+                            <li><i data-lucide="check-circle-2"></i><span>创建密钥时是否按来源选择正确分组：质保补偿码选“质保补偿”，链动小铺余额制选“GPT-Plus”？</span></li>
                         </ul>
+                    </section>
+
+                    <section id="faq" class="card codex-guide-section codex-guide-section--faq">
+                        <div class="codex-section-heading">
+                            <span class="codex-step-index">FAQ</span>
+                            <div>
+                                <h2>常见问题</h2>
+                                <p>按教程操作后仍异常时，优先检查 Codex 是否读取了最新配置，以及原聊天记录是否需要单独同步。</p>
+                            </div>
+                        </div>
+
+                        <div class="codex-faq-list">
+                            <article class="codex-faq-card">
+                                <div class="side-card-title"><i data-lucide="circle-alert"></i><span>问题一：登录时报 401 / Incorrect API key</span></div>
+                                <p>通常是因为配置 <code>config.toml</code> 时 Codex 已经在运行，客户端没有读取到新的中转配置。</p>
+                                <ol>
+                                    <li>关闭 Codex 软件。</li>
+                                    <li>重新配置 <code>config.toml</code>。</li>
+                                    <li>重新使用 API 密钥登录。</li>
+                                </ol>
+                                <figure class="codex-figure">
+                                    <img src="/static/img/codex-guide/image-14.png" alt="Codex 登录时报 401 Incorrect API key，密钥已脱敏" loading="lazy">
+                                    <figcaption>错误示例：API Key 片段已脱敏。</figcaption>
+                                </figure>
+                            </article>
+
+                            <article class="codex-faq-card">
+                                <div class="side-card-title"><i data-lucide="history"></i><span>问题二：原 Codex 聊天记录恢复</span></div>
+                                <p>使用 API 中转后，部分用户可能看不到原来的聊天记录。可参考下载同步工具恢复。</p>
+                                <a class="codex-link-card" href="https://github.com/Dailin521/codex-provider-sync/releases" target="_blank" rel="noopener noreferrer">
+                                    <i data-lucide="download-cloud"></i>
+                                    <span>codex-provider-sync releases</span>
+                                </a>
+                            </article>
+                        </div>
                     </section>
                 </div>
             </main>

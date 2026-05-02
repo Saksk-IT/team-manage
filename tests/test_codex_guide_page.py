@@ -18,7 +18,12 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("兑换中转 API Key，并接入 Codex", html)
         self.assertIn("https://api.sakms.top/register", html)
         self.assertIn("配置文件前必须完全关闭 Codex", html)
-        self.assertIn("/static/img/codex-guide/image-12.png", html)
+        self.assertIn("GPT-Plus", html)
+        self.assertIn("链动小铺", html)
+        self.assertIn("/static/img/codex-guide/image-13.png", html)
+        self.assertIn("/static/img/codex-guide/image-14.png", html)
+        self.assertIn("codex-provider-sync/releases", html)
+        self.assertIn("支持 gpt-5.5", html)
         self.assertIn("返回兑换页", html)
 
     def test_redeem_page_links_to_codex_guide(self):
@@ -30,7 +35,7 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
     def test_sanitized_guide_assets_are_kept_under_static_directory(self):
         asset_dir = Path("app/static/img/codex-guide")
 
-        for image_name in ("image-4.png", "image-5.png", "image-9.png", "image-12.png"):
+        for image_name in ("image-4.png", "image-5.png", "image-9.png", "image-12.png", "image-13.png", "image-14.png"):
             self.assertTrue((asset_dir / image_name).exists())
 
         template = Path("app/templates/user/codex_guide.html").read_text(encoding="utf-8")

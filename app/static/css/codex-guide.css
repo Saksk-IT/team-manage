@@ -322,3 +322,39 @@
         grid-template-columns: 1fr;
     }
 }
+
+.codex-alert--info {
+    border-color: rgba(56, 189, 248, 0.24);
+    background: rgba(56, 189, 248, 0.09);
+}
+
+.codex-alert--info i {
+    color: #7dd3fc;
+}
+
+.codex-faq-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.codex-faq-card {
+    display: grid;
+    gap: 0.85rem;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    background: rgba(0, 0, 0, 0.16);
+}
+
+.codex-faq-card p,
+.codex-faq-card li {
+    color: var(--text-muted);
+    line-height: 1.7;
+}
+
+.codex-faq-card ol {
+    display: grid;
+    gap: 0.45rem;
+    margin: 0;
+    padding-left: 1.2rem;
+}
