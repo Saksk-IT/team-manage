@@ -244,6 +244,31 @@
     display: block;
 }
 
+.warranty-email-check-static-guide {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.warranty-email-check-static-guide__frame {
+    width: 100%;
+    min-height: 72vh;
+    border: 0;
+    border-radius: 0.9rem;
+    background: #fff;
+}
+
+.warranty-email-check-static-guide__fallback {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.warranty-email-check-static-guide__fallback a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
+}
+
 .side-card {
     display: grid;
     gap: 0.9rem;

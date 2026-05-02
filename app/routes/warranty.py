@@ -11,6 +11,7 @@ from app.database import get_db
 from app.services.invite_queue import invite_queue_service
 from app.services.settings import settings_service
 from app.services.warranty import warranty_service
+from app.routes.user import get_codex_guide_html
 from app.utils.rich_text import rich_text_to_plain_text
 
 
@@ -119,11 +120,15 @@ async def check_warranty(
             else email_check_config.get("miss_content")
         ) or ""
         content_html = (
-            settings_service.get_warranty_email_check_template_content(
-                templates,
-                result.get("template_key"),
+            get_codex_guide_html()
+            if email_check_config.get("show_static_tutorial")
+            else (
+                settings_service.get_warranty_email_check_template_content(
+                    templates,
+                    result.get("template_key"),
+                )
+                or fallback_content
             )
-            or fallback_content
         )
 
         generated_code = None

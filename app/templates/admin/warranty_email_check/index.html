@@ -27,6 +27,19 @@
             <p class="form-help">开启后，前台质保服务输入邮箱只判断该邮箱是否存在于质保邮箱列表，不再查询订单、刷新 Team 状态或提交质保；首次查询会随机锁定一个模板，后续同邮箱固定展示该模板。</p>
         </div>
 
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input
+                    type="checkbox"
+                    id="warrantyEmailCheckShowStaticTutorial"
+                    name="show_static_tutorial"
+                    {% if warranty_email_check_show_static_tutorial %}checked{% endif %}
+                >
+                <span>命中后直接显示静态页面教程</span>
+            </label>
+            <p class="form-help">开启后，前台质保邮箱核查结果会直接展示当前的静态教程页面；关闭后仍显示后台自定义内容。</p>
+        </div>
+
         <input
             type="file"
             id="warrantyEmailCheckImageInput"
@@ -500,6 +513,7 @@
         event.preventDefault();
 
         const enabled = document.getElementById('warrantyEmailCheckEnabled').checked;
+        const show_static_tutorial = document.getElementById('warrantyEmailCheckShowStaticTutorial')?.checked || false;
         const match_templates = collectTemplatePayload('match');
         const miss_templates = collectTemplatePayload('miss');
         const match_content = match_templates[0]?.content || '';
@@ -513,6 +527,7 @@
                 },
                 body: JSON.stringify({
                     enabled,
+                    show_static_tutorial,
                     match_content,
                     miss_content,
                     match_templates,

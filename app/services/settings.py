@@ -46,6 +46,7 @@ class SettingsService:
     WARRANTY_EMAIL_CHECK_MISS_CONTENT_KEY = "warranty_email_check_miss_content"
     WARRANTY_EMAIL_CHECK_MATCH_TEMPLATES_KEY = "warranty_email_check_match_templates"
     WARRANTY_EMAIL_CHECK_MISS_TEMPLATES_KEY = "warranty_email_check_miss_templates"
+    WARRANTY_EMAIL_CHECK_SHOW_STATIC_TUTORIAL_KEY = "warranty_email_check_show_static_tutorial"
     SUB2API_WARRANTY_BASE_URL_KEY = "sub2api_warranty_base_url"
     SUB2API_WARRANTY_ADMIN_API_KEY_KEY = "sub2api_warranty_admin_api_key"
     SUB2API_WARRANTY_SUBSCRIPTION_GROUP_ID_KEY = "sub2api_warranty_subscription_group_id"
@@ -57,6 +58,7 @@ class SettingsService:
     DEFAULT_WARRANTY_SERVICE_ENABLED = True
     DEFAULT_WARRANTY_FAKE_SUCCESS_ENABLED = False
     DEFAULT_WARRANTY_EMAIL_CHECK_ENABLED = False
+    DEFAULT_WARRANTY_EMAIL_CHECK_SHOW_STATIC_TUTORIAL = False
     DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_CONTENT = "<p>该邮箱已在质保邮箱列表内，请按页面提示继续处理。</p>"
     DEFAULT_WARRANTY_EMAIL_CHECK_MISS_CONTENT = "<p>未查询到该邮箱的质保记录，请核对邮箱或联系管理员处理。</p>"
     DEFAULT_WARRANTY_EMAIL_CHECK_MATCH_TEMPLATE_NAME = "命中模板 1"
@@ -714,6 +716,11 @@ class SettingsService:
             self.WARRANTY_EMAIL_CHECK_MISS_TEMPLATES_KEY,
             ""
         )
+        show_static_tutorial_raw = await self.get_setting(
+            session,
+            self.WARRANTY_EMAIL_CHECK_SHOW_STATIC_TUTORIAL_KEY,
+            str(self.DEFAULT_WARRANTY_EMAIL_CHECK_SHOW_STATIC_TUTORIAL).lower()
+        )
 
         sanitized_match_content = sanitize_rich_text(match_content)
         sanitized_miss_content = sanitize_rich_text(miss_content)
@@ -734,6 +741,10 @@ class SettingsService:
             "enabled": self._parse_bool(
                 enabled_raw,
                 self.DEFAULT_WARRANTY_EMAIL_CHECK_ENABLED
+            ),
+            "show_static_tutorial": self._parse_bool(
+                show_static_tutorial_raw,
+                self.DEFAULT_WARRANTY_EMAIL_CHECK_SHOW_STATIC_TUTORIAL
             ),
             "match_content": match_templates[0]["content"],
             "miss_content": miss_templates[0]["content"],
@@ -806,6 +817,7 @@ class SettingsService:
         self,
         session: AsyncSession,
         enabled: bool,
+        show_static_tutorial: bool = False,
         match_content: str = "",
         miss_content: str = "",
         match_templates: Sequence[Dict[str, Any]] | None = None,
@@ -814,6 +826,7 @@ class SettingsService:
         """
         更新前台质保邮箱名单判定模式配置。
         """
+
         raw_match_templates = (
             match_templates
             if match_templates
@@ -851,6 +864,7 @@ class SettingsService:
             session,
             {
                 self.WARRANTY_EMAIL_CHECK_ENABLED_KEY: str(bool(enabled)).lower(),
+                self.WARRANTY_EMAIL_CHECK_SHOW_STATIC_TUTORIAL_KEY: str(bool(show_static_tutorial)).lower(),
                 self.WARRANTY_EMAIL_CHECK_MATCH_CONTENT_KEY: sanitized_match_content,
                 self.WARRANTY_EMAIL_CHECK_MISS_CONTENT_KEY: sanitized_miss_content,
                 self.WARRANTY_EMAIL_CHECK_MATCH_TEMPLATES_KEY: json.dumps(
