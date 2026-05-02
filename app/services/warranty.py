@@ -617,6 +617,7 @@ class WarrantyService:
         search: Optional[str] = None,
         status_filter: Optional[str] = None,
         source_filter: Optional[str] = None,
+        linked_team_status_filter: Optional[str] = None,
         remaining_claims_min: Optional[int] = None,
         remaining_claims_max: Optional[int] = None,
         remaining_days_min: Optional[int] = None,
@@ -685,6 +686,14 @@ class WarrantyService:
         normalized_status = (status_filter or "").strip().lower()
         if normalized_status in self.WARRANTY_EMAIL_STATUS_LABELS:
             entries = [entry for entry in entries if entry["status"] == normalized_status]
+
+        normalized_linked_team_status = (linked_team_status_filter or "").strip().lower()
+        if normalized_linked_team_status in self.TEAM_STATUS_LABELS:
+            entries = [
+                entry
+                for entry in entries
+                if (entry.get("last_warranty_team_status") or "no_record") == normalized_linked_team_status
+            ]
 
         return [
             entry

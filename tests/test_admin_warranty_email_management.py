@@ -223,11 +223,73 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
 
         html = response.body.decode("utf-8")
         self.assertEqual(entries[0]["transfer_redeem_code"], "TMW-TRANSFER")
-        self.assertEqual(entries[0]["transfer_redeem_code_remaining_days"], 5)
         self.assertIn("TMW-TRANSFER", html)
-        self.assertIn("5 天", html)
+        transfer_cell_start = html.index("TMW-TRANSFER")
+        transfer_cell_snippet = html[transfer_cell_start:transfer_cell_start + 120]
+        self.assertNotIn("天", transfer_cell_snippet)
+        self.assertNotIn("·", transfer_cell_snippet)
         self.assertIn("列设置", html)
         self.assertIn("warrantyEmailColumnDropdown", html)
+
+    async def test_warranty_emails_page_filters_by_linked_team_status(self):
+        async with self.Session() as session:
+            active_team = Team(
+                email="active-team@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-active",
+                team_name="Active Team",
+                status="active",
+                current_members=2,
+                max_members=5,
+            )
+            banned_team = Team(
+                email="banned-team@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-banned",
+                team_name="Banned Team",
+                status="banned",
+                current_members=2,
+                max_members=5,
+            )
+            session.add_all([active_team, banned_team])
+            await session.flush()
+            session.add_all([
+                WarrantyEmailEntry(
+                    email="active@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=5),
+                    source="manual",
+                    last_warranty_team_id=active_team.id,
+                ),
+                WarrantyEmailEntry(
+                    email="banned@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=5),
+                    source="manual",
+                    last_warranty_team_id=banned_team.id,
+                ),
+                WarrantyEmailEntry(
+                    email="unlinked@example.com",
+                    remaining_claims=2,
+                    expires_at=get_now() + timedelta(days=5),
+                    source="manual",
+                ),
+            ])
+            await session.commit()
+
+            response = await warranty_emails_page(
+                request=self._build_request(),
+                search=None,
+                linked_team_status_filter="banned",
+                db=session,
+                current_user={"username": "admin"},
+            )
+
+        html = response.body.decode("utf-8")
+        self.assertIn("banned@example.com", html)
+        self.assertNotIn("active@example.com", html)
+        self.assertNotIn("unlinked@example.com", html)
+        self.assertIn('name="linked_team_status_filter"', html)
 
     async def test_warranty_emails_page_searches_only_list_order_code(self):
         async with self.Session() as session:

@@ -3848,6 +3848,7 @@ async def warranty_emails_page(
     search: Optional[str] = None,
     status_filter: Optional[str] = None,
     source_filter: Optional[str] = None,
+    linked_team_status_filter: Optional[str] = None,
     remaining_claims_min: Optional[str] = None,
     remaining_claims_max: Optional[str] = None,
     remaining_days_min: Optional[str] = None,
@@ -3882,6 +3883,13 @@ async def warranty_emails_page(
                 detail="无效的质保邮箱来源筛选"
             )
 
+        normalized_linked_team_status = _normalize_optional_filter_text(linked_team_status_filter)
+        if normalized_linked_team_status and normalized_linked_team_status not in warranty_service.TEAM_STATUS_LABELS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="无效的关联 Team 状态筛选"
+            )
+
         parsed_remaining_claims_min = _parse_optional_int_filter(
             remaining_claims_min,
             label="剩余次数最小值",
@@ -3906,10 +3914,11 @@ async def warranty_emails_page(
         _validate_code_filter_range(parsed_remaining_days_min, parsed_remaining_days_max, "剩余天数")
 
         logger.info(
-            "管理员访问质保邮箱列表页 search=%s status=%s source=%s claims=%s-%s days=%s-%s page=%s per_page=%s",
+            "管理员访问质保邮箱列表页 search=%s status=%s source=%s team_status=%s claims=%s-%s days=%s-%s page=%s per_page=%s",
             search,
             normalized_status,
             normalized_source,
+            normalized_linked_team_status,
             parsed_remaining_claims_min,
             parsed_remaining_claims_max,
             parsed_remaining_days_min,
@@ -3922,6 +3931,7 @@ async def warranty_emails_page(
             search=search,
             status_filter=normalized_status,
             source_filter=normalized_source,
+            linked_team_status_filter=normalized_linked_team_status,
             remaining_claims_min=parsed_remaining_claims_min,
             remaining_claims_max=parsed_remaining_claims_max,
             remaining_days_min=parsed_remaining_days_min,
@@ -3948,6 +3958,7 @@ async def warranty_emails_page(
                 warranty_email_filters={
                     "status_filter": normalized_status or "",
                     "source_filter": normalized_source or "",
+                    "linked_team_status_filter": normalized_linked_team_status or "",
                     "remaining_claims_min": (
                         parsed_remaining_claims_min
                         if parsed_remaining_claims_min is not None
@@ -3973,6 +3984,7 @@ async def warranty_emails_page(
                     search,
                     normalized_status,
                     normalized_source,
+                    normalized_linked_team_status,
                     parsed_remaining_claims_min is not None,
                     parsed_remaining_claims_max is not None,
                     parsed_remaining_days_min is not None,
@@ -3983,7 +3995,8 @@ async def warranty_emails_page(
                     "total_pages": total_pages,
                     "total": total_entries,
                     "per_page": safe_per_page,
-                }
+                },
+                team_status_options=warranty_service.TEAM_STATUS_LABELS,
             )
         )
     except HTTPException:

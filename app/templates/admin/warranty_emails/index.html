@@ -101,6 +101,15 @@
                 <option value="manual" {% if warranty_email_filters.source_filter == 'manual' %}selected{% endif %}>管理员手动维护</option>
             </select>
         </label>
+        <label class="warranty-filter-field">
+            关联 Team 状态
+            <select name="linked_team_status_filter" class="form-control">
+                <option value="" {% if not warranty_email_filters.linked_team_status_filter %}selected{% endif %}>全部状态</option>
+                {% for option_value, option_label in team_status_options.items() %}
+                <option value="{{ option_value }}" {% if warranty_email_filters.linked_team_status_filter == option_value %}selected{% endif %}>{{ option_label }}</option>
+                {% endfor %}
+            </select>
+        </label>
         <div class="warranty-filter-actions">
             <button type="submit" class="btn btn-secondary">
                 <i data-lucide="filter" style="width: 16px; height: 16px;"></i> 筛选
@@ -159,14 +168,6 @@
                         {% if entry.transfer_redeem_code %}
                         <div class="warranty-transfer-code">
                             <code>{{ entry.transfer_redeem_code }}</code>
-                            <div class="text-muted small">
-                                {% if entry.transfer_redeem_code_remaining_days is not none %}
-                                {{ entry.transfer_redeem_code_remaining_days }} 天
-                                {% endif %}
-                                {% if entry.transfer_redeem_code_generated_at %}
-                                · {{ entry.transfer_redeem_code_generated_at|format_datetime }}
-                                {% endif %}
-                            </div>
                         </div>
                         {% else %}
                         -
@@ -229,6 +230,7 @@
     {% if search %}{% set _ = query_params.append('search=' + search|urlencode) %}{% endif %}
     {% if warranty_email_filters.status_filter %}{% set _ = query_params.append('status_filter=' + warranty_email_filters.status_filter|urlencode) %}{% endif %}
     {% if warranty_email_filters.source_filter %}{% set _ = query_params.append('source_filter=' + warranty_email_filters.source_filter|urlencode) %}{% endif %}
+    {% if warranty_email_filters.linked_team_status_filter %}{% set _ = query_params.append('linked_team_status_filter=' + warranty_email_filters.linked_team_status_filter|urlencode) %}{% endif %}
     {% if warranty_email_filters.remaining_claims_min != '' %}{% set _ = query_params.append('remaining_claims_min=' + warranty_email_filters.remaining_claims_min|string) %}{% endif %}
     {% if warranty_email_filters.remaining_claims_max != '' %}{% set _ = query_params.append('remaining_claims_max=' + warranty_email_filters.remaining_claims_max|string) %}{% endif %}
     {% if warranty_email_filters.remaining_days_min != '' %}{% set _ = query_params.append('remaining_days_min=' + warranty_email_filters.remaining_days_min|string) %}{% endif %}
