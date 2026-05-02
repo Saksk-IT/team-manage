@@ -1,0 +1,324 @@
+.codex-guide-page {
+    overflow: visible;
+}
+
+.codex-guide-shell {
+    max-width: 1220px;
+}
+
+.codex-guide-topbar {
+    position: sticky;
+    top: 1rem;
+    z-index: 20;
+}
+
+.codex-guide-hero {
+    padding: clamp(1.5rem, 4vw, 3rem);
+}
+
+.codex-guide-layout {
+    display: grid;
+    gap: 1.25rem;
+}
+
+.codex-guide-sidebar {
+    min-width: 0;
+}
+
+.codex-guide-sticky {
+    position: sticky;
+    top: 6.25rem;
+}
+
+.codex-guide-toc {
+    display: grid;
+    gap: 0.45rem;
+    list-style: none;
+}
+
+.codex-guide-toc a {
+    display: block;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: var(--transition-base);
+}
+
+.codex-guide-toc a:hover {
+    color: var(--text-main);
+    border-color: var(--border-strong);
+    background: rgba(214, 180, 111, 0.1);
+}
+
+.codex-guide-content {
+    display: grid;
+    gap: 1.25rem;
+    min-width: 0;
+}
+
+.codex-guide-section {
+    display: grid;
+    gap: 1rem;
+    padding: clamp(1rem, 2.5vw, 1.5rem);
+    scroll-margin-top: 7rem;
+}
+
+.codex-guide-section--notice,
+.codex-guide-section--checklist {
+    border-color: rgba(214, 180, 111, 0.28);
+}
+
+.codex-section-heading {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 0.9rem;
+}
+
+.codex-section-heading h2 {
+    margin: 0;
+    color: var(--text-main);
+    font-size: clamp(1.2rem, 2.5vw, 1.6rem);
+    letter-spacing: -0.03em;
+}
+
+.codex-section-heading p {
+    margin: 0.35rem 0 0;
+    color: var(--text-muted);
+    line-height: 1.75;
+}
+
+.codex-step-index {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 3.1rem;
+    min-height: 2.35rem;
+    padding: 0 0.7rem;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary-hover);
+    font-weight: 950;
+    letter-spacing: 0.04em;
+}
+
+.codex-alert,
+.codex-link-card,
+.codex-platform-card,
+.codex-mini-steps article,
+.codex-checklist li {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.16);
+}
+
+.codex-alert {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.75rem;
+    padding: 0.95rem;
+    border-radius: 18px;
+    color: var(--text-muted);
+    line-height: 1.7;
+}
+
+.codex-alert i {
+    color: var(--primary-hover);
+    width: 1.2rem;
+    height: 1.2rem;
+    margin-top: 0.2rem;
+}
+
+.codex-alert strong,
+.codex-alert span {
+    display: block;
+}
+
+.codex-alert strong {
+    color: var(--text-main);
+}
+
+.codex-alert--warning {
+    border-color: rgba(251, 191, 36, 0.28);
+    background: rgba(251, 191, 36, 0.1);
+}
+
+.codex-alert--warning i {
+    color: var(--warning);
+}
+
+.codex-link-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: fit-content;
+    max-width: 100%;
+    padding: 0.82rem 1rem;
+    border-radius: 999px;
+    color: var(--text-main);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+    transition: var(--transition-base);
+}
+
+.codex-link-card:hover {
+    border-color: var(--border-strong);
+    background: rgba(214, 180, 111, 0.1);
+}
+
+.codex-link-card i {
+    flex-shrink: 0;
+    color: var(--primary-hover);
+    width: 1.1rem;
+    height: 1.1rem;
+}
+
+.codex-figure {
+    display: grid;
+    gap: 0.65rem;
+    margin: 0;
+}
+
+.codex-figure img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.04);
+    box-shadow: var(--shadow-md);
+}
+
+.codex-figure figcaption {
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    line-height: 1.6;
+}
+
+.codex-image-grid,
+.codex-mini-steps,
+.codex-platform-grid {
+    display: grid;
+    gap: 1rem;
+}
+
+.codex-mini-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.codex-mini-steps article,
+.codex-platform-card {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0.95rem;
+    border-radius: 18px;
+}
+
+.codex-mini-steps strong {
+    color: var(--text-main);
+}
+
+.codex-mini-steps span,
+.codex-platform-card li,
+.codex-checklist span {
+    color: var(--text-muted);
+    line-height: 1.65;
+}
+
+.codex-platform-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.codex-platform-card ol {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0;
+    padding-left: 1.2rem;
+}
+
+.codex-checklist {
+    display: grid;
+    gap: 0.7rem;
+    list-style: none;
+}
+
+.codex-checklist li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.65rem;
+    align-items: start;
+    padding: 0.85rem;
+    border-radius: 16px;
+}
+
+.codex-checklist i {
+    color: var(--success);
+    width: 1.15rem;
+    height: 1.15rem;
+    margin-top: 0.22rem;
+}
+
+.codex-guide-section code,
+.codex-guide-section kbd {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.5rem;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.88em;
+}
+
+.codex-guide-section code {
+    padding: 0.12rem 0.35rem;
+}
+
+.codex-guide-section kbd {
+    padding: 0.08rem 0.34rem;
+}
+
+@media (min-width: 980px) {
+    .codex-guide-layout {
+        grid-template-columns: 270px minmax(0, 1fr);
+        align-items: start;
+    }
+
+    .codex-image-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .codex-image-grid--three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 979px) {
+    .codex-guide-sidebar {
+        display: none;
+    }
+
+    .codex-guide-topbar {
+        position: relative;
+        top: auto;
+    }
+}
+
+@media (max-width: 760px) {
+    .codex-section-heading,
+    .codex-alert,
+    .codex-checklist li {
+        grid-template-columns: 1fr;
+    }
+
+    .codex-link-card {
+        width: 100%;
+        justify-content: center;
+        border-radius: 18px;
+    }
+
+    .codex-mini-steps,
+    .codex-platform-grid {
+        grid-template-columns: 1fr;
+    }
+}

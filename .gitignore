@@ -78,3 +78,7 @@ generate-code-modal-*.png
 data/
 *.db-shm
 *.db-wal
+# Local tutorial source artifacts (raw screenshots may contain API keys)
+/对接教程.md
+/image.png
+/image-[0-9]*.png

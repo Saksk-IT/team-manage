@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Codex API 登录对接教程</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="stylesheet" href="/static/css/user.css">
+    <link rel="stylesheet" href="/static/css/user-front.css">
+    <link rel="stylesheet" href="/static/css/user-front-components.css">
+    <link rel="stylesheet" href="/static/css/user-front-responsive.css">
+    <link rel="stylesheet" href="/static/css/codex-guide.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+    <div class="front-page codex-guide-page">
+        <div class="front-page__ambient front-page__ambient--gold" aria-hidden="true"></div>
+        <div class="front-page__ambient front-page__ambient--blue" aria-hidden="true"></div>
+
+        <div class="container front-shell codex-guide-shell">
+            <nav class="front-topbar codex-guide-topbar" aria-label="页面导航">
+                <a class="front-brand" href="/" aria-label="返回 GPT Team 服务台首页">
+                    <span class="front-brand__mark"><i data-lucide="sparkles"></i></span>
+                    <span>
+                        <strong>GPT Team Service</strong>
+                        <small>API 登录对接教程</small>
+                    </span>
+                </a>
+                <div class="front-topbar__actions">
+                    <a href="/" class="front-topbar__link"><i data-lucide="home"></i> 返回兑换页</a>
+                    <a href="#quickChecklist" class="front-topbar__link"><i data-lucide="list-checks"></i> 快速检查</a>
+                    <a href="https://api.sakms.top/register" target="_blank" rel="noopener noreferrer" class="btn btn-primary front-topbar__cta">
+                        <i data-lucide="external-link"></i> 打开中转注册
+                    </a>
+                </div>
+            </nav>
+
+            <header class="hero-card codex-guide-hero" aria-labelledby="guideTitle">
+                <div class="hero-card__content">
+                    <div class="hero-card__eyebrow">Codex API access guide</div>
+                    <h1 id="guideTitle">兑换中转 API Key，并接入 Codex</h1>
+                    <p class="subtitle">当 GPT Team 服务不可用时，可按本教程使用补偿兑换码获取中转 API Key，再通过 Codex 的 API 登录继续使用。</p>
+                    <div class="hero-card__badges" aria-label="教程要点">
+                        <span class="spots-badge"><i data-lucide="ticket-check"></i><span>先兑换补偿码</span></span>
+                        <span class="spots-badge spots-badge--success"><i data-lucide="key-round"></i><span>生成 API Key</span></span>
+                        <span class="spots-badge"><i data-lucide="laptop"></i><span>Windows / Mac 通用</span></span>
+                    </div>
+                </div>
+            </header>
+
+            <main class="codex-guide-layout">
+                <aside class="codex-guide-sidebar" aria-label="教程目录">
+                    <section class="card side-card codex-guide-sticky">
+                        <div class="side-card-title">
+                            <i data-lucide="map"></i>
+                            <span>教程目录</span>
+                        </div>
+                        <ol class="codex-guide-toc">
+                            <li><a href="#notice">使用前说明</a></li>
+                            <li><a href="#register">注册中转账户</a></li>
+                            <li><a href="#redeem">兑换补偿码</a></li>
+                            <li><a href="#createKey">创建 API 密钥</a></li>
+                            <li><a href="#installCodex">下载 Codex</a></li>
+                            <li><a href="#configureCodex">配置 Codex 文件</a></li>
+                            <li><a href="#loginCodex">API 登录 Codex</a></li>
+                        </ol>
+                    </section>
+                </aside>
+
+                <div class="codex-guide-content">
+                    <section id="notice" class="card codex-guide-section codex-guide-section--notice">
+                        <div class="codex-section-heading">
+                            <span class="codex-step-index">说明</span>
+                            <div>
+                                <h2>使用前请先确认</h2>
+                                <p>兑换码来自中转服务，并已按质保剩余时间更新。页面中的密钥截图已脱敏，请务必使用你自己页面中生成的 API Key。</p>
+                            </div>
+                        </div>
+                        <div class="codex-alert codex-alert--warning">
+                            <i data-lucide="alert-triangle"></i>
+                            <div>
+                                <strong>配置文件前必须完全关闭 Codex。</strong>
+                                <span>请确认 Codex 进程没有运行，再编辑 <code>config.toml</code> 和 <code>auth.json</code>，否则配置可能不会生效。</span>
+                            </div>
+                        </div>
+                        <div class="codex-alert">
+                            <i data-lucide="shield-check"></i>
+                            <div>
+                                <strong>账号与密钥安全。</strong>
+                                <span>注册中转账户时不要复用重要账户密码；API Key 只粘贴到自己的 Codex 配置或登录框中，不要发给他人。</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section id="register" class="card codex-guide-section">
+                        <div class="codex-section-heading">
+                            <span class="codex-step-index">01</span>
+                            <div>
+                                <h2>打开中转链接并创建账户</h2>
+                                <p>访问注册页，随意输入邮箱和密码即可创建中转账户。</p>
+                            </div>
+                        </div>
+                        <a class="codex-link-card" href="https://api.sakms.top/register" target="_blank" rel="noopener noreferrer">
+                            <i data-lucide="external-link"></i>
+                            <span>https://api.sakms.top/register</span>
+                        </a>
+                        <figure class="codex-figure">
+                            <img src="/static/img/codex-guide/image.png" alt="中转服务注册页面截图" loading="lazy">
+                            <figcaption>注册页面：输入邮箱、密码后创建账户。</figcaption>
+                        </figure>
+                    </section>
+
+                    <section id="redeem" class="card codex-guide-section">
+                        <div class="codex-section-heading">
+                            <span class="codex-step-index">02</span>
+                            <div>
+                                <h2>在兑换页面输入兑换码</h2>
+                                <p>登录后进入兑换页面，输入提供给你的补偿兑换码并点击“兑换”。</p>
+                            </div>
+                        </div>
+                        <figure class="codex-figure">
+                            <img src="/static/img/codex-guide/image-1.png" alt="兑换成功后的页面截图" loading="lazy">
+                            <figcaption>兑换成功后，账户会获得对应余额或权益。</figcaption>
+                        </figure>
+                    </section>
+
+                    <section id="createKey" class="card codex-guide-section">
+                        <div class="codex-section-heading">
+                            <span class="codex-step-index">03</span>
+                            <div>
+                                <h2>创建并查看 API 密钥</h2>
+                                <p>在“API 密钥”页面新建密钥，分组选择“质保补偿”，然后点击“使用密钥”获取后续配置内容。</p>
+                            </div>
+                        </div>
+                        <div class="codex-mini-steps">
+                            <article>
+                                <strong>3.1 创建密钥</strong>
+                                <span>点击“创建密钥”。</span>
+                            </article>
+                            <article>
+                                <strong>3.2 选择分组</strong>
+                                <span>名称可自定义，分组选择“质保补偿”。</span>
+                            </article>
+                            <article>
+                                <strong>3.3 使用密钥</strong>
+                                <span>进入使用密钥弹窗，复制自己的配置内容。</span>
+                            </article>
+                        </div>
+                        <div class="codex-image-grid codex-image-grid--three">
+                            <figure class="codex-figure">
+                                <img src="/static/img/codex-guide/image-2.png" alt="API 密钥页面创建密钥按钮" loading="lazy">
+                                <figcaption>点击“创建密钥”。</figcaption>
+                            </figure>
+                            <figure class="codex-figure">
+                                <img src="/static/img/codex-guide/image-3.png" alt="创建密钥弹窗选择质保补偿分组" loading="lazy">
+                                <figcaption>分组选择“质保补偿”。</figcaption>
+                            </figure>
+                            <figure class="codex-figure">
+                                <img src="/static/img/codex-guide/image-4.png" alt="密钥列表使用密钥入口" loading="lazy">
+                                <figcaption>点击“使用密钥”。</figcaption>
+                            </figure>
+                        </div>
+                        <figure class="codex-figure">
+                            <img src="/static/img/codex-guide/image-5.png" alt="使用 API 密钥弹窗中的 Codex 配置示例，密钥已脱敏" loading="lazy">
+                            <figcaption>复制你自己的 <code>config.toml</code> 和 <code>auth.json</code> 内容；截图中的 API Key 已脱敏。</figcaption>
+                        </figure>
+                    </section>
+
+                    <section id="installCodex" class="card codex-guide-section">
+                        <div class="codex-section-heading">
+                            <span class="codex-step-index">04</span>
+                            <div>
+                                <h2>下载 Codex 软件</h2>
+                                <p>前往 OpenAI Codex 下载页，按你的系统下载并安装客户端。</p>
+                            </div>
+                        </div>
+                        <a class="codex-link-card" href="https://openai.com/zh-Hans-CN/codex/" target="_blank" rel="noopener noreferrer">
+                            <i data-lucide="download"></i>
+                            <span>https://openai.com/zh-Hans-CN/codex/</span>
+                        </a>
+                        <figure class="codex-figure">
+                            <img src="/static/img/codex-guide/image-6.png" alt="OpenAI Codex 下载页面截图" loading="lazy">
+                            <figcaption>点击页面中的下载入口获取 Codex。</figcaption>
+                        </figure>
+                    </section>
+
+                    <section id="configureCodex" class="card codex-guide-section">
+                        <div class="codex-section-heading">
+                            <span class="codex-step-index">05</span>
+                            <div>
+                                <h2>配置 Codex 文件</h2>
+                                <p>找到或创建 <code>.codex</code> 配置目录，然后将“使用密钥”页面给出的内容分别写入 <code>config.toml</code> 和 <code>auth.json</code>。</p>
+                            </div>
+                        </div>
+
+                        <div class="codex-platform-grid">
+                            <article class="codex-platform-card">
+                                <div class="side-card-title"><i data-lucide="monitor"></i><span>Windows 用户</span></div>
+                                <ol>
+                                    <li>按 <kbd>Win</kbd> + <kbd>R</kbd> 打开运行窗口。</li>
+                                    <li>输入 <code>%userprofile%\.codex</code> 并回车。</li>
+                                    <li>如目录不存在，请手动创建 <code>.codex</code> 文件夹。</li>
+                                    <li>在目录中找到或新建 <code>config.toml</code> 和 <code>auth.json</code>。</li>
+                                </ol>
+                            </article>
+                            <article class="codex-platform-card">
+                                <div class="side-card-title"><i data-lucide="apple"></i><span>Mac 用户</span></div>
+                                <ol>
+                                    <li>可运行 <code>mkdir -p ~/.codex</code> 创建配置目录。</li>
+                                    <li>在访达用户目录中找到 <code>.codex</code> 文件夹。</li>
+                                    <li>找不到隐藏文件时，按 <kbd>Option</kbd> + <kbd>Shift</kbd> + <kbd>.</kbd> 显示隐藏文件。</li>
+                                    <li>在目录中找到或新建 <code>config.toml</code> 和 <code>auth.json</code>。</li>
+                                </ol>
+                            </article>
+                        </div>
+
+                        <div class="codex-image-grid">
+                            <figure class="codex-figure">
+                                <img src="/static/img/codex-guide/image-7.png" alt="Mac 访达中找到 .codex 文件夹" loading="lazy">
+                                <figcaption>Mac：在用户目录中找到 <code>.codex</code>。</figcaption>
+                            </figure>
+                            <figure class="codex-figure">
+                                <img src="/static/img/codex-guide/image-8.png" alt=".codex 文件夹中的 config.toml 和 auth.json" loading="lazy">
+                                <figcaption>确认存在 <code>config.toml</code> 和 <code>auth.json</code>。</figcaption>
+                            </figure>
+                        </div>
+
+                        <div class="codex-alert">
+                            <i data-lucide="copy-check"></i>
+                            <div>
+                                <strong>粘贴位置要对应。</strong>
+                                <span>把“使用密钥”页面显示的 <code>config.toml</code> 内容粘贴到 <code>config.toml</code>，把 <code>auth.json</code> 内容粘贴到 <code>auth.json</code>。不要复制教程截图中的脱敏内容。</span>
+                            </div>
+                        </div>
+                        <figure class="codex-figure">
+                            <img src="/static/img/codex-guide/image-9.png" alt="Codex 配置内容粘贴示例，密钥已脱敏" loading="lazy">
+                            <figcaption>配置示例：截图中的 API Key 已脱敏，请使用你自己的密钥。</figcaption>
+                        </figure>
+                    </section>
+
+                    <section id="loginCodex" class="card codex-guide-section">
+                        <div class="codex-section-heading">
+                            <span class="codex-step-index">06</span>
+                            <div>
+                                <h2>重新打开 Codex 并使用 API 登录</h2>
+                                <p>完成文件配置后重新打开 Codex，选择“换种方式登录”，再选择 API 登录并粘贴自己的 API 密钥。</p>
+                            </div>
+                        </div>
+                        <div class="codex-image-grid codex-image-grid--three">
+                            <figure class="codex-figure">
+                                <img src="/static/img/codex-guide/image-10.png" alt="Codex 选择换种方式登录" loading="lazy">
+                                <figcaption>选择“换种方式登录”。</figcaption>
+                            </figure>
+                            <figure class="codex-figure">
+                                <img src="/static/img/codex-guide/image-11.png" alt="Codex API 登录输入框" loading="lazy">
+                                <figcaption>选择 API 登录并粘贴密钥。</figcaption>
+                            </figure>
+                            <figure class="codex-figure">
+                                <img src="/static/img/codex-guide/image-12.png" alt="中转服务 API 密钥复制位置，密钥已脱敏" loading="lazy">
+                                <figcaption>从中转后台复制你自己的 API Key。</figcaption>
+                            </figure>
+                        </div>
+                    </section>
+
+                    <section id="quickChecklist" class="card codex-guide-section codex-guide-section--checklist">
+                        <div class="codex-section-heading">
+                            <span class="codex-step-index">检查</span>
+                            <div>
+                                <h2>登录失败时快速检查</h2>
+                                <p>如果无法登录或 Codex 没有读取到配置，请按下面顺序排查。</p>
+                            </div>
+                        </div>
+                        <ul class="codex-checklist">
+                            <li><i data-lucide="check-circle-2"></i><span>编辑配置前是否已经完全关闭 Codex？</span></li>
+                            <li><i data-lucide="check-circle-2"></i><span><code>config.toml</code> 和 <code>auth.json</code> 是否放在同一个 <code>.codex</code> 目录？</span></li>
+                            <li><i data-lucide="check-circle-2"></i><span>是否粘贴了你自己生成的 API Key，而不是教程截图中的示例？</span></li>
+                            <li><i data-lucide="check-circle-2"></i><span>创建密钥时分组是否选择“质保补偿”？</span></li>
+                        </ul>
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        if (window.lucide) lucide.createIcons();
+    </script>
+</body>
+
+</html>

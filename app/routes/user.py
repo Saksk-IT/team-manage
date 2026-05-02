@@ -49,6 +49,20 @@ router = APIRouter(
 )
 
 
+@router.get("/codex-guide", response_class=HTMLResponse)
+async def codex_guide_page(request: Request):
+    """Codex API 登录对接教程页面。"""
+    from app.main import templates
+
+    return templates.TemplateResponse(
+        request,
+        "user/codex_guide.html",
+        {
+            "request": request,
+        }
+    )
+
+
 @router.get("/", response_class=HTMLResponse)
 async def redeem_page(
     request: Request,
