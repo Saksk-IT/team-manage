@@ -3340,14 +3340,69 @@ async def settings_page(
         )
 
 
-async def _get_generated_redeem_code_records(db: AsyncSession) -> list[dict[str, Any]]:
+def _normalize_generated_code_email_filter(email: Optional[str]) -> Optional[str]:
+    normalized_email = _normalize_optional_filter_text(email)
+    if not normalized_email:
+        return None
+    if len(normalized_email) > 255:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="邮箱搜索关键词过长"
+        )
+    return normalized_email.lower()
+
+
+def _build_generated_redeem_code_filters(email: Optional[str] = None) -> list[Any]:
+    filters: list[Any] = [WarrantyEmailTemplateLock.generated_redeem_code.isnot(None)]
+    normalized_email = _normalize_generated_code_email_filter(email)
+    if normalized_email:
+        filters.append(WarrantyEmailTemplateLock.email.ilike(f"%{normalized_email}%"))
+    return filters
+
+
+async def _get_generated_redeem_code_stats(
+    db: AsyncSession,
+    *,
+    email: Optional[str] = None,
+) -> dict[str, int]:
+    filters = _build_generated_redeem_code_filters(email)
+    stats_result = await db.execute(
+        select(
+            func.count(WarrantyEmailTemplateLock.id),
+            func.count(func.distinct(WarrantyEmailTemplateLock.email)),
+            func.coalesce(func.sum(WarrantyEmailTemplateLock.generated_redeem_code_remaining_days), 0),
+        ).where(*filters)
+    )
+    total, unique_emails, total_remaining_days = stats_result.one()
+
+    today_start = get_now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_result = await db.execute(
+        select(func.count(WarrantyEmailTemplateLock.id)).where(
+            *filters,
+            WarrantyEmailTemplateLock.generated_redeem_code_generated_at >= today_start,
+        )
+    )
+
+    return {
+        "total": int(total or 0),
+        "unique_emails": int(unique_emails or 0),
+        "today": int(today_result.scalar() or 0),
+        "total_remaining_days": int(total_remaining_days or 0),
+    }
+
+
+async def _get_generated_redeem_code_records(
+    db: AsyncSession,
+    *,
+    email: Optional[str] = None,
+) -> list[dict[str, Any]]:
     generated_result = await db.execute(
         select(WarrantyEmailTemplateLock, WarrantyEmailEntry)
         .outerjoin(
             WarrantyEmailEntry,
             WarrantyEmailEntry.id == WarrantyEmailTemplateLock.generated_redeem_code_entry_id,
         )
-        .where(WarrantyEmailTemplateLock.generated_redeem_code.isnot(None))
+        .where(*_build_generated_redeem_code_filters(email))
         .order_by(WarrantyEmailTemplateLock.generated_redeem_code_generated_at.desc())
         .limit(200)
     )
@@ -3408,12 +3463,15 @@ async def warranty_email_check_settings_page(
 @router.get("/code-generation-records", response_class=HTMLResponse)
 async def code_generation_records_page(
     request: Request,
+    email: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
     """兑换码生成记录独立页。"""
     try:
         from app.main import templates
+
+        normalized_email = _normalize_generated_code_email_filter(email)
 
         logger.info("管理员访问兑换码生成记录")
 
@@ -3425,7 +3483,15 @@ async def code_generation_records_page(
                 db,
                 current_user,
                 "code_generation_records",
-                generated_redeem_code_records=await _get_generated_redeem_code_records(db),
+                generated_redeem_code_records=await _get_generated_redeem_code_records(
+                    db,
+                    email=normalized_email,
+                ),
+                generated_redeem_code_stats=await _get_generated_redeem_code_stats(
+                    db,
+                    email=normalized_email,
+                ),
+                filters={"email": normalized_email or ""},
             )
         )
 

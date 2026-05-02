@@ -97,9 +97,13 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
             generated_redeem_code_generated_at=None,
         )
         entry = SimpleNamespace(id=7, expires_at=None, remaining_claims=1)
-        execute_result = MagicMock()
-        execute_result.all.return_value = [(lock, entry)]
-        db.execute.return_value = execute_result
+        records_result = MagicMock()
+        records_result.all.return_value = [(lock, entry)]
+        stats_result = MagicMock()
+        stats_result.one.return_value = (1, 1, 30)
+        today_result = MagicMock()
+        today_result.scalar.return_value = 0
+        db.execute.side_effect = [records_result, stats_result, today_result]
 
         with patch(
             "app.routes.admin.settings_service.get_number_pool_config",
@@ -122,6 +126,8 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("TMW-GENERATED", html)
         self.assertIn("buyer@example.com", html)
         self.assertIn("最近生成记录", html)
+        self.assertIn("生成总数", html)
+        self.assertIn("涉及邮箱", html)
 
     async def test_update_warranty_email_check_settings_accepts_long_rich_text(self):
         db = AsyncMock()

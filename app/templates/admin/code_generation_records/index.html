@@ -8,11 +8,67 @@
     <p class="page-subtitle">查看由质保名单判定自动生成的 Sub2API 订阅兑换码记录。</p>
 </div>
 
+<!-- 统计卡片 -->
+<div class="stats-container">
+    <div class="stat-card">
+        <div class="stat-icon">🎫</div>
+        <div class="stat-content">
+            <div class="stat-value">{{ generated_redeem_code_stats.total }}</div>
+            <div class="stat-label">生成总数</div>
+        </div>
+    </div>
+    <div class="stat-card stat-info">
+        <div class="stat-icon">📧</div>
+        <div class="stat-content">
+            <div class="stat-value">{{ generated_redeem_code_stats.unique_emails }}</div>
+            <div class="stat-label">涉及邮箱</div>
+        </div>
+    </div>
+    <div class="stat-card stat-success">
+        <div class="stat-icon">📅</div>
+        <div class="stat-content">
+            <div class="stat-value">{{ generated_redeem_code_stats.today }}</div>
+            <div class="stat-label">今日生成</div>
+        </div>
+    </div>
+    <div class="stat-card stat-warning">
+        <div class="stat-icon">⏳</div>
+        <div class="stat-content">
+            <div class="stat-value">{{ generated_redeem_code_stats.total_remaining_days }}</div>
+            <div class="stat-label">累计有效天数</div>
+        </div>
+    </div>
+</div>
+
+<div class="content-section sticky-toolbar-section">
+    <div class="section-header">
+        <h3><i data-lucide="search"></i> 搜索筛选</h3>
+    </div>
+
+    <form method="get" action="/admin/code-generation-records" class="search-form-grid code-generation-record-filter-form">
+        <div class="form-group">
+            <label for="email">邮箱</label>
+            <input type="text" id="email" name="email" value="{{ filters.email or '' }}" placeholder="输入邮箱搜索" class="form-control" autocomplete="off">
+        </div>
+        <div class="form-actions code-generation-record-filter-actions">
+            <button type="submit" class="btn btn-primary">
+                <i data-lucide="search" style="width: 16px; height: 16px;"></i> 搜索
+            </button>
+            <a href="/admin/code-generation-records" class="btn btn-secondary">
+                <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i> 重置
+            </a>
+        </div>
+    </form>
+</div>
+
 <div class="content-section">
     <div class="section-header">
-        <h3>最近生成记录</h3>
+        <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+            <h3>最近生成记录</h3>
+            <span class="badge badge-info">{{ generated_redeem_code_stats.total }} 条记录</span>
+        </div>
     </div>
-    <p class="form-help">仅展示最近 200 条由质保名单判定自动生成的 Sub2API 订阅兑换码。</p>
+    <p class="form-help">仅展示{% if filters.email %}匹配邮箱“{{ filters.email }}”的{% endif %}最近 200 条由质保名单判定自动生成的 Sub2API 订阅兑换码。</p>
 
     <div class="table-container">
         <table class="data-table">
@@ -46,7 +102,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="5" class="empty-state-cell">暂无自动生成记录</td>
+                    <td colspan="5" class="empty-state-cell">{% if filters.email %}暂无匹配邮箱的自动生成记录{% else %}暂无自动生成记录{% endif %}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -75,6 +131,28 @@
     .record-muted {
         color: var(--text-muted);
         font-size: 0.8125rem;
+    }
+
+    .code-generation-record-filter-form {
+        grid-template-columns: minmax(220px, 1fr) auto;
+        margin-bottom: 0;
+    }
+
+    .code-generation-record-filter-actions {
+        display: flex;
+        gap: 0.5rem;
+        align-items: flex-end;
+        flex-wrap: wrap;
+    }
+
+    @media (max-width: 640px) {
+        .code-generation-record-filter-form {
+            grid-template-columns: 1fr;
+        }
+
+        .code-generation-record-filter-actions .btn {
+            flex: 1;
+        }
     }
 </style>
 {% endblock %}
