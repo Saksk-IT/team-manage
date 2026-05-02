@@ -227,6 +227,15 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("warranty-email-check-static-guide", css)
         self.assertNotIn('src="/codex-guide"', render_fn)
 
+    def test_email_check_result_supports_team_available_short_circuit(self):
+        js_path = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "redeem.js"
+        js = js_path.read_text(encoding="utf-8")
+        render_fn = js[js.index('function renderWarrantyEmailCheckResult'):]
+
+        self.assertIn("skip_redeem_code_generation", render_fn)
+        self.assertIn("Team 正常", render_fn)
+        self.assertIn("resultBadgeLabel", render_fn)
+
     def test_redeem_js_does_not_expose_front_withdraw_action(self):
         js_path = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "redeem.js"
         js = js_path.read_text(encoding="utf-8")

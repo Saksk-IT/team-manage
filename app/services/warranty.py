@@ -66,6 +66,8 @@ class WarrantyService:
         "auto_redeem": "质保兑换码自动入列",
         "manual": "管理员手动维护",
     }
+    USABLE_LINKED_TEAM_STATUSES = {"active", "full"}
+    TEAM_AVAILABLE_NO_WARRANTY_MESSAGE = "您所在的Team可以正常使用，无需提交质保"
 
     def __init__(self):
         """初始化质保服务"""
@@ -145,6 +147,32 @@ class WarrantyService:
             "status_label": self.get_team_status_label(team_status),
             "expires_at": team.expires_at.isoformat() if team.expires_at else None,
         }
+
+    async def _get_usable_linked_team_for_warranty_entries(
+        self,
+        db_session: AsyncSession,
+        entries: List[WarrantyEmailEntry],
+    ) -> Optional[Dict[str, Any]]:
+        team_ids = {
+            int(entry.last_warranty_team_id)
+            for entry in entries
+            if entry.last_warranty_team_id
+        }
+        if not team_ids:
+            return None
+
+        team_result = await db_session.execute(
+            select(Team).where(Team.id.in_(team_ids))
+        )
+        teams_by_id = {team.id: team for team in team_result.scalars().all()}
+
+        for entry in entries:
+            team = teams_by_id.get(int(entry.last_warranty_team_id or 0))
+            team_status = (getattr(team, "status", "") or "").strip().lower()
+            if team_status in self.USABLE_LINKED_TEAM_STATUSES:
+                return self._serialize_linked_team_summary(team)
+
+        return None
 
     def serialize_warranty_email_entry(
         self,
@@ -2087,11 +2115,23 @@ class WarrantyService:
             templates=templates or [],
         )
         selected_entry = entries[0] if entries else None
+        usable_linked_team = (
+            await self._get_usable_linked_team_for_warranty_entries(db_session, entries)
+            if matched
+            else None
+        )
         return {
             "success": True,
             "email": normalized_email,
             "matched": matched,
             "matched_count": len(entries),
+            "skip_redeem_code_generation": usable_linked_team is not None,
+            "usable_linked_team": usable_linked_team,
+            "message": (
+                self.TEAM_AVAILABLE_NO_WARRANTY_MESSAGE
+                if usable_linked_team is not None
+                else None
+            ),
             "template_key": template_lock.template_key if template_lock else None,
             "template_matched": bool(template_lock.matched) if template_lock else matched,
             "template_lock": template_lock,

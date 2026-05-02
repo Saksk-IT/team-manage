@@ -758,6 +758,11 @@ function renderWarrantyEmailCheckResult(data, email) {
     const generatedCode = data?.generated_redeem_code || '';
     const generatedDays = data?.generated_redeem_code_remaining_days;
     const generatedCodeError = data?.generated_redeem_code_error || '';
+    const skipRedeemCodeGeneration = Boolean(data?.skip_redeem_code_generation);
+    const resultBadgeLabel = skipRedeemCodeGeneration
+        ? 'Team 正常'
+        : (matched ? '在质保列表内' : '不在质保列表内');
+    const resultBadgeClass = matched ? 'status-badge--success' : 'status-badge--warning';
     const generatedCodeHtml = matched && generatedCode ? `
         <div class="status-panel__message status-panel__message--success warranty-generated-code">
             <div class="warranty-generated-code__title">已自动生成中转网站订阅兑换码</div>
@@ -787,8 +792,8 @@ function renderWarrantyEmailCheckResult(data, email) {
             ${generatedCodeHtml}
             <div class="status-panel__header">
                 <div class="status-panel__title">质保资格查询结果</div>
-                <span class="status-badge ${matched ? 'status-badge--success' : 'status-badge--warning'}">
-                    ${escapeHtml(matched ? '在质保列表内' : '不在质保列表内')}
+                <span class="status-badge ${resultBadgeClass}">
+                    ${escapeHtml(resultBadgeLabel)}
                 </span>
             </div>
             <div class="status-panel__list">

@@ -17,6 +17,8 @@ from app.utils.warranty_email_check_tutorial import (
     build_warranty_email_check_static_tutorial_message,
 )
 
+TEAM_AVAILABLE_NO_WARRANTY_MESSAGE = "您所在的Team可以正常使用，无需提交质保"
+
 
 def _parse_optional_positive_int(value) -> Optional[int]:
     try:
@@ -77,6 +79,8 @@ class WarrantyCheckResponse(BaseModel):
     generated_redeem_code_remaining_days: Optional[int] = None
     generated_redeem_code_reused: Optional[bool] = None
     generated_redeem_code_error: Optional[str] = None
+    skip_redeem_code_generation: bool = False
+    usable_linked_team: Optional[dict] = None
     latest_team: Optional[WarrantyLatestTeamInfo] = None
     warranty_info: Optional[dict] = None
     warranty_orders: List[dict] = Field(default_factory=list)
@@ -142,7 +146,12 @@ async def check_warranty(
         generated_code_reused = None
         generated_code_error = None
         user_id = _parse_optional_positive_int(http_request.query_params.get("user_id") if http_request else None)
-        if bool(result.get("matched")):
+        should_skip_redeem_code = bool(result.get("skip_redeem_code_generation"))
+        if should_skip_redeem_code:
+            content_html = f"<p>{TEAM_AVAILABLE_NO_WARRANTY_MESSAGE}</p>"
+            content_render_mode = "rich_text"
+
+        if bool(result.get("matched")) and not should_skip_redeem_code:
             if result.get("generated_redeem_code"):
                 generated_code = result.get("generated_redeem_code")
                 generated_code_remaining_days = result.get("generated_redeem_code_remaining_days")
@@ -163,9 +172,13 @@ async def check_warranty(
                     generated_code_error = code_result.get("error") or "兑换码生成失败"
 
         message = (
-            build_warranty_email_check_static_tutorial_message(bool(result.get("matched")))
-            if show_static_tutorial
-            else rich_text_to_plain_text(content_html)
+            TEAM_AVAILABLE_NO_WARRANTY_MESSAGE
+            if should_skip_redeem_code
+            else (
+                build_warranty_email_check_static_tutorial_message(bool(result.get("matched")))
+                if show_static_tutorial
+                else rich_text_to_plain_text(content_html)
+            )
         )
 
         return {
@@ -180,6 +193,8 @@ async def check_warranty(
             "generated_redeem_code_remaining_days": generated_code_remaining_days,
             "generated_redeem_code_reused": generated_code_reused,
             "generated_redeem_code_error": generated_code_error,
+            "skip_redeem_code_generation": should_skip_redeem_code,
+            "usable_linked_team": result.get("usable_linked_team"),
             "latest_team": None,
             "warranty_info": None,
             "warranty_orders": [],

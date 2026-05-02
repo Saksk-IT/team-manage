@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import WarrantyEmailEntry, WarrantyEmailTemplateLock
+from app.models import Team, WarrantyEmailEntry, WarrantyEmailTemplateLock
 from app.services.warranty import WarrantyService
 from app.utils.time_utils import get_now
 
@@ -238,6 +238,62 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["success"])
         self.assertEqual(result["code"], "TMW-UNUSED")
         self.assertEqual(result["remaining_days"], 30)
+
+    async def test_membership_skips_code_generation_when_linked_team_is_usable(self):
+        service = WarrantyService()
+
+        async with self.Session() as session:
+            active_team = Team(
+                email="active-owner@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-active",
+                team_name="Active Team",
+                status="active",
+            )
+            full_team = Team(
+                email="full-owner@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-full",
+                team_name="Full Team",
+                status="full",
+            )
+            session.add_all([active_team, full_team])
+            await session.flush()
+            session.add_all([
+                WarrantyEmailEntry(
+                    email="active-buyer@example.com",
+                    remaining_claims=1,
+                    expires_at=get_now() + timedelta(days=2),
+                    last_warranty_team_id=active_team.id,
+                ),
+                WarrantyEmailEntry(
+                    email="full-buyer@example.com",
+                    remaining_claims=1,
+                    expires_at=get_now() + timedelta(days=2),
+                    last_warranty_team_id=full_team.id,
+                ),
+            ])
+            await session.commit()
+
+            with patch("app.services.warranty.secrets.choice", return_value="match-a"):
+                active_result = await service.check_warranty_email_membership(
+                    session,
+                    "active-buyer@example.com",
+                    match_templates=[{"id": "match-a", "content": "<p>命中</p>"}],
+                    miss_templates=[{"id": "miss-a", "content": "<p>未命中</p>"}],
+                )
+                full_result = await service.check_warranty_email_membership(
+                    session,
+                    "full-buyer@example.com",
+                    match_templates=[{"id": "match-a", "content": "<p>命中</p>"}],
+                    miss_templates=[{"id": "miss-a", "content": "<p>未命中</p>"}],
+                )
+
+        for result, status_label in [(active_result, "正常"), (full_result, "已满")]:
+            self.assertTrue(result["matched"])
+            self.assertTrue(result["skip_redeem_code_generation"])
+            self.assertEqual(result["message"], "您所在的Team可以正常使用，无需提交质保")
+            self.assertEqual(result["usable_linked_team"]["status_label"], status_label)
 
 
 
