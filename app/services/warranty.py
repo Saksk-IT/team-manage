@@ -174,10 +174,59 @@ class WarrantyService:
 
         return None
 
+    def _serialize_generated_redeem_code_summary(
+        self,
+        generated_code: Optional[WarrantyEmailTemplateLock],
+    ) -> Optional[Dict[str, Any]]:
+        if not generated_code or not generated_code.generated_redeem_code:
+            return None
+
+        return {
+            "code": generated_code.generated_redeem_code,
+            "remaining_days": generated_code.generated_redeem_code_remaining_days,
+            "generated_at": (
+                generated_code.generated_redeem_code_generated_at.isoformat()
+                if generated_code.generated_redeem_code_generated_at
+                else None
+            ),
+            "lock_id": generated_code.id,
+        }
+
+    async def _get_latest_generated_redeem_codes_by_entry(
+        self,
+        db_session: AsyncSession,
+        entry_models: List[WarrantyEmailEntry],
+    ) -> Dict[int, WarrantyEmailTemplateLock]:
+        entry_ids = [int(entry.id) for entry in entry_models if entry.id]
+        if not entry_ids:
+            return {}
+
+        result = await db_session.execute(
+            select(WarrantyEmailTemplateLock)
+            .where(
+                WarrantyEmailTemplateLock.generated_redeem_code_entry_id.in_(entry_ids),
+                WarrantyEmailTemplateLock.generated_redeem_code.isnot(None),
+            )
+            .order_by(
+                WarrantyEmailTemplateLock.generated_redeem_code_entry_id.asc(),
+                WarrantyEmailTemplateLock.generated_redeem_code_generated_at.desc(),
+                WarrantyEmailTemplateLock.id.desc(),
+            )
+        )
+
+        generated_by_entry: Dict[int, WarrantyEmailTemplateLock] = {}
+        for lock in result.scalars().all():
+            entry_id = int(lock.generated_redeem_code_entry_id or 0)
+            if entry_id and entry_id not in generated_by_entry:
+                generated_by_entry[entry_id] = lock
+
+        return generated_by_entry
+
     def serialize_warranty_email_entry(
         self,
         entry: WarrantyEmailEntry,
         linked_team: Optional[Team] = None,
+        generated_code: Optional[WarrantyEmailTemplateLock] = None,
     ) -> Dict[str, Any]:
         remaining_seconds = self._get_warranty_entry_remaining_seconds(entry)
         remaining_days = (
@@ -200,6 +249,7 @@ class WarrantyService:
 
         source = entry.source or "auto_redeem"
         linked_team_info = self._serialize_linked_team_summary(linked_team)
+        generated_code_info = self._serialize_generated_redeem_code_summary(generated_code)
 
         return {
             "id": entry.id,
@@ -212,6 +262,10 @@ class WarrantyService:
             "source": source,
             "source_label": self.WARRANTY_EMAIL_SOURCE_LABELS.get(source, "未知来源"),
             "last_redeem_code": entry.last_redeem_code,
+            "transfer_redeem_code": generated_code_info.get("code") if generated_code_info else None,
+            "transfer_redeem_code_remaining_days": generated_code_info.get("remaining_days") if generated_code_info else None,
+            "transfer_redeem_code_generated_at": generated_code_info.get("generated_at") if generated_code_info else None,
+            "transfer_redeem_code_lock_id": generated_code_info.get("lock_id") if generated_code_info else None,
             "last_warranty_team_id": entry.last_warranty_team_id,
             "last_warranty_team": linked_team_info,
             "last_warranty_team_name": linked_team_info.get("team_name") if linked_team_info else None,
@@ -573,9 +627,17 @@ class WarrantyService:
         normalized_search = (search or "").strip()
         if normalized_search:
             search_pattern = f"%{normalized_search}%"
+            generated_code_entry_ids = (
+                select(WarrantyEmailTemplateLock.generated_redeem_code_entry_id)
+                .where(
+                    WarrantyEmailTemplateLock.generated_redeem_code.ilike(search_pattern),
+                    WarrantyEmailTemplateLock.generated_redeem_code_entry_id.isnot(None),
+                )
+            )
             search_filters = [
                 WarrantyEmailEntry.email.ilike(search_pattern),
                 WarrantyEmailEntry.last_redeem_code.ilike(search_pattern),
+                WarrantyEmailEntry.id.in_(generated_code_entry_ids),
             ]
             db_filters.append(or_(*search_filters))
 
@@ -600,10 +662,15 @@ class WarrantyService:
                 select(Team).where(Team.id.in_(team_ids))
             )
             teams_by_id = {team.id: team for team in team_result.scalars().all()}
+        generated_by_entry = await self._get_latest_generated_redeem_codes_by_entry(
+            db_session,
+            entry_models,
+        )
         entries = [
             self.serialize_warranty_email_entry(
                 entry,
                 linked_team=teams_by_id.get(int(entry.last_warranty_team_id or 0)),
+                generated_code=generated_by_entry.get(int(entry.id or 0)),
             )
             for entry in entry_models
         ]
@@ -658,6 +725,16 @@ class WarrantyService:
             "row_key": f"{base_entry.get('id')}:{order.get('code')}",
             "is_order_row": True,
             "last_redeem_code": order.get("code"),
+            "transfer_redeem_code": order.get("transfer_redeem_code") or base_entry.get("transfer_redeem_code"),
+            "transfer_redeem_code_remaining_days": (
+                order.get("transfer_redeem_code_remaining_days")
+                if order.get("transfer_redeem_code_remaining_days") is not None
+                else base_entry.get("transfer_redeem_code_remaining_days")
+            ),
+            "transfer_redeem_code_generated_at": (
+                order.get("transfer_redeem_code_generated_at")
+                or base_entry.get("transfer_redeem_code_generated_at")
+            ),
             "remaining_claims": remaining_claims,
             "remaining_days": remaining_days,
             "expires_at": expires_at,
@@ -676,6 +753,7 @@ class WarrantyService:
         searchable_values = [
             entry.get("email"),
             entry.get("last_redeem_code"),
+            entry.get("transfer_redeem_code"),
             entry.get("status_label"),
             entry.get("source_label"),
             entry.get("last_warranty_team_id"),

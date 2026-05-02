@@ -9,7 +9,7 @@ from starlette.requests import Request
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import RedemptionCode, RedemptionRecord, Team, WarrantyEmailEntry
+from app.models import RedemptionCode, RedemptionRecord, Team, WarrantyEmailEntry, WarrantyEmailTemplateLock
 from app.routes.admin import (
     BulkWarrantyEmailDeleteRequest,
     BulkWarrantyEmailUpdateRequest,
@@ -187,6 +187,47 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entries[0]["last_warranty_team_status"], "full")
         self.assertEqual(entries[0]["last_warranty_team_status_label"], "已满")
         self.assertEqual(entries[0]["last_warranty_team_name"], "Linked Status Team")
+
+    async def test_warranty_email_list_shows_transfer_redeem_code_from_generation_record(self):
+        async with self.Session() as session:
+            now = get_now()
+            entry = WarrantyEmailEntry(
+                email="buyer@example.com",
+                remaining_claims=2,
+                expires_at=now + timedelta(days=5),
+                source="manual",
+                last_redeem_code="CODE-123",
+            )
+            session.add(entry)
+            await session.flush()
+            session.add(
+                WarrantyEmailTemplateLock(
+                    email="buyer@example.com",
+                    matched=True,
+                    template_key="match-a",
+                    generated_redeem_code="TMW-TRANSFER",
+                    generated_redeem_code_remaining_days=5,
+                    generated_redeem_code_entry_id=entry.id,
+                    generated_redeem_code_generated_at=now,
+                )
+            )
+            await session.commit()
+
+            entries = await warranty_service.list_warranty_email_entries(session)
+            response = await warranty_emails_page(
+                request=self._build_request(),
+                search="TMW-TRANSFER",
+                db=session,
+                current_user={"username": "admin"},
+            )
+
+        html = response.body.decode("utf-8")
+        self.assertEqual(entries[0]["transfer_redeem_code"], "TMW-TRANSFER")
+        self.assertEqual(entries[0]["transfer_redeem_code_remaining_days"], 5)
+        self.assertIn("TMW-TRANSFER", html)
+        self.assertIn("5 天", html)
+        self.assertIn("列设置", html)
+        self.assertIn("warrantyEmailColumnDropdown", html)
 
     async def test_warranty_emails_page_searches_only_list_order_code(self):
         async with self.Session() as session:
