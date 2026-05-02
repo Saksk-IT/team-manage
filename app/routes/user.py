@@ -9,23 +9,8 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 
+
 logger = logging.getLogger(__name__)
-
-
-def get_codex_guide_html() -> str:
-    return """
-        <div class="warranty-email-check-static-guide">
-            <iframe
-                class="warranty-email-check-static-guide__frame"
-                src="/codex-guide"
-                title="Codex API 登录对接教程"
-                loading="lazy"
-            ></iframe>
-            <p class="warranty-email-check-static-guide__fallback">
-                若静态教程未正常显示，可<a href="/codex-guide" target="_blank" rel="noopener noreferrer">单独打开教程页面</a>查看。
-            </p>
-        </div>
-    """.strip()
 
 
 def _build_purchase_link_url(base_url: str, request: Request) -> str:
@@ -58,6 +43,7 @@ def _build_purchase_link_url(base_url: str, request: Request) -> str:
     query_items = dict(parse_qsl(parsed.query, keep_blank_values=True))
     query_items.update(forwarded_params)
     return urlunparse(parsed._replace(query=urlencode(query_items)))
+
 
 # 创建路由器
 router = APIRouter(

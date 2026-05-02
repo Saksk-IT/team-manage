@@ -11,8 +11,11 @@ from app.database import get_db
 from app.services.invite_queue import invite_queue_service
 from app.services.settings import settings_service
 from app.services.warranty import warranty_service
-from app.routes.user import get_codex_guide_html
 from app.utils.rich_text import rich_text_to_plain_text
+from app.utils.warranty_email_check_tutorial import (
+    build_warranty_email_check_static_tutorial_html,
+    build_warranty_email_check_static_tutorial_message,
+)
 
 
 def _parse_optional_positive_int(value) -> Optional[int]:
@@ -68,6 +71,7 @@ class WarrantyCheckResponse(BaseModel):
     mode: str = "orders"
     matched: Optional[bool] = None
     content_html: Optional[str] = None
+    content_render_mode: str = "rich_text"
     template_key: Optional[str] = None
     generated_redeem_code: Optional[str] = None
     generated_redeem_code_remaining_days: Optional[int] = None
@@ -119,9 +123,11 @@ async def check_warranty(
             if template_matched
             else email_check_config.get("miss_content")
         ) or ""
+        show_static_tutorial = bool(email_check_config.get("show_static_tutorial"))
+        content_render_mode = "static_tutorial" if show_static_tutorial else "rich_text"
         content_html = (
-            get_codex_guide_html()
-            if email_check_config.get("show_static_tutorial")
+            build_warranty_email_check_static_tutorial_html(bool(result.get("matched")))
+            if show_static_tutorial
             else (
                 settings_service.get_warranty_email_check_template_content(
                     templates,
@@ -156,12 +162,19 @@ async def check_warranty(
                 else:
                     generated_code_error = code_result.get("error") or "兑换码生成失败"
 
+        message = (
+            build_warranty_email_check_static_tutorial_message(bool(result.get("matched")))
+            if show_static_tutorial
+            else rich_text_to_plain_text(content_html)
+        )
+
         return {
             "success": True,
             "can_claim": False,
             "mode": "email_check",
             "matched": bool(result.get("matched")),
             "content_html": content_html,
+            "content_render_mode": content_render_mode,
             "template_key": result.get("template_key"),
             "generated_redeem_code": generated_code,
             "generated_redeem_code_remaining_days": generated_code_remaining_days,
@@ -170,7 +183,7 @@ async def check_warranty(
             "latest_team": None,
             "warranty_info": None,
             "warranty_orders": [],
-            "message": rich_text_to_plain_text(content_html),
+            "message": message,
             "error": None,
         }
 

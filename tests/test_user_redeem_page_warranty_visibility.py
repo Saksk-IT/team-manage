@@ -212,6 +212,21 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
             result_markup.index('质保资格查询结果')
         )
 
+    def test_email_check_result_supports_independent_static_tutorial_markup(self):
+        js_path = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "redeem.js"
+        css_path = Path(__file__).resolve().parents[1] / "app" / "static" / "css" / "user-front-components.css"
+        js = js_path.read_text(encoding="utf-8")
+        css = css_path.read_text(encoding="utf-8")
+        render_fn = js[js.index('function renderWarrantyEmailCheckResult'):]
+
+        self.assertIn("content_render_mode", render_fn)
+        self.assertIn("static_tutorial", render_fn)
+        self.assertIn("warranty-email-check-result--static", render_fn)
+        self.assertIn(".warranty-static-tutorial", css)
+        self.assertNotIn("warranty-email-check-static-guide", js)
+        self.assertNotIn("warranty-email-check-static-guide", css)
+        self.assertNotIn('src="/codex-guide"', render_fn)
+
     def test_redeem_js_does_not_expose_front_withdraw_action(self):
         js_path = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "redeem.js"
         js = js_path.read_text(encoding="utf-8")

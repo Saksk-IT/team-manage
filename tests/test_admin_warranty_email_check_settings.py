@@ -68,6 +68,7 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="warrantyEmailCheckForm"', html)
         self.assertIn('id="warrantyEmailCheckShowStaticTutorial"', html)
         self.assertIn('name="show_static_tutorial"', html)
+        self.assertIn("不复用 Codex 教程页", html)
         self.assertIn('id="warrantyEmailCheckMatchTemplates"', html)
         self.assertIn('data-add-template="match"', html)
         self.assertIn('data-add-template="miss"', html)

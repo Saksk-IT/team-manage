@@ -81,6 +81,10 @@
     .card {
         padding: 1rem;
     }
+
+    .warranty-static-tutorial__grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 520px) {
@@ -127,6 +131,20 @@
     .customer-service-panel {
         width: min(340px, calc(100vw - 1rem));
         max-height: min(68vh, 520px);
+    }
+
+    .warranty-static-tutorial__hero,
+    .warranty-static-tutorial__step {
+        padding: 0.85rem;
+    }
+
+    .warranty-static-tutorial__step-head {
+        display: grid;
+        gap: 0.55rem;
+    }
+
+    .warranty-static-tutorial__cta .btn {
+        flex-basis: 100%;
     }
 }
 
