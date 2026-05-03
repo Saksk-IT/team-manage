@@ -773,12 +773,17 @@
 }
 
 .warranty-generated-code__value code {
+    flex: 1 1 220px;
     padding: 0.45rem 0.65rem;
     border-radius: var(--radius-sm);
     background: rgba(0, 0, 0, 0.22);
     color: var(--text-main);
     font-size: 1rem;
     word-break: break-all;
+}
+
+.warranty-generated-code__guide {
+    text-decoration: none;
 }
 
 .warranty-generated-code__meta {

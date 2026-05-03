@@ -769,6 +769,9 @@ function renderWarrantyEmailCheckResult(data, email) {
                 <button type="button" class="btn btn-secondary btn-sm" id="copyGeneratedWarrantyCodeBtn" data-code="${escapeHtml(generatedCode)}">
                     <i data-lucide="copy"></i> 复制
                 </button>
+                <a class="btn btn-secondary btn-sm warranty-generated-code__guide" href="/codex-guide" target="_blank" rel="noopener noreferrer">
+                    <i data-lucide="book-open"></i> 查看教程
+                </a>
             </div>
             ${generatedDays ? `<div class="warranty-generated-code__meta">有效天数：${escapeHtml(String(generatedDays))} 天</div>` : ''}
         </div>

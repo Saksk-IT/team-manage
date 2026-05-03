@@ -18,6 +18,11 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("兑换中转 API Key，并接入 Codex", html)
         self.assertIn("目前 GPT Team 已全部失效", html)
         self.assertIn("纯血 Plus 号池", html)
+        self.assertIn("Image 2.0 生图", html)
+        self.assertIn("Codex.app 是 GPT 官方推出的强大软件", html)
+        self.assertIn("https://pay.ldxp.cn/shop/LSSZLMUY", html)
+        self.assertIn("/static/img/codex-guide/image-16.png", html)
+        self.assertIn("有任何问题请扫码加群", html)
         self.assertIn("https://api.sakms.top/register", html)
         self.assertIn("填写验证码后完成创建中转账户", html)
         self.assertIn("配置文件前必须完全关闭 Codex", html)
@@ -44,14 +49,18 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
 
     def test_redeem_page_links_to_codex_guide(self):
         template = Path("app/templates/user/redeem.html").read_text(encoding="utf-8")
+        redeem_js = Path("app/static/js/redeem.js").read_text(encoding="utf-8")
 
         self.assertIn('href="/codex-guide"', template)
         self.assertIn("Codex 教程", template)
+        self.assertIn('href="/codex-guide"', redeem_js)
+        self.assertIn("查看教程", redeem_js)
+        self.assertIn("warranty-generated-code__guide", redeem_js)
 
     def test_sanitized_guide_assets_are_kept_under_static_directory(self):
         asset_dir = Path("app/static/img/codex-guide")
 
-        for image_name in ("image-4.png", "image-5.png", "image-9.png", "image-12.png", "image-13.png", "image-14.png", "image-15.png"):
+        for image_name in ("image-4.png", "image-5.png", "image-9.png", "image-12.png", "image-13.png", "image-14.png", "image-15.png", "image-16.png"):
             self.assertTrue((asset_dir / image_name).exists())
 
         template = Path("app/templates/user/codex_guide.html").read_text(encoding="utf-8")
