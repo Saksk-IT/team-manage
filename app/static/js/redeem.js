@@ -752,8 +752,6 @@ function renderWarrantyEmailCheckResult(data, email) {
     if (!statusContainer) return;
 
     const matched = Boolean(data?.matched);
-    const contentRenderMode = String(data?.content_render_mode || 'rich_text');
-    const isStaticTutorial = contentRenderMode === 'static_tutorial';
     const contentHtml = String(data?.content_html || data?.message || '');
     const generatedCode = data?.generated_redeem_code || '';
     const generatedDays = data?.generated_redeem_code_remaining_days;
@@ -777,18 +775,9 @@ function renderWarrantyEmailCheckResult(data, email) {
     ` : (matched && generatedCodeError ? `
         <div class="status-panel__message status-panel__message--warning">${escapeHtml(generatedCodeError)}</div>
     ` : '');
-    const contentMessageClass = [
-        'status-panel__message',
-        isStaticTutorial
-            ? 'status-panel__message--static'
-            : (matched ? 'status-panel__message--success' : 'status-panel__message--warning')
-    ].join(' ');
-    const contentInnerClass = isStaticTutorial
-        ? 'warranty-email-check-content warranty-email-check-content--static'
-        : 'warranty-email-check-content';
     statusContainer.style.display = 'block';
     statusContainer.innerHTML = `
-        <div class="status-panel status-panel--summary warranty-email-check-result ${isStaticTutorial ? 'warranty-email-check-result--static' : ''}">
+        <div class="status-panel status-panel--summary warranty-email-check-result">
             ${generatedCodeHtml}
             <div class="status-panel__header">
                 <div class="status-panel__title">质保资格查询结果</div>
@@ -802,8 +791,8 @@ function renderWarrantyEmailCheckResult(data, email) {
                     <span class="status-panel__value">${escapeHtml(email)}</span>
                 </div>
             </div>
-            <div class="${contentMessageClass}">
-                <div class="${contentInnerClass}">${contentHtml}</div>
+            <div class="status-panel__message ${matched ? 'status-panel__message--success' : 'status-panel__message--warning'}">
+                <div class="warranty-email-check-content">${contentHtml}</div>
             </div>
         </div>
     `;

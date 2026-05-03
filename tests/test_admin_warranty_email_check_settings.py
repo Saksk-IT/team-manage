@@ -30,7 +30,6 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
             "app.routes.admin.settings_service.get_warranty_email_check_config",
             new=AsyncMock(return_value={
                 "enabled": True,
-                "show_static_tutorial": False,
                 "match_content": "<p><strong>在列表</strong></p>",
                 "miss_content": "<p>不在列表</p>",
                 "match_templates": [
@@ -66,9 +65,6 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("质保名单判定", html)
         self.assertIn('href="/admin/warranty-email-check"', html)
         self.assertIn('id="warrantyEmailCheckForm"', html)
-        self.assertIn('id="warrantyEmailCheckShowStaticTutorial"', html)
-        self.assertIn('name="show_static_tutorial"', html)
-        self.assertIn("不复用 Codex 教程页", html)
         self.assertIn('id="warrantyEmailCheckMatchTemplates"', html)
         self.assertIn('data-add-template="match"', html)
         self.assertIn('data-add-template="miss"', html)
@@ -146,7 +142,6 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
             response = await update_warranty_email_check_settings(
                 warranty_data=WarrantyEmailCheckSettingsRequest(
                     enabled=True,
-                    show_static_tutorial=True,
                     match_content=long_content,
                     miss_content="<p>未命中</p>",
                 ),
@@ -156,7 +151,7 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
 
         payload = json.loads(response.body.decode("utf-8"))
 
-        mocked_update.assert_awaited_once_with(db, True, True, long_content, "<p>未命中</p>", [], [])
+        mocked_update.assert_awaited_once_with(db, True, long_content, "<p>未命中</p>", [], [])
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["success"])
 
@@ -173,7 +168,6 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
             response = await update_warranty_email_check_settings(
                 warranty_data=WarrantyEmailCheckSettingsRequest(
                     enabled=True,
-                    show_static_tutorial=False,
                     match_content="<p>在列表</p>",
                     miss_content="<p>不在列表</p>",
                     match_templates=match_templates,
@@ -185,7 +179,7 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
 
         payload = json.loads(response.body.decode("utf-8"))
 
-        mocked_update.assert_awaited_once_with(db, True, False, "<p>在列表</p>", "<p>不在列表</p>", match_templates, miss_templates)
+        mocked_update.assert_awaited_once_with(db, True, "<p>在列表</p>", "<p>不在列表</p>", match_templates, miss_templates)
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["success"])
 
@@ -203,7 +197,6 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
             response = await update_warranty_email_check_settings(
                 warranty_data=WarrantyEmailCheckSettingsRequest(
                     enabled=True,
-                    show_static_tutorial=False,
                     match_content="<p>在列表</p>",
                     miss_content="<p>不在列表</p>",
                     sub2api_base_url="https://sub2api.example.com/",
@@ -217,7 +210,7 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
 
         payload = json.loads(response.body.decode("utf-8"))
 
-        mocked_update.assert_awaited_once_with(db, True, False, "<p>在列表</p>", "<p>不在列表</p>", [], [])
+        mocked_update.assert_awaited_once_with(db, True, "<p>在列表</p>", "<p>不在列表</p>", [], [])
         mocked_sub2api_update.assert_awaited_once_with(
             db,
             base_url="https://sub2api.example.com",
@@ -238,7 +231,6 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
             response = await update_warranty_email_check_settings(
                 warranty_data=WarrantyEmailCheckSettingsRequest(
                     enabled=False,
-                    show_static_tutorial=False,
                     match_content="",
                     miss_content="",
                 ),

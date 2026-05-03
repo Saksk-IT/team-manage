@@ -12,10 +12,6 @@ from app.services.invite_queue import invite_queue_service
 from app.services.settings import settings_service
 from app.services.warranty import warranty_service
 from app.utils.rich_text import rich_text_to_plain_text
-from app.utils.warranty_email_check_tutorial import (
-    build_warranty_email_check_static_tutorial_html,
-    build_warranty_email_check_static_tutorial_message,
-)
 
 TEAM_AVAILABLE_NO_WARRANTY_MESSAGE = "您所在的Team可以正常使用，无需提交质保"
 
@@ -73,7 +69,6 @@ class WarrantyCheckResponse(BaseModel):
     mode: str = "orders"
     matched: Optional[bool] = None
     content_html: Optional[str] = None
-    content_render_mode: str = "rich_text"
     template_key: Optional[str] = None
     generated_redeem_code: Optional[str] = None
     generated_redeem_code_remaining_days: Optional[int] = None
@@ -127,18 +122,12 @@ async def check_warranty(
             if template_matched
             else email_check_config.get("miss_content")
         ) or ""
-        show_static_tutorial = bool(email_check_config.get("show_static_tutorial"))
-        content_render_mode = "static_tutorial" if show_static_tutorial else "rich_text"
         content_html = (
-            build_warranty_email_check_static_tutorial_html(bool(result.get("matched")))
-            if show_static_tutorial
-            else (
-                settings_service.get_warranty_email_check_template_content(
-                    templates,
-                    result.get("template_key"),
-                )
-                or fallback_content
+            settings_service.get_warranty_email_check_template_content(
+                templates,
+                result.get("template_key"),
             )
+            or fallback_content
         )
 
         generated_code = None
@@ -149,7 +138,6 @@ async def check_warranty(
         should_skip_redeem_code = bool(result.get("skip_redeem_code_generation"))
         if should_skip_redeem_code:
             content_html = f"<p>{TEAM_AVAILABLE_NO_WARRANTY_MESSAGE}</p>"
-            content_render_mode = "rich_text"
 
         if bool(result.get("matched")) and not should_skip_redeem_code:
             if result.get("generated_redeem_code"):
@@ -174,11 +162,7 @@ async def check_warranty(
         message = (
             TEAM_AVAILABLE_NO_WARRANTY_MESSAGE
             if should_skip_redeem_code
-            else (
-                build_warranty_email_check_static_tutorial_message(bool(result.get("matched")))
-                if show_static_tutorial
-                else rich_text_to_plain_text(content_html)
-            )
+            else rich_text_to_plain_text(content_html)
         )
 
         return {
@@ -187,7 +171,6 @@ async def check_warranty(
             "mode": "email_check",
             "matched": bool(result.get("matched")),
             "content_html": content_html,
-            "content_render_mode": content_render_mode,
             "template_key": result.get("template_key"),
             "generated_redeem_code": generated_code,
             "generated_redeem_code_remaining_days": generated_code_remaining_days,

@@ -76,7 +76,6 @@ class WarrantyEmailCheckRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["mode"], "email_check")
         self.assertTrue(result["matched"])
         self.assertEqual(result["content_html"], "<p><strong>模板 A</strong></p>")
-        self.assertEqual(result["content_render_mode"], "rich_text")
         self.assertEqual(result["message"], "模板 A")
         self.assertEqual(result["template_key"], "match-a")
         self.assertEqual(result["generated_redeem_code"], "TMW-AUTO")
@@ -111,89 +110,6 @@ class WarrantyEmailCheckRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["content_html"], "<p><em>未命中模板</em></p>")
         self.assertEqual(result["message"], "未命中模板")
         self.assertEqual(result["template_key"], "miss-a")
-
-    async def test_check_warranty_returns_static_tutorial_when_enabled(self):
-        db = AsyncMock()
-
-        with patch(
-            "app.routes.warranty.settings_service.get_warranty_service_config",
-            new=AsyncMock(return_value={"enabled": True})
-        ), patch(
-            "app.routes.warranty.settings_service.get_warranty_email_check_config",
-            new=AsyncMock(return_value={
-                "enabled": True,
-                "show_static_tutorial": True,
-                "match_content": "<p>已在列表</p>",
-                "miss_content": "<p>不在列表</p>",
-                "match_templates": [{"id": "match-a", "name": "命中 A", "content": "<p>已在列表</p>"}],
-                "miss_templates": [{"id": "miss-a", "name": "未命中 A", "content": "<p>不在列表</p>"}],
-            })
-        ), patch(
-            "app.routes.warranty.warranty_service.check_warranty_email_membership",
-            new=AsyncMock(return_value={"success": True, "matched": True, "matched_count": 1, "template_key": "match-a"})
-        ), patch(
-            "app.routes.warranty.warranty_service.ensure_warranty_email_check_redeem_code",
-            new=AsyncMock(return_value={
-                "success": True,
-                "code": "TMW-STATIC",
-                "remaining_days": 7,
-                "reused": False,
-            })
-        ):
-            result = await check_warranty(
-                request=WarrantyCheckRequest(email="buyer@example.com"),
-                http_request=self._build_request(),
-                db_session=db,
-            )
-
-        self.assertEqual(result["mode"], "email_check")
-        self.assertEqual(result["content_render_mode"], "static_tutorial")
-        self.assertIn("warranty-static-tutorial", result["content_html"])
-        self.assertIn("兑换中转 API Key，并接入 Codex", result["content_html"])
-        self.assertIn("固定写死内容", result["content_html"])
-        self.assertNotIn("/codex-guide", result["content_html"])
-        self.assertEqual(result["message"], "邮箱已通过核查，已展示固定教程页面，请按下方步骤继续。")
-        self.assertEqual(result["template_key"], "match-a")
-        self.assertEqual(result["generated_redeem_code"], "TMW-STATIC")
-
-    async def test_check_warranty_returns_static_tutorial_for_miss_when_enabled(self):
-        db = AsyncMock()
-
-        with patch(
-            "app.routes.warranty.settings_service.get_warranty_service_config",
-            new=AsyncMock(return_value={"enabled": True})
-        ), patch(
-            "app.routes.warranty.settings_service.get_warranty_email_check_config",
-            new=AsyncMock(return_value={
-                "enabled": True,
-                "show_static_tutorial": True,
-                "match_content": "<p>已在列表</p>",
-                "miss_content": "<p>不在列表</p>",
-                "match_templates": [{"id": "match-a", "name": "命中 A", "content": "<p>已在列表</p>"}],
-                "miss_templates": [{"id": "miss-a", "name": "未命中 A", "content": "<p>不在列表</p>"}],
-            })
-        ), patch(
-            "app.routes.warranty.warranty_service.check_warranty_email_membership",
-            new=AsyncMock(return_value={"success": True, "matched": False, "matched_count": 0, "template_key": "miss-a"})
-        ), patch(
-            "app.routes.warranty.warranty_service.ensure_warranty_email_check_redeem_code",
-            new=AsyncMock()
-        ) as mocked_generate:
-            result = await check_warranty(
-                request=WarrantyCheckRequest(email="buyer@example.com"),
-                http_request=self._build_request(),
-                db_session=db,
-            )
-
-        mocked_generate.assert_not_awaited()
-        self.assertEqual(result["content_render_mode"], "static_tutorial")
-        self.assertIn("warranty-static-tutorial--miss", result["content_html"])
-        self.assertIn("邮箱未命中名单", result["content_html"])
-        self.assertNotIn("/codex-guide", result["content_html"])
-        self.assertEqual(result["message"], "邮箱未命中名单，已展示固定教程页面，请按下方步骤继续。")
-        self.assertIsNone(result["generated_redeem_code"])
-        self.assertIsNone(result["generated_redeem_code_remaining_days"])
-
 
     async def test_check_warranty_generates_sub2api_code_when_user_id_present(self):
         db = AsyncMock()

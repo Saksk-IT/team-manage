@@ -3444,7 +3444,6 @@ async def warranty_email_check_settings_page(
                 current_user,
                 "warranty_email_check",
                 warranty_email_check_enabled=warranty_email_check_config["enabled"],
-                warranty_email_check_show_static_tutorial=warranty_email_check_config.get("show_static_tutorial", False),
                 warranty_email_check_match_content=warranty_email_check_config["match_content"],
                 warranty_email_check_miss_content=warranty_email_check_config["miss_content"],
                 warranty_email_check_match_templates=warranty_email_check_config.get("match_templates", []),
@@ -3606,7 +3605,6 @@ class WarrantyFakeSuccessSettingsRequest(BaseModel):
 class WarrantyEmailCheckSettingsRequest(BaseModel):
     """前台质保邮箱名单判定模式请求"""
     enabled: bool = Field(..., description="是否启用质保邮箱名单判定模式")
-    show_static_tutorial: bool = Field(False, description="是否直接展示静态教程")
     sub2api_base_url: str = Field("", description="Sub2API 基础地址")
     sub2api_admin_api_key: str = Field("", description="Sub2API Admin API Key")
     sub2api_subscription_group_id: Optional[int] = Field(None, description="Sub2API 订阅分组 ID")
@@ -5171,9 +5169,8 @@ async def update_warranty_email_check_settings(
     """更新前台质保邮箱名单判定模式配置。"""
     try:
         logger.info(
-            "管理员更新质保邮箱名单判定模式: enabled=%s show_static_tutorial=%s match_len=%s miss_len=%s match_templates=%s miss_templates=%s",
+            "管理员更新质保邮箱名单判定模式: enabled=%s match_len=%s miss_len=%s match_templates=%s miss_templates=%s",
             warranty_data.enabled,
-            warranty_data.show_static_tutorial,
             len((warranty_data.match_content or "").strip()),
             len((warranty_data.miss_content or "").strip()),
             len(warranty_data.match_templates or []),
@@ -5183,7 +5180,6 @@ async def update_warranty_email_check_settings(
         success = await settings_service.update_warranty_email_check_config(
             db,
             warranty_data.enabled,
-            warranty_data.show_static_tutorial,
             warranty_data.match_content,
             warranty_data.miss_content,
             warranty_data.match_templates,
