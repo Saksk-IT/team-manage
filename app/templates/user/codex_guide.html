@@ -64,7 +64,8 @@
                             <li><a href="#redeem">兑换中转码</a></li>
                             <li><a href="#createKey">创建 API 密钥</a></li>
                             <li><a href="#installCodex">下载 Codex</a></li>
-                            <li><a href="#configureCodex">配置 Codex 文件</a></li>
+                            <li><a href="#configureCodex">配置方式一：手动文件配置</a></li>
+                            <li><a href="#configureCcSwitch">配置方式二：cc-switch</a></li>
                             <li><a href="#loginCodex">API 登录 Codex</a></li>
                             <li><a href="#faq">常见问题</a></li>
                         </ol>
@@ -84,7 +85,7 @@
                             <i data-lucide="badge-alert"></i>
                             <div>
                                 <strong>额度包兑换码必须选择 GPT-Plus。</strong>
-                                <span>质保补发的中转兑换码选择“质保补偿”；链动小铺购买的额度包兑换码是余额制，新建 API Key 选择分组时必须选“GPT-Plus”，不能选“质保补偿”，否则无法使用。</span>
+                                <span>质保补发的中转兑换码选择“质保补偿”或“30刀订阅”；链动小铺购买的额度包兑换码是余额制，新建 API Key 选择分组时必须选“GPT-Plus”，不能选“质保补偿”，否则无法使用。</span>
                             </div>
                         </div>
                         <div class="codex-alert codex-alert--warning">
@@ -108,7 +109,7 @@
                             <span class="codex-step-index">01</span>
                             <div>
                                 <h2>打开中转链接并创建账户</h2>
-                                <p>访问注册页，随意输入邮箱和密码即可创建中转账户。</p>
+                                <p>访问注册页，输入邮箱和密码，填写验证码后完成创建中转账户。</p>
                             </div>
                         </div>
                         <a class="codex-link-card" href="https://api.sakms.top/register" target="_blank" rel="noopener noreferrer">
@@ -147,7 +148,7 @@
                             <i data-lucide="info"></i>
                             <div>
                                 <strong>分组选择规则。</strong>
-                                <span>“质保补偿”是订阅制度，不需要消耗余额；在“链动小铺”购买的是余额制，应选择“GPT-Plus”分组。</span>
+                                <span>“质保补偿”和“30刀订阅”是订阅制度，不需要消耗余额；在“链动小铺”购买余额包的，应选择“GPT-Plus”分组。</span>
                             </div>
                         </div>
 
@@ -168,7 +169,7 @@
                                 <div class="codex-key-step__copy">
                                     <span class="codex-key-step__badge">3.2</span>
                                     <h3>选择正确分组</h3>
-                                    <p>质保补发的中转码选“质保补偿”；链动小铺额度包选“GPT-Plus”。</p>
+                                    <p>质保补发的中转码选“质保补偿”或“30刀订阅”；链动小铺余额包选“GPT-Plus”。</p>
                                 </div>
                                 <figure class="codex-key-step__media codex-key-step__media--tall">
                                     <img src="/static/img/codex-guide/image-13.png" alt="创建密钥弹窗中选择 API 分组" loading="lazy">
@@ -217,7 +218,7 @@
                         <div class="codex-section-heading">
                             <span class="codex-step-index">05</span>
                             <div>
-                                <h2>配置 Codex 文件</h2>
+                                <h2>配置方式一：手动配置 Codex 文件</h2>
                                 <p>找到或创建 <code>.codex</code> 配置目录，然后将“使用密钥”页面给出的内容分别写入 <code>config.toml</code> 和 <code>auth.json</code>。</p>
                             </div>
                         </div>
@@ -267,9 +268,45 @@
                         </figure>
                     </section>
 
-                    <section id="loginCodex" class="card codex-guide-section">
+                    <section id="configureCcSwitch" class="card codex-guide-section">
                         <div class="codex-section-heading">
                             <span class="codex-step-index">06</span>
+                            <div>
+                                <h2>配置方式二：使用 cc-switch 一键配置</h2>
+                                <p>新手也可以下载 cc-switch，通过图形界面添加 Codex 供应商，填入 API Key 和 API 地址后启用。</p>
+                            </div>
+                        </div>
+                        <a class="codex-link-card" href="https://github.com/farion1231/cc-switch/releases" target="_blank" rel="noopener noreferrer">
+                            <i data-lucide="download-cloud"></i>
+                            <span>cc-switch releases</span>
+                        </a>
+                        <div class="codex-mini-steps codex-mini-steps--four" aria-label="cc-switch 配置步骤">
+                            <article>
+                                <strong>1. 下载并打开</strong>
+                                <span>下载 cc-switch，打开后点击右上角“+”。</span>
+                            </article>
+                            <article>
+                                <strong>2. 添加供应商</strong>
+                                <span>选择“Codex 供应商”，再选择“自定义配置”。</span>
+                            </article>
+                            <article>
+                                <strong>3. 填写配置</strong>
+                                <span>API KEY 填写上一步创建得到的 API Key，API 地址填写 <code>https://api.sakms.top/</code>。</span>
+                            </article>
+                            <article>
+                                <strong>4. 开启使用</strong>
+                                <span>回到 cc-switch 主页面点击开启，重新打开 Codex 即可正常使用。</span>
+                            </article>
+                        </div>
+                        <figure class="codex-figure">
+                            <img src="/static/img/codex-guide/image-15.png" alt="cc-switch 添加 Codex 供应商并选择自定义配置" loading="lazy">
+                            <figcaption>cc-switch：添加 Codex 供应商，并选择自定义配置。</figcaption>
+                        </figure>
+                    </section>
+
+                    <section id="loginCodex" class="card codex-guide-section">
+                        <div class="codex-section-heading">
+                            <span class="codex-step-index">07</span>
                             <div>
                                 <h2>重新打开 Codex 并使用 API 登录</h2>
                                 <p>完成文件配置后重新打开 Codex，选择“换种方式登录”，再选择 API 登录并粘贴自己的 API 密钥。</p>
@@ -303,7 +340,8 @@
                             <li><i data-lucide="check-circle-2"></i><span>编辑配置前是否已经完全关闭 Codex？</span></li>
                             <li><i data-lucide="check-circle-2"></i><span><code>config.toml</code> 和 <code>auth.json</code> 是否放在同一个 <code>.codex</code> 目录？</span></li>
                             <li><i data-lucide="check-circle-2"></i><span>是否粘贴了你自己生成的 API Key，而不是教程截图中的示例？</span></li>
-                            <li><i data-lucide="check-circle-2"></i><span>创建密钥时是否按来源选择正确分组：质保补发的中转码选“质保补偿”，链动小铺额度包选“GPT-Plus”？</span></li>
+                            <li><i data-lucide="check-circle-2"></i><span>创建密钥时是否按来源选择正确分组：质保补发的中转码选“质保补偿”或“30刀订阅”，链动小铺余额包选“GPT-Plus”？</span></li>
+                            <li><i data-lucide="check-circle-2"></i><span>如果使用 cc-switch，API 地址是否填写为 <code>https://api.sakms.top/</code>，并在主页面点击开启后重新打开 Codex？</span></li>
                         </ul>
                     </section>
 

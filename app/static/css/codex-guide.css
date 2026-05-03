@@ -217,6 +217,10 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.codex-mini-steps--four {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
 .codex-mini-steps article,
 .codex-platform-card {
     display: grid;
@@ -327,6 +331,7 @@
     }
 
     .codex-mini-steps,
+    .codex-mini-steps--four,
     .codex-platform-grid {
         grid-template-columns: 1fr;
     }

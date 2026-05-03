@@ -19,12 +19,18 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("目前 GPT Team 已全部失效", html)
         self.assertIn("纯血 Plus 号池", html)
         self.assertIn("https://api.sakms.top/register", html)
+        self.assertIn("填写验证码后完成创建中转账户", html)
         self.assertIn("配置文件前必须完全关闭 Codex", html)
         self.assertIn("按邮箱质保剩余时间补发的中转兑换码", html)
         self.assertIn("质保补发的中转兑换码", html)
+        self.assertIn("30刀订阅", html)
         self.assertIn("额度包兑换码必须选择 GPT-Plus", html)
         self.assertIn("不能选“质保补偿”，否则无法使用", html)
         self.assertIn("名称可按自己需要随便填写", html)
+        self.assertIn("配置方式二：使用 cc-switch 一键配置", html)
+        self.assertIn("https://github.com/farion1231/cc-switch/releases", html)
+        self.assertIn("API 地址填写 <code>https://api.sakms.top/</code>", html)
+        self.assertIn("/static/img/codex-guide/image-15.png", html)
         self.assertIn("GPT-Plus", html)
         self.assertIn("链动小铺", html)
         self.assertIn("/static/img/codex-guide/image-13.png", html)
@@ -45,7 +51,7 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
     def test_sanitized_guide_assets_are_kept_under_static_directory(self):
         asset_dir = Path("app/static/img/codex-guide")
 
-        for image_name in ("image-4.png", "image-5.png", "image-9.png", "image-12.png", "image-13.png", "image-14.png"):
+        for image_name in ("image-4.png", "image-5.png", "image-9.png", "image-12.png", "image-13.png", "image-14.png", "image-15.png"):
             self.assertTrue((asset_dir / image_name).exists())
 
         template = Path("app/templates/user/codex_guide.html").read_text(encoding="utf-8")
