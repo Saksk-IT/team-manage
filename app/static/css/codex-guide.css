@@ -207,11 +207,48 @@
 }
 
 .codex-image-grid,
+.codex-billing-grid,
 .codex-mini-steps,
 .codex-platform-grid,
 .codex-support-grid {
     display: grid;
     gap: 1rem;
+}
+
+.codex-billing-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.codex-billing-grid article {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.75rem;
+    padding: 0.95rem;
+    border: 1px solid rgba(56, 189, 248, 0.18);
+    border-radius: 18px;
+    background: rgba(56, 189, 248, 0.07);
+}
+
+.codex-billing-grid i {
+    width: 1.15rem;
+    height: 1.15rem;
+    margin-top: 0.2rem;
+    color: #7dd3fc;
+}
+
+.codex-billing-grid strong,
+.codex-billing-grid span {
+    display: block;
+}
+
+.codex-billing-grid strong {
+    color: var(--text-main);
+}
+
+.codex-billing-grid span {
+    margin-top: 0.15rem;
+    color: var(--text-muted);
+    line-height: 1.65;
 }
 
 .codex-mini-steps {
@@ -356,6 +393,7 @@
 @media (max-width: 760px) {
     .codex-section-heading,
     .codex-alert,
+    .codex-billing-grid article,
     .codex-checklist li {
         grid-template-columns: 1fr;
     }
@@ -368,6 +406,7 @@
 
     .codex-mini-steps,
     .codex-mini-steps--four,
+    .codex-billing-grid,
     .codex-platform-grid,
     .codex-support-grid {
         grid-template-columns: 1fr;

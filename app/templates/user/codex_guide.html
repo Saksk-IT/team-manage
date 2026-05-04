@@ -96,6 +96,22 @@
                                 <span>质保补发的中转兑换码选择“质保补偿”或“30刀订阅”；链动小铺购买的额度包兑换码是余额制，新建 API Key 选择分组时必须选“GPT-Plus”，不能选“质保补偿”，否则无法使用。</span>
                             </div>
                         </div>
+                        <div class="codex-billing-grid" aria-label="计费模式提醒">
+                            <article>
+                                <i data-lucide="calendar-clock"></i>
+                                <div>
+                                    <strong>订阅模式</strong>
+                                    <span>每天有一定额度，每天 0 点后自动刷新。</span>
+                                </div>
+                            </article>
+                            <article>
+                                <i data-lucide="coins"></i>
+                                <div>
+                                    <strong>额度模式</strong>
+                                    <span>使用时消耗网站账户里的额度，用完就没有了。</span>
+                                </div>
+                            </article>
+                        </div>
                         <div class="codex-alert codex-alert--warning">
                             <i data-lucide="alert-triangle"></i>
                             <div>
@@ -255,6 +271,7 @@
                                     <li>输入 <code>%userprofile%\.codex</code> 并回车。</li>
                                     <li>如目录不存在，请手动创建 <code>.codex</code> 文件夹。</li>
                                     <li>在目录中找到或新建 <code>config.toml</code> 和 <code>auth.json</code>。</li>
+                                    <li>双击文件没有反应时，可右键选择“记事本”打开。</li>
                                 </ol>
                             </article>
                             <article class="codex-platform-card">
@@ -399,6 +416,15 @@
                                 <a class="codex-link-card" href="https://github.com/Dailin521/codex-provider-sync/releases" target="_blank" rel="noopener noreferrer">
                                     <i data-lucide="download-cloud"></i>
                                     <span>codex-provider-sync releases</span>
+                                </a>
+                            </article>
+
+                            <article class="codex-faq-card">
+                                <div class="side-card-title"><i data-lucide="gauge"></i><span>问题三：提示 429 Too Many Requests / 限额</span></div>
+                                <p>如果出现 <code>exceeded retry limit</code>、<code>429 Too Many Requests</code> 等提示，一般是当前额度或频率已经触发限制。</p>
+                                <a class="codex-link-card" href="https://api.sakms.top/profile" target="_blank" rel="noopener noreferrer">
+                                    <i data-lucide="wallet-cards"></i>
+                                    <span>打开额度查询页面</span>
                                 </a>
                             </article>
                         </div>
