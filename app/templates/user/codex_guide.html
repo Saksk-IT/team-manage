@@ -79,7 +79,7 @@
                             <span class="codex-step-index">说明</span>
                             <div>
                                 <h2>使用前请先确认</h2>
-                                <p>本教程同时适用于按邮箱质保剩余时间补发的中转兑换码，以及在链动小铺购买的额度包兑换码。页面中的密钥截图已脱敏，请务必使用你自己页面中生成的 API Key。</p>
+                                <p>本教程同时适用于按邮箱质保剩余时间补发的中转兑换码，也就是质保补发的中转兑换码，以及在链动小铺购买的额度包兑换码。页面中的密钥截图已脱敏，请务必使用你自己页面中生成的 API Key。</p>
                             </div>
                         </div>
                         <div class="codex-alert codex-alert--info">
@@ -93,7 +93,7 @@
                             <i data-lucide="badge-alert"></i>
                             <div>
                                 <strong>额度包兑换码必须选择 GPT-Plus。</strong>
-                                <span>质保补发的中转兑换码选择“质保补偿”或“30刀订阅”；链动小铺购买的额度包兑换码是余额制，新建 API Key 选择分组时必须选“GPT-Plus”，不能选“质保补偿”，否则无法使用。</span>
+                                <span>额度兑换码在新建 API Key 时必须选择“GPT-Plus”，不能选“质保补偿”，否则无法使用；通过质保网站补发的中转兑换码，在新建 API Key 时选择“质保补偿”分组。</span>
                             </div>
                         </div>
                         <div class="codex-billing-grid" aria-label="计费模式提醒">
@@ -188,8 +188,24 @@
                             <i data-lucide="info"></i>
                             <div>
                                 <strong>分组选择规则。</strong>
-                                <span>“质保补偿”和“30刀订阅”是订阅制度，不需要消耗余额；在“链动小铺”购买余额包的，应选择“GPT-Plus”分组。</span>
+                                <span>“质保补偿”和“30刀订阅”是订阅制度，不需要消耗余额；在“链动小铺”购买余额包的，应选择“GPT-Plus”分组。创建密钥前请再次确认自己使用的是订阅还是额度。</span>
                             </div>
+                        </div>
+                        <div class="codex-billing-grid" aria-label="创建密钥计费模式提醒">
+                            <article>
+                                <i data-lucide="calendar-clock"></i>
+                                <div>
+                                    <strong>订阅模式</strong>
+                                    <span>每天有一定额度，每天 0 点后自动刷新。</span>
+                                </div>
+                            </article>
+                            <article>
+                                <i data-lucide="coins"></i>
+                                <div>
+                                    <strong>额度模式</strong>
+                                    <span>使用时消耗网站账户里的额度，用完就没有了。</span>
+                                </div>
+                            </article>
                         </div>
 
                         <div class="codex-key-flow" aria-label="API 密钥创建步骤">
@@ -209,7 +225,7 @@
                                 <div class="codex-key-step__copy">
                                     <span class="codex-key-step__badge">3.2</span>
                                     <h3>选择正确分组</h3>
-                                    <p>质保补发的中转码选“质保补偿”或“30刀订阅”；链动小铺余额包选“GPT-Plus”。</p>
+                                    <p>质保网站补发的中转码选“质保补偿”；链动小铺额度兑换码选“GPT-Plus”。</p>
                                 </div>
                                 <figure class="codex-key-step__media codex-key-step__media--tall">
                                     <img src="/static/img/codex-guide/image-13.png" alt="创建密钥弹窗中选择 API 分组" loading="lazy">
@@ -241,7 +257,7 @@
                             <span class="codex-step-index">04</span>
                             <div>
                                 <h2>下载 Codex 软件</h2>
-                                <p>前往 OpenAI Codex 下载页，按你的系统下载并安装客户端。</p>
+                                <p>前往 OpenAI Codex 下载页，按你的系统下载并安装客户端。下载好后先打开一次 Codex 初始化配置文件，然后再关闭进行下一步文件配置。</p>
                             </div>
                         </div>
                         <a class="codex-link-card" href="https://openai.com/zh-Hans-CN/codex/" target="_blank" rel="noopener noreferrer">
@@ -259,7 +275,7 @@
                             <span class="codex-step-index">05</span>
                             <div>
                                 <h2>配置方式一：手动配置 Codex 文件</h2>
-                                <p>找到或创建 <code>.codex</code> 配置目录，然后将“使用密钥”页面给出的内容分别写入 <code>config.toml</code> 和 <code>auth.json</code>。</p>
+                                <p>找到或创建 <code>.codex</code> 配置目录，然后将“使用密钥”页面给出的内容分别写入 <code>config.toml</code> 和 <code>auth.json</code>。配置文件时一定要保持 Codex 进程关闭，确保进程没有在运行。</p>
                             </div>
                         </div>
 
@@ -381,7 +397,7 @@
                             <li><i data-lucide="check-circle-2"></i><span>编辑配置前是否已经完全关闭 Codex？</span></li>
                             <li><i data-lucide="check-circle-2"></i><span><code>config.toml</code> 和 <code>auth.json</code> 是否放在同一个 <code>.codex</code> 目录？</span></li>
                             <li><i data-lucide="check-circle-2"></i><span>是否粘贴了你自己生成的 API Key，而不是教程截图中的示例？</span></li>
-                            <li><i data-lucide="check-circle-2"></i><span>创建密钥时是否按来源选择正确分组：质保补发的中转码选“质保补偿”或“30刀订阅”，链动小铺余额包选“GPT-Plus”？</span></li>
+                            <li><i data-lucide="check-circle-2"></i><span>创建密钥时是否按来源选择正确分组：质保网站补发的中转码选“质保补偿”，链动小铺额度兑换码选“GPT-Plus”？</span></li>
                             <li><i data-lucide="check-circle-2"></i><span>如果使用 cc-switch，API 地址是否填写为 <code>https://api.sakms.top/</code>，并在主页面点击开启后重新打开 Codex？</span></li>
                         </ul>
                     </section>
