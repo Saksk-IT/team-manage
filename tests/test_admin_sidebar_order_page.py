@@ -50,6 +50,9 @@ class AdminSidebarOrderPageTests(unittest.IsolatedAsyncioTestCase):
                 "app.routes.admin.settings_service.get_default_team_max_members",
                 new=AsyncMock(return_value=5)
             ), patch(
+                "app.routes.admin.settings_service.get_redeem_service_config",
+                new=AsyncMock(return_value={"enabled": True})
+            ), patch(
                 "app.routes.admin.settings_service.get_warranty_service_config",
                 new=AsyncMock(return_value={"enabled": True})
             ), patch(

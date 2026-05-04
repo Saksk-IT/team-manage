@@ -3299,6 +3299,7 @@ async def settings_page(
         team_auto_refresh_config = await settings_service.get_team_auto_refresh_config(db)
         warranty_expiry_cleanup_config = await settings_service.get_warranty_expiry_auto_cleanup_config(db)
         default_team_max_members = await settings_service.get_default_team_max_members(db)
+        redeem_service_config = await settings_service.get_redeem_service_config(db)
         warranty_service_config = await settings_service.get_warranty_service_config(db)
         warranty_fake_success_config = await settings_service.get_warranty_fake_success_config(db)
         number_pool_config = await settings_service.get_number_pool_config(db)
@@ -3320,6 +3321,7 @@ async def settings_page(
                 team_auto_refresh_interval_minutes=team_auto_refresh_config["interval_minutes"],
                 warranty_expiry_auto_cleanup_enabled=warranty_expiry_cleanup_config["enabled"],
                 default_team_max_members=default_team_max_members,
+                redeem_service_enabled=redeem_service_config["enabled"],
                 warranty_service_enabled=warranty_service_config["enabled"],
                 warranty_fake_success_enabled=warranty_fake_success_config["enabled"],
                 number_pool_enabled=number_pool_config["enabled"],
@@ -3590,6 +3592,11 @@ class DefaultTeamMaxMembersSettingsRequest(BaseModel):
 class WarrantyServiceSettingsRequest(BaseModel):
     """前台质保服务开关请求"""
     enabled: bool = Field(..., description="是否启用前台质保服务")
+
+
+class RedeemServiceSettingsRequest(BaseModel):
+    """前台兑换服务开关请求"""
+    enabled: bool = Field(..., description="是否启用前台兑换服务")
 
 
 class NumberPoolSettingsRequest(BaseModel):
@@ -5118,6 +5125,41 @@ async def update_warranty_service_settings(
         )
     except Exception as e:
         logger.error(f"更新前台质保服务开关失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"更新失败: {str(e)}"}
+        )
+
+
+@router.post("/settings/redeem-service")
+async def update_redeem_service_settings(
+    redeem_data: RedeemServiceSettingsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """
+    更新前台兑换服务开关。
+    """
+    try:
+        logger.info(
+            "管理员更新前台兑换服务开关: enabled=%s",
+            redeem_data.enabled
+        )
+
+        success = await settings_service.update_redeem_service_config(
+            db,
+            redeem_data.enabled
+        )
+
+        if success:
+            return JSONResponse(content={"success": True, "message": "前台兑换服务开关已保存"})
+
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": "保存失败"}
+        )
+    except Exception as e:
+        logger.error(f"更新前台兑换服务开关失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": f"更新失败: {str(e)}"}

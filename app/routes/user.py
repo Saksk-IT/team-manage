@@ -88,9 +88,11 @@ async def redeem_page(
         front_announcement_config = await settings_service.get_front_announcement_config(db)
         customer_service_config = await settings_service.get_customer_service_config(db)
         purchase_link_config = await settings_service.get_purchase_link_config(db)
+        redeem_service_config = await settings_service.get_redeem_service_config(db)
         warranty_service_config = await settings_service.get_warranty_service_config(db)
         warranty_fake_success_config = await settings_service.get_warranty_fake_success_config(db)
         warranty_email_check_config = await settings_service.get_warranty_email_check_config(db)
+        redeem_service_enabled = redeem_service_config["enabled"]
         warranty_service_enabled = warranty_service_config["enabled"]
         warranty_fake_success_enabled = (
             warranty_service_enabled
@@ -122,6 +124,7 @@ async def redeem_page(
                 "front_announcement": front_announcement_config,
                 "customer_service": customer_service_config,
                 "purchase_link": purchase_link_config,
+                "redeem_service_enabled": redeem_service_enabled,
                 "warranty_service_enabled": warranty_service_enabled,
                 "warranty_fake_success_enabled": warranty_fake_success_enabled,
                 "warranty_email_check_enabled": warranty_email_check_config["enabled"]

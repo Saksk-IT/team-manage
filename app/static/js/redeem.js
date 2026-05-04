@@ -18,13 +18,14 @@ let currentEmail = '';
 let currentCode = '';
 let availableTeams = [];
 let selectedTeamId = null;
-let currentServiceMode = 'redeem';
 let currentWarrantyEmail = '';
 let currentWarrantyStatus = null;
 const appConfig = window.APP_CONFIG || {};
+const redeemServiceEnabled = appConfig.redeemServiceEnabled !== false;
 const warrantyServiceEnabled = Boolean(appConfig.warrantyServiceEnabled);
 const warrantyEmailCheckEnabled = warrantyServiceEnabled && Boolean(appConfig.warrantyEmailCheckEnabled);
 const warrantyFakeSuccessEnabled = warrantyServiceEnabled && !warrantyEmailCheckEnabled && Boolean(appConfig.warrantyFakeSuccessEnabled);
+let currentServiceMode = redeemServiceEnabled ? 'redeem' : (warrantyServiceEnabled ? 'warranty' : 'redeem');
 const WARRANTY_FAKE_SUCCESS_DELAY_MS = 15 * 1000;
 const WARRANTY_FAKE_SUCCESS_MIN_SPOTS = 60;
 const WARRANTY_FAKE_SUCCESS_MAX_SPOTS = 100;
@@ -1148,6 +1149,9 @@ function updateServiceModeButton(button, isActive) {
 }
 
 function switchServiceMode(mode) {
+    if (mode === 'redeem' && !redeemServiceEnabled && warrantyServiceEnabled) {
+        mode = 'warranty';
+    }
     if (mode === 'warranty' && !warrantyServiceEnabled) {
         mode = 'redeem';
     }
@@ -1237,11 +1241,11 @@ async function startRedeemFlow() {
 }
 
 // 步骤1: 立即兑换
-document.getElementById('verifyForm').addEventListener('submit', async (e) => {
+document.getElementById('verifyForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const email = document.getElementById('email').value.trim();
-    const code = document.getElementById('code').value.trim();
+    const email = document.getElementById('email')?.value.trim() || '';
+    const code = document.getElementById('code')?.value.trim() || '';
 
     // 验证
     if (!email || !code) {

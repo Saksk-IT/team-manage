@@ -12,6 +12,7 @@ from app.database import get_db
 from app.services.redeem_flow import redeem_flow_service
 from app.services.redemption import redemption_service
 from app.services.invite_queue import invite_queue_service
+from app.services.settings import settings_service
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,12 @@ def _get_code_status_label(code_status: Optional[str]) -> Optional[str]:
     return CODE_STATUS_LABELS.get(code_status, code_status)
 
 
+async def ensure_redeem_service_enabled(db_session: AsyncSession) -> None:
+    config = await settings_service.get_redeem_service_config(db_session)
+    if not config.get("enabled"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="前台兑换服务未开启")
+
+
 @router.post("/verify", response_model=VerifyCodeResponse)
 async def verify_code(
     request: VerifyCodeRequest,
@@ -130,6 +137,7 @@ async def verify_code(
         验证结果和可用 Team 列表
     """
     try:
+        await ensure_redeem_service_enabled(db)
         logger.info(f"验证兑换码请求: {request.code}")
 
         result = await redeem_flow_service.verify_code_and_get_teams(
@@ -177,6 +185,7 @@ async def lookup_bound_email(
         )
 
     try:
+        await ensure_redeem_service_enabled(db)
         logger.info("前台查询兑换码绑定邮箱: %s", code)
 
         result = await redemption_service.lookup_code_binding_email(
@@ -252,6 +261,7 @@ async def confirm_redeem(
         兑换结果
     """
     try:
+        await ensure_redeem_service_enabled(db)
         logger.info(f"兑换请求: {request.email} -> Team {request.team_id} (兑换码: {request.code})")
 
         result = await invite_queue_service.submit_redeem_job(

@@ -34,6 +34,7 @@ class SettingsService:
     PURCHASE_LINK_ENABLED_KEY = "purchase_link_enabled"
     PURCHASE_LINK_URL_KEY = "purchase_link_url"
     PURCHASE_LINK_BUTTON_TEXT_KEY = "purchase_link_button_text"
+    REDEEM_SERVICE_ENABLED_KEY = "redeem_service_enabled"
     WARRANTY_SERVICE_ENABLED_KEY = "warranty_service_enabled"
     WARRANTY_USAGE_LIMIT_SUPER_CODE_KEY = "warranty_usage_limit_super_code"
     WARRANTY_USAGE_LIMIT_MAX_USES_KEY = "warranty_usage_limit_max_uses"
@@ -67,6 +68,7 @@ class SettingsService:
     DEFAULT_FRONT_ANNOUNCEMENT_ENABLED = False
     DEFAULT_CUSTOMER_SERVICE_ENABLED = False
     DEFAULT_PURCHASE_LINK_ENABLED = False
+    DEFAULT_REDEEM_SERVICE_ENABLED = True
     WARRANTY_FAKE_SUCCESS_MIN_SPOTS = 60
     WARRANTY_FAKE_SUCCESS_MAX_SPOTS = 100
     TEAM_AUTO_REFRESH_ENABLED_KEY = "team_auto_refresh_enabled"
@@ -611,6 +613,36 @@ class SettingsService:
         return await self.update_setting(
             session,
             self.NUMBER_POOL_ENABLED_KEY,
+            str(bool(enabled)).lower()
+        )
+
+    async def get_redeem_service_config(self, session: AsyncSession) -> Dict[str, bool]:
+        """
+        获取前台兑换服务开关配置。
+        """
+        enabled_raw = await self.get_setting(
+            session,
+            self.REDEEM_SERVICE_ENABLED_KEY,
+            str(self.DEFAULT_REDEEM_SERVICE_ENABLED).lower()
+        )
+        return {
+            "enabled": self._parse_bool(
+                enabled_raw,
+                self.DEFAULT_REDEEM_SERVICE_ENABLED
+            )
+        }
+
+    async def update_redeem_service_config(
+        self,
+        session: AsyncSession,
+        enabled: bool
+    ) -> bool:
+        """
+        更新前台兑换服务开关配置。
+        """
+        return await self.update_setting(
+            session,
+            self.REDEEM_SERVICE_ENABLED_KEY,
             str(bool(enabled)).lower()
         )
 

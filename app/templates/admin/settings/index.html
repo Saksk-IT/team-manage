@@ -222,6 +222,30 @@
     </form>
 </div>
 
+<!-- 前台兑换服务 -->
+<div class="content-section">
+    <div class="section-header">
+        <h3>前台兑换服务</h3>
+    </div>
+
+    <form id="redeemServiceForm" class="settings-form">
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input
+                    type="checkbox"
+                    id="redeemServiceEnabled"
+                    name="enabled"
+                    {% if redeem_service_enabled %}checked{% endif %}
+                >
+                <span>显示并启用前台兑换服务</span>
+            </label>
+            <p class="form-help">关闭后，前台兑换页不再显示兑换服务、兑换表单和绑定邮箱查询入口。</p>
+        </div>
+
+        <button type="submit" class="btn btn-primary">保存兑换服务开关</button>
+    </form>
+</div>
+
 <!-- 前台质保服务 -->
 <div class="content-section">
     <div class="section-header">
@@ -782,6 +806,33 @@
             if (response.ok && data.success) {
                 showToast('号池功能开关已保存，正在刷新页面', 'success');
                 setTimeout(() => window.location.reload(), 700);
+            } else {
+                showToast(data.error || '保存失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    });
+
+    // 前台兑换服务开关
+    document.getElementById('redeemServiceForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const enabled = document.getElementById('redeemServiceEnabled').checked;
+
+        try {
+            const response = await fetch('/admin/settings/redeem-service', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ enabled })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                showToast('前台兑换服务开关已保存', 'success');
             } else {
                 showToast(data.error || '保存失败', 'error');
             }

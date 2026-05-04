@@ -16,6 +16,9 @@ class RedeemBoundEmailLookupRouteTests(unittest.IsolatedAsyncioTestCase):
         db = AsyncMock()
 
         with patch(
+            "app.routes.redeem.settings_service.get_redeem_service_config",
+            new=AsyncMock(return_value={"enabled": True})
+        ), patch(
             "app.routes.redeem.redemption_service.lookup_code_binding_email",
             new=AsyncMock(return_value={
                 "success": True,
@@ -44,6 +47,9 @@ class RedeemBoundEmailLookupRouteTests(unittest.IsolatedAsyncioTestCase):
         db = AsyncMock()
 
         with patch(
+            "app.routes.redeem.settings_service.get_redeem_service_config",
+            new=AsyncMock(return_value={"enabled": True})
+        ), patch(
             "app.routes.redeem.redemption_service.lookup_code_binding_email",
             new=AsyncMock(return_value={
                 "success": True,
@@ -71,6 +77,9 @@ class RedeemBoundEmailLookupRouteTests(unittest.IsolatedAsyncioTestCase):
         db = AsyncMock()
 
         with patch(
+            "app.routes.redeem.settings_service.get_redeem_service_config",
+            new=AsyncMock(return_value={"enabled": True})
+        ), patch(
             "app.routes.redeem.redemption_service.lookup_code_binding_email",
             new=AsyncMock(return_value={
                 "success": False,

@@ -18,6 +18,7 @@
     {% set show_front_announcement = front_announcement.enabled and front_announcement.content %}
     {% set show_customer_service = customer_service.enabled and (customer_service.qr_code_url or customer_service.link_url or customer_service.text_content) %}
     {% set show_purchase_link = purchase_link.enabled and purchase_link.url %}
+    {% set show_redeem_service = redeem_service_enabled|default(true) %}
 
     <div class="front-page">
         <div class="front-page__ambient front-page__ambient--gold" aria-hidden="true"></div>
@@ -28,7 +29,7 @@
                 <div class="hero-card__content">
                     <div class="hero-card__eyebrow">Premium access desk</div>
                     <h1 id="heroTitle">ChatGPT Team</h1>
-                    <p class="subtitle">兑换、质保、客服与购买入口集中处理，填写后自动校验并发送邀请。</p>
+                    <p class="subtitle">{% if show_redeem_service and warranty_service_enabled %}兑换、质保、客服与购买入口集中处理，填写后自动校验并发送邀请。{% elif warranty_service_enabled %}质保、客服与购买入口集中处理，填写后自动校验并处理。{% else %}客服与购买入口集中处理，按页面提示获取支持。{% endif %}</p>
                     <div class="hero-card__badges" aria-label="当前服务状态">
                         {% if remaining_spots is not none %}
                         <div class="spots-badge spots-badge--inventory">
@@ -59,10 +60,11 @@
                             <div class="section-heading">
                                 <div class="section-kicker">Core action</div>
                                 <h2 id="serviceCardTitle">选择服务并提交</h2>
-                                <p>{% if warranty_service_enabled %}兑换加入 Team，或在 Team 封禁后查询并提交质保。{% else %}填写邮箱与兑换码，自动完成 Team 自助兑换。{% endif %}</p>
+                                <p>{% if show_redeem_service and warranty_service_enabled %}兑换加入 Team，或在 Team 封禁后查询并提交质保。{% elif show_redeem_service %}填写邮箱与兑换码，自动完成 Team 自助兑换。{% elif warranty_service_enabled %}在 Team 封禁后查询并提交质保。{% else %}当前自助服务暂未开启，请联系管理员处理。{% endif %}</p>
                             </div>
 
                             <div class="service-tabs" role="tablist" aria-label="服务类型">
+                                {% if show_redeem_service %}
                                 <button
                                     type="button"
                                     id="redeemModeBtn"
@@ -78,13 +80,14 @@
                                         <small>输入邮箱与兑换码，立即加入</small>
                                     </span>
                                 </button>
+                                {% endif %}
                                 {% if warranty_service_enabled %}
                                 <button
                                     type="button"
                                     id="warrantyModeBtn"
-                                    class="service-tab"
+                                    class="service-tab {% if not show_redeem_service %}service-tab--active{% endif %}"
                                     role="tab"
-                                    aria-selected="false"
+                                    aria-selected="{% if show_redeem_service %}false{% else %}true{% endif %}"
                                     aria-controls="warrantyPane"
                                     onclick="switchServiceMode('warranty')"
                                 >
@@ -97,6 +100,7 @@
                                 {% endif %}
                             </div>
 
+                            {% if show_redeem_service %}
                             <div id="redeemPane" class="service-pane" role="tabpanel" aria-labelledby="redeemModeBtn">
                                 <form id="verifyForm" class="action-form">
                                     <label class="form-group" for="email">
@@ -116,9 +120,10 @@
                                     </button>
                                 </form>
                             </div>
+                            {% endif %}
 
                             {% if warranty_service_enabled %}
-                            <div id="warrantyPane" class="service-pane" style="display: none;" role="tabpanel" aria-labelledby="warrantyModeBtn" aria-hidden="true">
+                            <div id="warrantyPane" class="service-pane" {% if show_redeem_service %}style="display: none;"{% endif %} role="tabpanel" aria-labelledby="warrantyModeBtn" aria-hidden="{% if show_redeem_service %}true{% else %}false{% endif %}">
                                 <div class="service-notice">
                                     <i data-lucide="info"></i>
                                     <span><strong>质保说明</strong>：{% if warranty_email_check_enabled %}请输入质保邮箱和对应质保兑换码，系统会校验两者是否匹配质保邮箱列表，并展示管理员设置的说明。{% else %}如您购买了质保服务（包含多个质保订单），先按邮箱查询订单，再对每个仍有剩余次数和天数的订单单独刷新 Team 状态。只有状态为“封禁”的订单，才可以提交质保。{% endif %}</span>
@@ -155,6 +160,7 @@
                         </section>
                         {% endif %}
 
+                        {% if show_redeem_service %}
                         <section class="card lookup-card" aria-labelledby="lookupCardTitle">
                             <div class="section-heading section-heading--compact">
                                 <div class="section-kicker">Code lookup</div>
@@ -179,6 +185,7 @@
                             </form>
                             <div id="boundEmailLookupResult" class="lookup-result" style="display: none;"></div>
                         </section>
+                        {% endif %}
                     </div>
 
                     <!-- 步骤2: 选择Team (已废弃，保留占位符防止 JS 报错) -->
@@ -300,8 +307,10 @@
                             <span>操作流程</span>
                         </div>
                         <ol class="guide-list">
+                            {% if show_redeem_service %}
                             <li><strong>兑换</strong><span>填写邮箱和兑换码，确认无误后提交。</span></li>
                             <li><strong>加入</strong><span>前往邮箱接收 Team 邀请并完成加入。</span></li>
+                            {% endif %}
                             {% if warranty_service_enabled %}
                             <li><strong>质保</strong><span>{% if warranty_email_check_enabled %}切换到质保服务，输入邮箱和对应质保兑换码查询质保资格。{% else %}如 Team 被封禁，切换到质保服务查询后提交。{% endif %}</span></li>
                             {% else %}
@@ -524,6 +533,7 @@
 
     <script>
         window.APP_CONFIG = {
+            redeemServiceEnabled: {{ redeem_service_enabled|default(true)|tojson }},
             warrantyServiceEnabled: {{ warranty_service_enabled|default(true)|tojson }},
             warrantyFakeSuccessEnabled: {{ warranty_fake_success_enabled|default(false)|tojson }},
             warrantyEmailCheckEnabled: {{ warranty_email_check_enabled|default(false)|tojson }},

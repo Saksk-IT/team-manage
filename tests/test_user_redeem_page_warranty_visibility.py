@@ -35,6 +35,9 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
                 "button_text": ""
             })
         ), patch(
+            "app.services.settings.settings_service.get_redeem_service_config",
+            new=AsyncMock(return_value={"enabled": True})
+        ), patch(
             "app.services.settings.settings_service.get_warranty_service_config",
             new=AsyncMock(return_value={"enabled": False})
         ), patch(
@@ -96,6 +99,9 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
                 "button_text": "购买套餐"
             })
         ), patch(
+            "app.services.settings.settings_service.get_redeem_service_config",
+            new=AsyncMock(return_value={"enabled": True})
+        ), patch(
             "app.services.settings.settings_service.get_warranty_service_config",
             new=AsyncMock(return_value={"enabled": True})
         ), patch(
@@ -149,6 +155,7 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("普通兑换码", html)
         self.assertNotIn("超级兑换码", html)
         self.assertIn("质保邮箱", html)
+        self.assertIn("redeemServiceEnabled: true", html)
         self.assertIn("warrantyServiceEnabled: true", html)
         self.assertIn("warrantyEmailCheckEnabled: false", html)
 
@@ -176,6 +183,9 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
                 "button_text": ""
             })
         ), patch(
+            "app.services.settings.settings_service.get_redeem_service_config",
+            new=AsyncMock(return_value={"enabled": True})
+        ), patch(
             "app.services.settings.settings_service.get_warranty_service_config",
             new=AsyncMock(return_value={"enabled": True})
         ), patch(
@@ -201,6 +211,61 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="warrantyCode"', html)
         self.assertIn("warrantyEmailCheckEnabled: true", html)
         self.assertIn("warrantyFakeSuccessEnabled: false", html)
+
+    async def test_redeem_page_hides_redeem_content_when_disabled(self):
+        request = self._build_request()
+        db = AsyncMock()
+
+        with patch(
+            "app.services.settings.settings_service.get_front_announcement_config",
+            new=AsyncMock(return_value={"enabled": False, "content": ""})
+        ), patch(
+            "app.services.settings.settings_service.get_customer_service_config",
+            new=AsyncMock(return_value={
+                "enabled": False,
+                "qr_code_url": "",
+                "link_url": "",
+                "link_text": "",
+                "text_content": ""
+            })
+        ), patch(
+            "app.services.settings.settings_service.get_purchase_link_config",
+            new=AsyncMock(return_value={
+                "enabled": False,
+                "url": "",
+                "button_text": ""
+            })
+        ), patch(
+            "app.services.settings.settings_service.get_redeem_service_config",
+            new=AsyncMock(return_value={"enabled": False})
+        ), patch(
+            "app.services.settings.settings_service.get_warranty_service_config",
+            new=AsyncMock(return_value={"enabled": True})
+        ), patch(
+            "app.services.settings.settings_service.get_warranty_fake_success_config",
+            new=AsyncMock(return_value={"enabled": False})
+        ), patch(
+            "app.services.settings.settings_service.get_warranty_email_check_config",
+            new=AsyncMock(return_value={"enabled": False})
+        ), patch(
+            "app.services.settings.settings_service.get_number_pool_config",
+            new=AsyncMock(return_value={"enabled": False})
+        ), patch(
+            "app.services.team.TeamService.get_total_available_seats",
+            new=AsyncMock(return_value=12)
+        ):
+            response = await redeem_page(request=request, db=db)
+
+        html = response.body.decode("utf-8")
+
+        self.assertNotIn("兑换服务", html)
+        self.assertNotIn('id="redeemPane"', html)
+        self.assertNotIn('id="verifyForm"', html)
+        self.assertNotIn('id="boundEmailLookupForm"', html)
+        self.assertIn("质保服务", html)
+        self.assertIn("质保说明", html)
+        self.assertIn("redeemServiceEnabled: false", html)
+        self.assertIn("warrantyServiceEnabled: true", html)
 
     def test_generated_warranty_code_renders_before_email_check_result_header(self):
         js_path = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "redeem.js"
