@@ -211,29 +211,6 @@
                 </main>
 
                 <aside class="front-sidebar" aria-label="服务信息">
-                    <section class="card side-card side-card--system">
-                        <div class="side-card-title">
-                            <i data-lucide="activity"></i>
-                            <span>服务状态</span>
-                        </div>
-                        <div class="status-grid">
-                            {% if remaining_spots is not none %}
-                            <div class="status-tile">
-                                <small>可用席位</small>
-                                <strong>{{ remaining_spots }}</strong>
-                            </div>
-                            {% endif %}
-                            <div class="status-tile">
-                                <small>交付方式</small>
-                                <strong>自动</strong>
-                            </div>
-                            <div class="status-tile">
-                                <small>页面模式</small>
-                                <strong>自助</strong>
-                            </div>
-                        </div>
-                    </section>
-
                     {% if show_purchase_link %}
                     <section class="card side-card side-card--purchase">
                         <div class="side-card-title">
