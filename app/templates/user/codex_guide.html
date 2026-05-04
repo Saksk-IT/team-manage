@@ -89,12 +89,21 @@
                                 <span>它具备网页版所有功能，并在本地客户端中提供更强大的使用体验；中转接入后可继续使用 GPT Codex、gpt-5.5 和 Image 2.0 生图能力。</span>
                             </div>
                         </div>
-                        <div class="codex-alert codex-alert--important">
-                            <i data-lucide="badge-alert"></i>
-                            <div>
-                                <strong>额度包兑换码必须选择 GPT-Plus。</strong>
-                                <span>额度兑换码在新建 API Key 时必须选择“GPT-Plus”，不能选“质保补偿”，否则无法使用；通过质保网站补发的中转兑换码，在新建 API Key 时选择“质保补偿”分组。</span>
-                            </div>
+                        <div class="codex-group-grid" aria-label="兑换码分组选择要求">
+                            <article class="codex-group-card codex-group-card--plus">
+                                <i data-lucide="badge-alert"></i>
+                                <div>
+                                    <strong>额度兑换码：必须选择 GPT-Plus</strong>
+                                    <span>链动小铺购买的额度包 / 余额包兑换码，新建 API Key 时必须选择“GPT-Plus”。不能选“质保补偿”，否则无法使用。</span>
+                                </div>
+                            </article>
+                            <article class="codex-group-card codex-group-card--warranty">
+                                <i data-lucide="shield-check"></i>
+                                <div>
+                                    <strong>质保补发码：选择质保补偿</strong>
+                                    <span>通过质保网站补发的中转兑换码，新建 API Key 时选择“质保补偿”分组。</span>
+                                </div>
+                            </article>
                         </div>
                         <div class="codex-billing-grid" aria-label="计费模式提醒">
                             <article>
@@ -184,11 +193,27 @@
                                 <p>在“API 密钥”页面新建密钥，按兑换码来源选择对应分组，然后点击“使用密钥”获取后续配置内容。</p>
                             </div>
                         </div>
-                        <div class="codex-alert codex-alert--info">
-                            <i data-lucide="info"></i>
+                        <div class="codex-group-grid" aria-label="API Key 分组选择规则">
+                            <article class="codex-group-card codex-group-card--warranty">
+                                <i data-lucide="badge-info"></i>
+                                <div>
+                                    <strong>订阅类分组：质保补偿 / 30刀订阅</strong>
+                                    <span>“质保补偿”和“30刀订阅”是订阅制度，不需要消耗余额；质保网站补发的中转码选“质保补偿”。</span>
+                                </div>
+                            </article>
+                            <article class="codex-group-card codex-group-card--plus">
+                                <i data-lucide="circle-dollar-sign"></i>
+                                <div>
+                                    <strong>额度类分组：GPT-Plus</strong>
+                                    <span>链动小铺购买余额包或额度兑换码时，应选择“GPT-Plus”分组。创建密钥前请再次确认自己使用的是订阅还是额度。</span>
+                                </div>
+                            </article>
+                        </div>
+                        <div class="codex-alert codex-alert--important">
+                            <i data-lucide="badge-alert"></i>
                             <div>
-                                <strong>分组选择规则。</strong>
-                                <span>“质保补偿”和“30刀订阅”是订阅制度，不需要消耗余额；在“链动小铺”购买余额包的，应选择“GPT-Plus”分组。创建密钥前请再次确认自己使用的是订阅还是额度。</span>
+                                <strong>分组选错会导致无法使用。</strong>
+                                <span>请先判断兑换码来源，再选择对应分组；额度兑换码不要选择“质保补偿”。</span>
                             </div>
                         </div>
                         <div class="codex-billing-grid" aria-label="创建密钥计费模式提醒">
@@ -257,7 +282,14 @@
                             <span class="codex-step-index">04</span>
                             <div>
                                 <h2>下载 Codex 软件</h2>
-                                <p>前往 OpenAI Codex 下载页，按你的系统下载并安装客户端。下载好后先打开一次 Codex 初始化配置文件，然后再关闭进行下一步文件配置。</p>
+                                <p>前往 OpenAI Codex 下载页，按你的系统下载并安装客户端。</p>
+                            </div>
+                        </div>
+                        <div class="codex-alert codex-alert--important codex-alert--standout">
+                            <i data-lucide="badge-alert"></i>
+                            <div>
+                                <strong>下载好后必须先打开一次 Codex。</strong>
+                                <span>先打开 Codex 初始化配置文件，然后再完全关闭 Codex，继续下一步文件配置。</span>
                             </div>
                         </div>
                         <a class="codex-link-card" href="https://openai.com/zh-Hans-CN/codex/" target="_blank" rel="noopener noreferrer">
