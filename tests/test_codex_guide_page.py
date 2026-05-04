@@ -46,6 +46,8 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("下载好后必须先打开一次 Codex", html)
         self.assertIn("先打开 Codex 初始化配置文件", html)
         self.assertIn("配置文件时一定要保持 Codex 进程关闭", html)
+        self.assertIn("请确保 Codex 进程没有在运行", html)
+        self.assertIn("否则配置可能不会生效", html)
         self.assertIn("右键选择“记事本”打开", html)
         self.assertIn("配置方式二：使用 cc-switch 一键配置", html)
         self.assertIn("https://github.com/farion1231/cc-switch/releases", html)
