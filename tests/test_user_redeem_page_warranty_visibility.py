@@ -222,6 +222,8 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Team 正常", render_fn)
         self.assertIn("missing_redeem_code", render_fn)
         self.assertIn("需联系群主", render_fn)
+        self.assertIn("wrong_redeem_code", render_fn)
+        self.assertIn("兑换码错误", render_fn)
         self.assertIn("resultBadgeLabel", render_fn)
 
     def test_redeem_js_sends_warranty_code_in_email_check_mode(self):

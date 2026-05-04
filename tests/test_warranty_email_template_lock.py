@@ -332,6 +332,38 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["message"], "请加入 QQ 群，联系群主处理。")
         self.assertEqual(result["template_key"], "miss-a")
 
+    async def test_email_with_wrong_redeem_code_returns_fixed_error_message(self):
+        service = WarrantyService()
+
+        async with self.Session() as session:
+            session.add(
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=1,
+                    last_redeem_code="CODE-A",
+                )
+            )
+            await session.commit()
+
+            with patch("app.services.warranty.secrets.choice", return_value="miss-a"):
+                result = await service.check_warranty_email_membership(
+                    session,
+                    "buyer@example.com",
+                    warranty_code="WRONG-CODE",
+                    match_templates=[{"id": "match-a", "content": "<p>命中</p>"}],
+                    miss_templates=[{"id": "miss-a", "content": "<p>未命中</p>"}],
+                )
+
+        self.assertFalse(result["matched"])
+        self.assertTrue(result["email_found"])
+        self.assertTrue(result["email_has_redeem_code"])
+        self.assertFalse(result["missing_redeem_code"])
+        self.assertTrue(result["wrong_redeem_code"])
+        self.assertTrue(result["skip_redeem_code_generation"])
+        self.assertEqual(result["message"], "您的质保兑换码错误")
+        self.assertEqual(result["template_key"], "miss-a")
+
+
 
 
 

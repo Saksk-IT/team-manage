@@ -15,6 +15,7 @@ from app.utils.rich_text import rich_text_to_plain_text
 
 TEAM_AVAILABLE_NO_WARRANTY_MESSAGE = "您所在的Team可以正常使用，无需提交质保"
 WARRANTY_EMAIL_MISSING_REDEEM_CODE_MESSAGE = "请加入 QQ 群，联系群主处理。"
+WARRANTY_EMAIL_WRONG_REDEEM_CODE_MESSAGE = "您的质保兑换码错误"
 
 
 def _parse_optional_positive_int(value) -> Optional[int]:
@@ -78,6 +79,7 @@ class WarrantyCheckResponse(BaseModel):
     generated_redeem_code_error: Optional[str] = None
     skip_redeem_code_generation: bool = False
     missing_redeem_code: bool = False
+    wrong_redeem_code: bool = False
     usable_linked_team: Optional[dict] = None
     latest_team: Optional[WarrantyLatestTeamInfo] = None
     warranty_info: Optional[dict] = None
@@ -142,9 +144,13 @@ async def check_warranty(
         should_skip_redeem_code = bool(result.get("skip_redeem_code_generation"))
         if should_skip_redeem_code:
             skip_message = result.get("message") or (
-                WARRANTY_EMAIL_MISSING_REDEEM_CODE_MESSAGE
-                if result.get("missing_redeem_code")
-                else TEAM_AVAILABLE_NO_WARRANTY_MESSAGE
+                WARRANTY_EMAIL_WRONG_REDEEM_CODE_MESSAGE
+                if result.get("wrong_redeem_code")
+                else (
+                    WARRANTY_EMAIL_MISSING_REDEEM_CODE_MESSAGE
+                    if result.get("missing_redeem_code")
+                    else TEAM_AVAILABLE_NO_WARRANTY_MESSAGE
+                )
             )
             content_html = f"<p>{skip_message}</p>"
 
@@ -183,6 +189,7 @@ async def check_warranty(
             "generated_redeem_code_error": generated_code_error,
             "skip_redeem_code_generation": should_skip_redeem_code,
             "missing_redeem_code": bool(result.get("missing_redeem_code")),
+            "wrong_redeem_code": bool(result.get("wrong_redeem_code")),
             "usable_linked_team": result.get("usable_linked_team"),
             "latest_team": None,
             "warranty_info": None,

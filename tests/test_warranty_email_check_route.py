@@ -312,6 +312,51 @@ class WarrantyEmailCheckRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["skip_redeem_code_generation"])
         self.assertTrue(result["missing_redeem_code"])
 
+
+    async def test_check_warranty_shows_wrong_code_message_when_email_exists(self):
+        db = AsyncMock()
+
+        with patch(
+            "app.routes.warranty.settings_service.get_warranty_service_config",
+            new=AsyncMock(return_value={"enabled": True})
+        ), patch(
+            "app.routes.warranty.settings_service.get_warranty_email_check_config",
+            new=AsyncMock(return_value={
+                "enabled": True,
+                "match_content": "<p>已在列表</p>",
+                "miss_content": "<p>不在列表</p>",
+                "match_templates": [{"id": "match-a", "name": "命中 A", "content": "<p>已在列表</p>"}],
+                "miss_templates": [{"id": "miss-a", "name": "未命中 A", "content": "<p>不在列表</p>"}],
+            })
+        ), patch(
+            "app.routes.warranty.warranty_service.check_warranty_email_membership",
+            new=AsyncMock(return_value={
+                "success": True,
+                "matched": False,
+                "matched_count": 0,
+                "template_key": "miss-a",
+                "wrong_redeem_code": True,
+                "skip_redeem_code_generation": True,
+                "message": "您的质保兑换码错误",
+            })
+        ), patch(
+            "app.routes.warranty.warranty_service.ensure_warranty_email_check_redeem_code",
+            new=AsyncMock()
+        ) as mocked_generate:
+            result = await check_warranty(
+                request=WarrantyCheckRequest(email="buyer@example.com", warranty_code="WRONG-CODE"),
+                http_request=self._build_request(),
+                db_session=db,
+            )
+
+        mocked_generate.assert_not_awaited()
+        self.assertFalse(result["matched"])
+        self.assertEqual(result["message"], "您的质保兑换码错误")
+        self.assertEqual(result["content_html"], "<p>您的质保兑换码错误</p>")
+        self.assertTrue(result["skip_redeem_code_generation"])
+        self.assertTrue(result["wrong_redeem_code"])
+        self.assertFalse(result["missing_redeem_code"])
+
     async def test_claim_warranty_rejects_when_email_check_mode_enabled(self):
         from fastapi import HTTPException
         from app.routes.warranty import WarrantyClaimRequest, claim_warranty

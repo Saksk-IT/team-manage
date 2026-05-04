@@ -69,6 +69,7 @@ class WarrantyService:
     USABLE_LINKED_TEAM_STATUSES = {"active", "full"}
     TEAM_AVAILABLE_NO_WARRANTY_MESSAGE = "您所在的Team可以正常使用，无需提交质保"
     WARRANTY_EMAIL_MISSING_REDEEM_CODE_MESSAGE = "请加入 QQ 群，联系群主处理。"
+    WARRANTY_EMAIL_WRONG_REDEEM_CODE_MESSAGE = "您的质保兑换码错误"
 
     def __init__(self):
         """初始化质保服务"""
@@ -2211,6 +2212,7 @@ class WarrantyService:
             None,
         )
         has_missing_code = bool(entries) and not entries_with_code
+        has_wrong_code = bool(entries_with_code) and selected_entry is None
         matched = selected_entry is not None
         template_matched = matched
         templates = match_templates if template_matched else miss_templates
@@ -2228,6 +2230,8 @@ class WarrantyService:
         message = None
         if has_missing_code:
             message = self.WARRANTY_EMAIL_MISSING_REDEEM_CODE_MESSAGE
+        elif has_wrong_code:
+            message = self.WARRANTY_EMAIL_WRONG_REDEEM_CODE_MESSAGE
         elif usable_linked_team is not None:
             message = self.TEAM_AVAILABLE_NO_WARRANTY_MESSAGE
 
@@ -2241,7 +2245,8 @@ class WarrantyService:
             "email_found": bool(entries),
             "email_has_redeem_code": bool(entries_with_code),
             "missing_redeem_code": has_missing_code,
-            "skip_redeem_code_generation": usable_linked_team is not None or has_missing_code,
+            "wrong_redeem_code": has_wrong_code,
+            "skip_redeem_code_generation": usable_linked_team is not None or has_missing_code or has_wrong_code,
             "usable_linked_team": usable_linked_team,
             "message": message,
             "template_key": template_lock.template_key if template_lock else None,
