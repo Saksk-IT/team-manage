@@ -91,7 +91,7 @@ const WARRANTY_STATUS_LOADING_FLOW = Object.freeze({
     stages: Object.freeze([
         Object.freeze({
             label: '核对质保邮箱',
-            message: '正在验证邮箱是否在质保邮箱列表中。'
+            message: '正在验证质保邮箱与兑换码是否匹配。'
         }),
         Object.freeze({
             label: '查询订单列表',
@@ -757,9 +757,12 @@ function renderWarrantyEmailCheckResult(data, email) {
     const generatedDays = data?.generated_redeem_code_remaining_days;
     const generatedCodeError = data?.generated_redeem_code_error || '';
     const skipRedeemCodeGeneration = Boolean(data?.skip_redeem_code_generation);
-    const resultBadgeLabel = skipRedeemCodeGeneration
-        ? 'Team 正常'
-        : (matched ? '在质保列表内' : '不在质保列表内');
+    const missingRedeemCode = Boolean(data?.missing_redeem_code);
+    const resultBadgeLabel = missingRedeemCode
+        ? '需联系群主'
+        : (skipRedeemCodeGeneration
+            ? 'Team 正常'
+            : (matched ? '在质保列表内' : '不在质保列表内'));
     const resultBadgeClass = matched ? 'status-badge--success' : 'status-badge--warning';
     const generatedCodeHtml = matched && generatedCode ? `
         <div class="status-panel__message status-panel__message--success warranty-generated-code">
@@ -1326,11 +1329,17 @@ document.getElementById('warrantyEmail')?.addEventListener('input', () => {
     resetWarrantyStatusResult();
 });
 
+document.getElementById('warrantyCode')?.addEventListener('input', () => {
+    resetWarrantyStatusResult();
+});
+
 document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const emailInput = document.getElementById('warrantyEmail');
+    const codeInput = document.getElementById('warrantyCode');
     const email = emailInput?.value.trim();
+    const warrantyCode = codeInput?.value.trim() || '';
     const claimBtn = document.getElementById('claimBtn');
 
     if (emailInput && !emailInput.checkValidity()) {
@@ -1338,8 +1347,18 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
         return;
     }
 
+    if (warrantyEmailCheckEnabled && codeInput && !codeInput.checkValidity()) {
+        codeInput.reportValidity();
+        return;
+    }
+
     if (!email) {
         showToast('请填写邮箱地址', 'error');
+        return;
+    }
+
+    if (warrantyEmailCheckEnabled && !warrantyCode) {
+        showToast('请填写质保兑换码', 'error');
         return;
     }
 
@@ -1361,7 +1380,8 @@ document.getElementById('warrantyClaimForm')?.addEventListener('submit', async (
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                email
+                email,
+                ...(warrantyEmailCheckEnabled ? { warranty_code: warrantyCode } : {})
             })
         });
 

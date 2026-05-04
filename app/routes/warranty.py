@@ -14,6 +14,7 @@ from app.services.warranty import warranty_service
 from app.utils.rich_text import rich_text_to_plain_text
 
 TEAM_AVAILABLE_NO_WARRANTY_MESSAGE = "您所在的Team可以正常使用，无需提交质保"
+WARRANTY_EMAIL_MISSING_REDEEM_CODE_MESSAGE = "请加入 QQ 群，联系群主处理。"
 
 
 def _parse_optional_positive_int(value) -> Optional[int]:
@@ -46,6 +47,7 @@ async def ensure_warranty_order_flow_enabled(db_session: AsyncSession) -> None:
 class WarrantyCheckRequest(BaseModel):
     """质保查询请求"""
     email: EmailStr
+    warranty_code: Optional[str] = Field(None, max_length=128, description="质保兑换码")
 
 
 class WarrantyLatestTeamInfo(BaseModel):
@@ -75,6 +77,7 @@ class WarrantyCheckResponse(BaseModel):
     generated_redeem_code_reused: Optional[bool] = None
     generated_redeem_code_error: Optional[str] = None
     skip_redeem_code_generation: bool = False
+    missing_redeem_code: bool = False
     usable_linked_team: Optional[dict] = None
     latest_team: Optional[WarrantyLatestTeamInfo] = None
     warranty_info: Optional[dict] = None
@@ -97,7 +100,7 @@ async def check_warranty(
     db_session: AsyncSession = Depends(get_db)
 ):
     """
-    查询质保邮箱状态；名单判定模式开启时仅判断邮箱是否入列。
+    查询质保邮箱状态；名单判定模式开启时校验邮箱与质保兑换码是否匹配。
     """
     await ensure_warranty_service_enabled(db_session)
     email_check_config = await settings_service.get_warranty_email_check_config(db_session)
@@ -105,6 +108,7 @@ async def check_warranty(
         result = await warranty_service.check_warranty_email_membership(
             db_session=db_session,
             email=request.email,
+            warranty_code=request.warranty_code,
             match_templates=email_check_config.get("match_templates", []),
             miss_templates=email_check_config.get("miss_templates", []),
         )
@@ -137,7 +141,12 @@ async def check_warranty(
         user_id = _parse_optional_positive_int(http_request.query_params.get("user_id") if http_request else None)
         should_skip_redeem_code = bool(result.get("skip_redeem_code_generation"))
         if should_skip_redeem_code:
-            content_html = f"<p>{TEAM_AVAILABLE_NO_WARRANTY_MESSAGE}</p>"
+            skip_message = result.get("message") or (
+                WARRANTY_EMAIL_MISSING_REDEEM_CODE_MESSAGE
+                if result.get("missing_redeem_code")
+                else TEAM_AVAILABLE_NO_WARRANTY_MESSAGE
+            )
+            content_html = f"<p>{skip_message}</p>"
 
         if bool(result.get("matched")) and not should_skip_redeem_code:
             if result.get("generated_redeem_code"):
@@ -159,11 +168,7 @@ async def check_warranty(
                 else:
                     generated_code_error = code_result.get("error") or "兑换码生成失败"
 
-        message = (
-            TEAM_AVAILABLE_NO_WARRANTY_MESSAGE
-            if should_skip_redeem_code
-            else rich_text_to_plain_text(content_html)
-        )
+        message = rich_text_to_plain_text(content_html)
 
         return {
             "success": True,
@@ -177,6 +182,7 @@ async def check_warranty(
             "generated_redeem_code_reused": generated_code_reused,
             "generated_redeem_code_error": generated_code_error,
             "skip_redeem_code_generation": should_skip_redeem_code,
+            "missing_redeem_code": bool(result.get("missing_redeem_code")),
             "usable_linked_team": result.get("usable_linked_team"),
             "latest_team": None,
             "warranty_info": None,

@@ -195,9 +195,10 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
 
         html = response.body.decode("utf-8")
 
-        self.assertIn("输入邮箱查询质保资格", html)
+        self.assertIn("输入邮箱和兑换码查询质保资格", html)
         self.assertIn("查询质保资格", html)
-        self.assertIn("系统仅判断该邮箱是否在质保邮箱列表内", html)
+        self.assertIn("系统会同时校验质保邮箱和对应质保兑换码", html)
+        self.assertIn('id="warrantyCode"', html)
         self.assertIn("warrantyEmailCheckEnabled: true", html)
         self.assertIn("warrantyFakeSuccessEnabled: false", html)
 
@@ -219,7 +220,17 @@ class UserRedeemPageWarrantyVisibilityTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("skip_redeem_code_generation", render_fn)
         self.assertIn("Team 正常", render_fn)
+        self.assertIn("missing_redeem_code", render_fn)
+        self.assertIn("需联系群主", render_fn)
         self.assertIn("resultBadgeLabel", render_fn)
+
+    def test_redeem_js_sends_warranty_code_in_email_check_mode(self):
+        js_path = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "redeem.js"
+        js = js_path.read_text(encoding="utf-8")
+
+        self.assertIn("const codeInput = document.getElementById('warrantyCode');", js)
+        self.assertIn("请填写质保兑换码", js)
+        self.assertIn("warranty_code: warrantyCode", js)
 
     def test_redeem_js_does_not_expose_front_withdraw_action(self):
         js_path = Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "redeem.js"

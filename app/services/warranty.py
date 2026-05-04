@@ -68,6 +68,7 @@ class WarrantyService:
     }
     USABLE_LINKED_TEAM_STATUSES = {"active", "full"}
     TEAM_AVAILABLE_NO_WARRANTY_MESSAGE = "您所在的Team可以正常使用，无需提交质保"
+    WARRANTY_EMAIL_MISSING_REDEEM_CODE_MESSAGE = "请加入 QQ 群，联系群主处理。"
 
     def __init__(self):
         """初始化质保服务"""
@@ -2179,58 +2180,82 @@ class WarrantyService:
         self,
         db_session: AsyncSession,
         email: str,
+        warranty_code: Optional[str] = None,
         match_templates: Optional[List[Dict[str, Any]]] = None,
         miss_templates: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
-        仅判定邮箱是否存在于质保邮箱列表，并为首次查询邮箱随机锁定一个展示模板。
+        判定邮箱与质保兑换码是否共同命中质保邮箱列表，并为首次查询邮箱随机锁定展示模板。
         """
         normalized_email = self.normalize_email(email)
         if not normalized_email:
             return {"success": False, "error": "邮箱不能为空"}
 
+        normalized_code = (warranty_code or "").strip()
+        if not normalized_code:
+            return {"success": False, "error": "质保兑换码不能为空"}
+
         entries = await self.get_warranty_email_entries_for_email(
             db_session,
             normalized_email
         )
-        matched = bool(entries)
-        templates = match_templates if matched else miss_templates
+        entries_with_code = [
+            entry for entry in entries
+            if (entry.last_redeem_code or "").strip()
+        ]
+        selected_entry = next(
+            (
+                entry for entry in entries_with_code
+                if (entry.last_redeem_code or "").strip() == normalized_code
+            ),
+            None,
+        )
+        has_missing_code = bool(entries) and not entries_with_code
+        matched = selected_entry is not None
+        template_matched = matched
+        templates = match_templates if template_matched else miss_templates
         template_lock = await self._get_or_create_warranty_email_template_lock(
             db_session=db_session,
             email=normalized_email,
-            matched=matched,
+            matched=template_matched,
             templates=templates or [],
         )
-        selected_entry = entries[0] if entries else None
         usable_linked_team = (
-            await self._get_usable_linked_team_for_warranty_entries(db_session, entries)
-            if matched
+            await self._get_usable_linked_team_for_warranty_entries(db_session, [selected_entry])
+            if selected_entry
             else None
         )
+        message = None
+        if has_missing_code:
+            message = self.WARRANTY_EMAIL_MISSING_REDEEM_CODE_MESSAGE
+        elif usable_linked_team is not None:
+            message = self.TEAM_AVAILABLE_NO_WARRANTY_MESSAGE
+
         return {
             "success": True,
             "email": normalized_email,
             "matched": matched,
-            "matched_count": len(entries),
-            "skip_redeem_code_generation": usable_linked_team is not None,
+            "matched_count": 1 if selected_entry else 0,
+            "code_required": True,
+            "warranty_code": normalized_code,
+            "email_found": bool(entries),
+            "email_has_redeem_code": bool(entries_with_code),
+            "missing_redeem_code": has_missing_code,
+            "skip_redeem_code_generation": usable_linked_team is not None or has_missing_code,
             "usable_linked_team": usable_linked_team,
-            "message": (
-                self.TEAM_AVAILABLE_NO_WARRANTY_MESSAGE
-                if usable_linked_team is not None
-                else None
-            ),
+            "message": message,
             "template_key": template_lock.template_key if template_lock else None,
-            "template_matched": bool(template_lock.matched) if template_lock else matched,
+            "template_matched": bool(template_lock.matched) if template_lock else template_matched,
             "template_lock": template_lock,
             "selected_entry": selected_entry,
             "generated_redeem_code": (
                 template_lock.generated_redeem_code
-                if template_lock and template_lock.generated_redeem_code
+                if matched and template_lock and template_lock.generated_redeem_code
                 else None
             ),
             "generated_redeem_code_remaining_days": (
                 template_lock.generated_redeem_code_remaining_days
-                if template_lock
+                if matched and template_lock
                 else None
             ),
         }

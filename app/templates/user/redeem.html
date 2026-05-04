@@ -91,7 +91,7 @@
                                     <span class="service-tab__icon"><i data-lucide="shield"></i></span>
                                     <span>
                                         <strong>质保服务</strong>
-                                        <small>{% if warranty_email_check_enabled %}输入邮箱查询质保资格{% else %}仅 Team 封禁时可提交{% endif %}</small>
+                                        <small>{% if warranty_email_check_enabled %}输入邮箱和兑换码查询质保资格{% else %}仅 Team 封禁时可提交{% endif %}</small>
                                     </span>
                                 </button>
                                 {% endif %}
@@ -121,14 +121,21 @@
                             <div id="warrantyPane" class="service-pane" style="display: none;" role="tabpanel" aria-labelledby="warrantyModeBtn" aria-hidden="true">
                                 <div class="service-notice">
                                     <i data-lucide="info"></i>
-                                    <span><strong>质保说明</strong>：{% if warranty_email_check_enabled %}请输入邮箱查询是否在质保邮箱列表中，系统会按管理员设置展示对应说明。{% else %}如您购买了质保服务（包含多个质保订单），先按邮箱查询订单，再对每个仍有剩余次数和天数的订单单独刷新 Team 状态。只有状态为“封禁”的订单，才可以提交质保。{% endif %}</span>
+                                    <span><strong>质保说明</strong>：{% if warranty_email_check_enabled %}请输入质保邮箱和对应质保兑换码，系统会校验两者是否匹配质保邮箱列表，并展示管理员设置的说明。{% else %}如您购买了质保服务（包含多个质保订单），先按邮箱查询订单，再对每个仍有剩余次数和天数的订单单独刷新 Team 状态。只有状态为“封禁”的订单，才可以提交质保。{% endif %}</span>
                                 </div>
                                 <form id="warrantyClaimForm" class="action-form">
                                     <label class="form-group" for="warrantyEmail">
                                         <span>质保邮箱</span>
                                         <input type="email" id="warrantyEmail" name="email" required placeholder="请输入质保邮箱" class="form-input" autocomplete="email">
-                                        <small class="form-help">{% if warranty_email_check_enabled %}系统仅判断该邮箱是否在质保邮箱列表内，并展示管理员设置的说明。{% else %}查询结果会展示每个质保订单对应的兑换码、剩余次数、剩余时间和质保到期时间。{% endif %}</small>
+                                        <small class="form-help">{% if warranty_email_check_enabled %}系统会同时校验质保邮箱和对应质保兑换码。{% else %}查询结果会展示每个质保订单对应的兑换码、剩余次数、剩余时间和质保到期时间。{% endif %}</small>
                                     </label>
+                                    {% if warranty_email_check_enabled %}
+                                    <label class="form-group" for="warrantyCode">
+                                        <span>质保兑换码</span>
+                                        <input type="text" id="warrantyCode" name="warranty_code" required placeholder="请输入对应质保兑换码" class="form-input" autocomplete="one-time-code">
+                                        <small class="form-help">请输入后台质保邮箱列表中与该邮箱对应的质保兑换码。</small>
+                                    </label>
+                                    {% endif %}
                                     <button type="submit" class="btn btn-primary" id="claimBtn">
                                         <i data-lucide="search"></i> {% if warranty_email_check_enabled %}查询质保资格{% else %}查询订单{% endif %}
                                     </button>
@@ -296,7 +303,7 @@
                             <li><strong>兑换</strong><span>填写邮箱和兑换码，确认无误后提交。</span></li>
                             <li><strong>加入</strong><span>前往邮箱接收 Team 邀请并完成加入。</span></li>
                             {% if warranty_service_enabled %}
-                            <li><strong>质保</strong><span>{% if warranty_email_check_enabled %}切换到质保服务，输入邮箱查询质保资格。{% else %}如 Team 被封禁，切换到质保服务查询后提交。{% endif %}</span></li>
+                            <li><strong>质保</strong><span>{% if warranty_email_check_enabled %}切换到质保服务，输入邮箱和对应质保兑换码查询质保资格。{% else %}如 Team 被封禁，切换到质保服务查询后提交。{% endif %}</span></li>
                             {% else %}
                             <li><strong>帮助</strong><span>如遇加入问题，请联系管理员协助处理。</span></li>
                             {% endif %}

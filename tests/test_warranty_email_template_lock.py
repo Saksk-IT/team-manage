@@ -38,19 +38,21 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
         miss_templates = [{"id": "miss-a", "content": "<p>未命中</p>"}]
 
         async with self.Session() as session:
-            session.add(WarrantyEmailEntry(email="buyer@example.com", remaining_claims=1))
+            session.add(WarrantyEmailEntry(email="buyer@example.com", remaining_claims=1, last_redeem_code="CODE-A"))
             await session.commit()
 
             with patch("app.services.warranty.secrets.choice", return_value="match-b") as mocked_choice:
                 first_result = await service.check_warranty_email_membership(
                     session,
                     "Buyer@Example.com",
+                    warranty_code="CODE-A",
                     match_templates=match_templates,
                     miss_templates=miss_templates,
                 )
                 second_result = await service.check_warranty_email_membership(
                     session,
                     "buyer@example.com",
+                    warranty_code="CODE-A",
                     match_templates=match_templates,
                     miss_templates=miss_templates,
                 )
@@ -75,6 +77,7 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
                 result = await service.check_warranty_email_membership(
                     session,
                     "none@example.com",
+                    warranty_code="CODE-A",
                     match_templates=[{"id": "match-a", "content": "<p>A</p>"}],
                     miss_templates=[
                         {"id": "miss-a", "content": "<p>A</p>"},
@@ -94,7 +97,7 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
         service = WarrantyService()
 
         async with self.Session() as session:
-            entry = WarrantyEmailEntry(email="buyer@example.com", remaining_claims=1)
+            entry = WarrantyEmailEntry(email="buyer@example.com", remaining_claims=1, last_redeem_code="CODE-A")
             session.add(entry)
             await session.commit()
 
@@ -102,6 +105,7 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
                 matched_result = await service.check_warranty_email_membership(
                     session,
                     "buyer@example.com",
+                    warranty_code="CODE-A",
                     match_templates=[{"id": "match-a", "content": "<p>命中</p>"}],
                     miss_templates=[{"id": "miss-a", "content": "<p>未命中</p>"}],
                 )
@@ -113,6 +117,7 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
                 missed_result = await service.check_warranty_email_membership(
                     session,
                     "buyer@example.com",
+                    warranty_code="CODE-A",
                     match_templates=[{"id": "match-a", "content": "<p>命中</p>"}],
                     miss_templates=[{"id": "miss-a", "content": "<p>未命中</p>"}],
                 )
@@ -134,6 +139,7 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
             entry = WarrantyEmailEntry(
                 email="buyer@example.com",
                 remaining_claims=1,
+                last_redeem_code="CODE-A",
                 expires_at=get_now() + timedelta(days=2, hours=1),
             )
             session.add(entry)
@@ -143,6 +149,7 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
                 membership = await service.check_warranty_email_membership(
                     session,
                     "buyer@example.com",
+                    warranty_code="CODE-A",
                     match_templates=[{"id": "match-a", "content": "<p>命中</p>"}],
                     miss_templates=[{"id": "miss-a", "content": "<p>未命中</p>"}],
                 )
@@ -201,6 +208,7 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
             entry = WarrantyEmailEntry(
                 email="buyer@example.com",
                 remaining_claims=1,
+                last_redeem_code="CODE-A",
                 expires_at=get_now() + timedelta(days=29, hours=1),
             )
             session.add(entry)
@@ -210,6 +218,7 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
                 membership = await service.check_warranty_email_membership(
                     session,
                     "buyer@example.com",
+                    warranty_code="CODE-A",
                     match_templates=[{"id": "match-a", "content": "<p>命中</p>"}],
                     miss_templates=[{"id": "miss-a", "content": "<p>未命中</p>"}],
                 )
@@ -263,12 +272,14 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
                 WarrantyEmailEntry(
                     email="active-buyer@example.com",
                     remaining_claims=1,
+                    last_redeem_code="ACTIVE-CODE",
                     expires_at=get_now() + timedelta(days=2),
                     last_warranty_team_id=active_team.id,
                 ),
                 WarrantyEmailEntry(
                     email="full-buyer@example.com",
                     remaining_claims=1,
+                    last_redeem_code="FULL-CODE",
                     expires_at=get_now() + timedelta(days=2),
                     last_warranty_team_id=full_team.id,
                 ),
@@ -279,12 +290,14 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
                 active_result = await service.check_warranty_email_membership(
                     session,
                     "active-buyer@example.com",
+                    warranty_code="ACTIVE-CODE",
                     match_templates=[{"id": "match-a", "content": "<p>命中</p>"}],
                     miss_templates=[{"id": "miss-a", "content": "<p>未命中</p>"}],
                 )
                 full_result = await service.check_warranty_email_membership(
                     session,
                     "full-buyer@example.com",
+                    warranty_code="FULL-CODE",
                     match_templates=[{"id": "match-a", "content": "<p>命中</p>"}],
                     miss_templates=[{"id": "miss-a", "content": "<p>未命中</p>"}],
                 )
@@ -294,6 +307,31 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(result["skip_redeem_code_generation"])
             self.assertEqual(result["message"], "您所在的Team可以正常使用，无需提交质保")
             self.assertEqual(result["usable_linked_team"]["status_label"], status_label)
+
+    async def test_email_with_no_redeem_code_returns_group_contact_message(self):
+        service = WarrantyService()
+
+        async with self.Session() as session:
+            session.add(WarrantyEmailEntry(email="buyer@example.com", remaining_claims=1))
+            await session.commit()
+
+            with patch("app.services.warranty.secrets.choice", return_value="miss-a"):
+                result = await service.check_warranty_email_membership(
+                    session,
+                    "buyer@example.com",
+                    warranty_code="CODE-A",
+                    match_templates=[{"id": "match-a", "content": "<p>命中</p>"}],
+                    miss_templates=[{"id": "miss-a", "content": "<p>未命中</p>"}],
+                )
+
+        self.assertFalse(result["matched"])
+        self.assertTrue(result["email_found"])
+        self.assertFalse(result["email_has_redeem_code"])
+        self.assertTrue(result["missing_redeem_code"])
+        self.assertTrue(result["skip_redeem_code_generation"])
+        self.assertEqual(result["message"], "请加入 QQ 群，联系群主处理。")
+        self.assertEqual(result["template_key"], "miss-a")
+
 
 
 
