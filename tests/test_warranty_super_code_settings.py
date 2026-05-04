@@ -86,6 +86,22 @@ class WarrantySuperCodeSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(configs["time_limit"]["code"], "")
         self.assertIsNone(configs["time_limit"]["days"])
 
+    async def test_email_check_super_code_regenerate_invalidates_previous_code(self):
+        async with self.Session() as session:
+            first = await settings_service.regenerate_warranty_email_check_super_code(session)
+            first_code = first["code"]
+            self.assertTrue(first_code)
+            self.assertTrue(await settings_service.match_warranty_email_check_super_code(session, first_code.lower()))
+
+            second = await settings_service.regenerate_warranty_email_check_super_code(session)
+            second_code = second["code"]
+
+            self.assertTrue(second_code)
+            self.assertNotEqual(first_code, second_code)
+            self.assertFalse(await settings_service.match_warranty_email_check_super_code(session, first_code))
+            self.assertTrue(await settings_service.match_warranty_email_check_super_code(session, second_code))
+
+
 
 if __name__ == "__main__":
     unittest.main()

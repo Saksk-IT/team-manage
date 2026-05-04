@@ -47,6 +47,7 @@ class SettingsService:
     WARRANTY_EMAIL_CHECK_MISS_CONTENT_KEY = "warranty_email_check_miss_content"
     WARRANTY_EMAIL_CHECK_MATCH_TEMPLATES_KEY = "warranty_email_check_match_templates"
     WARRANTY_EMAIL_CHECK_MISS_TEMPLATES_KEY = "warranty_email_check_miss_templates"
+    WARRANTY_EMAIL_CHECK_SUPER_CODE_KEY = "warranty_email_check_super_code"
     SUB2API_WARRANTY_BASE_URL_KEY = "sub2api_warranty_base_url"
     SUB2API_WARRANTY_ADMIN_API_KEY_KEY = "sub2api_warranty_admin_api_key"
     SUB2API_WARRANTY_SUBSCRIPTION_GROUP_ID_KEY = "sub2api_warranty_subscription_group_id"
@@ -1082,6 +1083,49 @@ class SettingsService:
                 "default_limit": 15
             }
         raise ValueError("无效的超级兑换码类型")
+
+
+    async def get_warranty_email_check_super_code_config(self, session: AsyncSession) -> Dict[str, str | bool]:
+        """获取前台质保名单判定超级兑换码配置。"""
+        code = self._normalize_super_code(
+            await self.get_setting(session, self.WARRANTY_EMAIL_CHECK_SUPER_CODE_KEY, "") or ""
+        )
+        return {
+            "code": code,
+            "enabled": bool(code),
+        }
+
+    async def regenerate_warranty_email_check_super_code(self, session: AsyncSession) -> Dict[str, str | bool]:
+        """重置质保名单判定超级兑换码，旧码会立即失效。"""
+        current_config = await self.get_warranty_email_check_super_code_config(session)
+        current_code = current_config.get("code") or ""
+
+        for _ in range(10):
+            generated_code = self._generate_warranty_super_code()
+            if current_code and generated_code == current_code:
+                continue
+            success = await self.update_setting(
+                session,
+                self.WARRANTY_EMAIL_CHECK_SUPER_CODE_KEY,
+                generated_code,
+            )
+            if not success:
+                raise RuntimeError("重置质保超级兑换码失败")
+            return {
+                "code": generated_code,
+                "enabled": True,
+            }
+
+        raise RuntimeError("生成唯一质保超级兑换码失败")
+
+    async def match_warranty_email_check_super_code(self, session: AsyncSession, code: str) -> bool:
+        """判断输入是否命中当前质保名单判定超级兑换码。"""
+        normalized_code = self._normalize_super_code(code)
+        if not normalized_code:
+            return False
+
+        config = await self.get_warranty_email_check_super_code_config(session)
+        return bool(config.get("enabled") and config.get("code") == normalized_code)
 
     async def get_warranty_super_code_configs(self, session: AsyncSession) -> Dict[str, Dict[str, Optional[str]]]:
         usage_code = self._normalize_super_code(

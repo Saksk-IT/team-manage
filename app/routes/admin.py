@@ -3949,6 +3949,7 @@ async def warranty_emails_page(
         offset = (page_int - 1) * safe_per_page
         entries = all_entries[offset:offset + safe_per_page]
         stats = await _get_warranty_email_stats(db)
+        warranty_email_check_super_code_config = await settings_service.get_warranty_email_check_super_code_config(db)
         return templates.TemplateResponse(
             request,
             "admin/warranty_emails/index.html",
@@ -4002,6 +4003,8 @@ async def warranty_emails_page(
                     "per_page": safe_per_page,
                 },
                 team_status_options=warranty_service.TEAM_STATUS_LABELS,
+                warranty_email_check_super_code=warranty_email_check_super_code_config.get("code") or "",
+                warranty_email_check_super_code_enabled=bool(warranty_email_check_super_code_config.get("enabled")),
             )
         )
     except HTTPException:
@@ -4728,6 +4731,27 @@ async def delete_warranty_email(
         )
 
 
+@router.post("/warranty-emails/super-code/regenerate")
+async def regenerate_warranty_email_check_super_code(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        config = await settings_service.regenerate_warranty_email_check_super_code(db)
+        return JSONResponse(content={
+            "success": True,
+            "message": "质保超级兑换码已重置",
+            "code": config.get("code") or "",
+            "enabled": bool(config.get("enabled")),
+        })
+    except Exception as e:
+        logger.error("重置质保超级兑换码失败: %s", e)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"重置失败: {str(e)}"}
+        )
+
+
 @router.post("/warranty-super-codes/{code_type}/save")
 async def save_warranty_super_code(
     code_type: str,
@@ -4737,7 +4761,7 @@ async def save_warranty_super_code(
 ):
     return JSONResponse(
         status_code=status.HTTP_410_GONE,
-        content={"success": False, "error": "超级兑换码功能已下线，请改用质保邮箱列表"}
+        content={"success": False, "error": "旧版超级兑换码功能已下线，请改用质保邮箱列表页的质保超级兑换码"}
     )
 
 
@@ -4750,7 +4774,7 @@ async def regenerate_warranty_super_code(
 ):
     return JSONResponse(
         status_code=status.HTTP_410_GONE,
-        content={"success": False, "error": "超级兑换码功能已下线，请改用质保邮箱列表"}
+        content={"success": False, "error": "旧版超级兑换码功能已下线，请改用质保邮箱列表页的质保超级兑换码"}
     )
 
 
@@ -4762,7 +4786,7 @@ async def disable_warranty_super_code(
 ):
     return JSONResponse(
         status_code=status.HTTP_410_GONE,
-        content={"success": False, "error": "超级兑换码功能已下线，请改用质保邮箱列表"}
+        content={"success": False, "error": "旧版超级兑换码功能已下线，请改用质保邮箱列表页的质保超级兑换码"}
     )
 
 

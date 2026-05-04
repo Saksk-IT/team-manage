@@ -2204,6 +2204,10 @@ class WarrantyService:
             entry for entry in entries
             if (entry.last_redeem_code or "").strip()
         ]
+        entries_without_code = [
+            entry for entry in entries
+            if not (entry.last_redeem_code or "").strip()
+        ]
         selected_entry = next(
             (
                 entry for entry in entries_with_code
@@ -2211,7 +2215,16 @@ class WarrantyService:
             ),
             None,
         )
-        has_missing_code = bool(entries) and not entries_with_code
+        super_code_matched = False
+        if selected_entry is None and entries_without_code:
+            super_code_matched = await settings_service.match_warranty_email_check_super_code(
+                db_session,
+                normalized_code,
+            )
+            if super_code_matched:
+                selected_entry = entries_without_code[0]
+
+        has_missing_code = bool(entries) and not entries_with_code and selected_entry is None
         has_wrong_code = bool(entries_with_code) and selected_entry is None
         matched = selected_entry is not None
         template_matched = matched
@@ -2242,6 +2255,7 @@ class WarrantyService:
             "matched_count": 1 if selected_entry else 0,
             "code_required": True,
             "warranty_code": normalized_code,
+            "super_code_matched": super_code_matched,
             "email_found": bool(entries),
             "email_has_redeem_code": bool(entries_with_code),
             "missing_redeem_code": has_missing_code,

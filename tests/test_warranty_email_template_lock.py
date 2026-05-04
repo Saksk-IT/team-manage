@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
 from app.models import Team, WarrantyEmailEntry, WarrantyEmailTemplateLock
+from app.services.settings import settings_service
 from app.services.warranty import WarrantyService
 from app.utils.time_utils import get_now
 
@@ -20,11 +21,13 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
 
         self.engine = create_async_engine(f"sqlite+aiosqlite:///{self.db_path}", future=True)
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+        settings_service.clear_cache()
 
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
     async def asyncTearDown(self):
+        settings_service.clear_cache()
         await self.engine.dispose()
         if os.path.exists(self.db_path):
             os.remove(self.db_path)
@@ -362,6 +365,41 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["skip_redeem_code_generation"])
         self.assertEqual(result["message"], "您的质保兑换码错误")
         self.assertEqual(result["template_key"], "miss-a")
+
+
+    async def test_email_without_redeem_code_can_match_super_code(self):
+        service = WarrantyService()
+
+        async with self.Session() as session:
+            session.add(
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=1,
+                    expires_at=get_now() + timedelta(days=2),
+                )
+            )
+            await session.commit()
+            await settings_service.update_setting(
+                session,
+                settings_service.WARRANTY_EMAIL_CHECK_SUPER_CODE_KEY,
+                "SUPER-CODE",
+            )
+
+            with patch("app.services.warranty.secrets.choice", return_value="match-a"):
+                result = await service.check_warranty_email_membership(
+                    session,
+                    "buyer@example.com",
+                    warranty_code="super-code",
+                    match_templates=[{"id": "match-a", "content": "<p>命中</p>"}],
+                    miss_templates=[{"id": "miss-a", "content": "<p>未命中</p>"}],
+                )
+
+        self.assertTrue(result["matched"])
+        self.assertTrue(result["super_code_matched"])
+        self.assertFalse(result["missing_redeem_code"])
+        self.assertFalse(result["wrong_redeem_code"])
+        self.assertEqual(result["matched_count"], 1)
+        self.assertEqual(result["template_key"], "match-a")
 
 
 

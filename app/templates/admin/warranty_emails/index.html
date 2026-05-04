@@ -3,11 +3,19 @@
 {% block title %}质保邮箱列表 - GPT Team 管理系统{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header warranty-email-page-header">
     <h2>质保邮箱列表</h2>
-    <button type="button" class="btn btn-primary" onclick="openWarrantyEmailCreateModal()">
-        <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 新增质保邮箱
-    </button>
+    <div class="page-header-actions warranty-email-header-actions">
+        <div class="warranty-super-code-panel">
+            <div class="warranty-super-code-panel__label">质保超级兑换码</div>
+            <code id="warrantySuperCodeValue" class="warranty-super-code-panel__code">{{ warranty_email_check_super_code or '未设置' }}</code>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copyWarrantySuperCode()" {% if not warranty_email_check_super_code_enabled %}disabled{% endif %}>复制</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="resetWarrantySuperCode()">重置</button>
+        </div>
+        <button type="button" class="btn btn-primary" onclick="openWarrantyEmailCreateModal()">
+            <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 新增质保邮箱
+        </button>
+    </div>
 </div>
 
 <!-- 统计卡片 -->
@@ -414,6 +422,38 @@
         padding: 2rem 1rem;
     }
 
+    .page-header-actions,
+    .warranty-email-header-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .warranty-super-code-panel {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        background: var(--bg-surface);
+    }
+
+    .warranty-super-code-panel__label {
+        color: var(--text-muted);
+        font-size: 0.78rem;
+        font-weight: 700;
+    }
+
+    .warranty-super-code-panel__code {
+        max-width: 230px;
+        white-space: normal;
+        word-break: break-all;
+    }
+
     .editor-notice {
         margin-bottom: 1rem;
         padding: 0.75rem 1rem;
@@ -584,6 +624,14 @@
             flex-direction: column;
         }
 
+        .page-header-actions,
+        .warranty-email-header-actions,
+        .warranty-super-code-panel {
+            align-items: stretch;
+            flex-direction: column;
+            width: 100%;
+        }
+
         .page-header .btn {
             width: 100%;
         }
@@ -658,6 +706,61 @@
         table.querySelectorAll(`tbody tr td:nth-child(${index + 1})`).forEach((td) => {
             td.style.display = isVisible ? '' : 'none';
         });
+    }
+
+    const warrantySuperCodeState = {
+        code: {{ warranty_email_check_super_code|default('')|tojson }}
+    };
+
+    function setWarrantySuperCodeValue(code) {
+        warrantySuperCodeState.code = (code || '').trim();
+        const valueEl = document.getElementById('warrantySuperCodeValue');
+        if (valueEl) {
+            valueEl.textContent = warrantySuperCodeState.code || '未设置';
+        }
+        const copyBtn = document.querySelector('[onclick="copyWarrantySuperCode()"]');
+        if (copyBtn) {
+            copyBtn.disabled = !warrantySuperCodeState.code;
+        }
+    }
+
+    async function copyWarrantySuperCode() {
+        if (!warrantySuperCodeState.code) {
+            showToast('当前未设置质保超级兑换码', 'error');
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(warrantySuperCodeState.code);
+            showToast('质保超级兑换码已复制', 'success');
+        } catch (error) {
+            showToast('复制失败，请手动复制', 'error');
+        }
+    }
+
+    async function resetWarrantySuperCode() {
+        const confirmed = await showSystemConfirm({
+            title: '确认重置质保超级兑换码',
+            message: '重置后之前的质保超级兑换码会立即失效，确定继续吗？',
+            confirmText: '重置',
+            danger: true,
+        });
+        if (!confirmed) return;
+
+        try {
+            const response = await fetch('/admin/warranty-emails/super-code/regenerate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                setWarrantySuperCodeValue(data.code || '');
+                showToast(data.message || '质保超级兑换码已重置', 'success');
+            } else {
+                showToast(data.error || '重置失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
     }
 
     function toggleDropdown(id) {

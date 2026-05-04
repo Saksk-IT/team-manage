@@ -14,12 +14,14 @@ from app.routes.admin import (
     BulkWarrantyEmailDeleteRequest,
     BulkWarrantyEmailUpdateRequest,
     WarrantyEmailSaveRequest,
+    regenerate_warranty_email_check_super_code,
     bulk_delete_warranty_emails,
     bulk_update_warranty_emails,
     delete_warranty_email,
     save_warranty_email,
     warranty_emails_page,
 )
+from app.services.settings import settings_service
 from app.services.warranty import warranty_service
 from app.utils.time_utils import get_now
 
@@ -31,11 +33,13 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
 
         self.engine = create_async_engine(f"sqlite+aiosqlite:///{self.db_path}", future=True)
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+        settings_service.clear_cache()
 
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
     async def asyncTearDown(self):
+        settings_service.clear_cache()
         await self.engine.dispose()
         if os.path.exists(self.db_path):
             os.remove(self.db_path)
@@ -67,6 +71,11 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
                 )
             )
             await session.commit()
+            await settings_service.update_setting(
+                session,
+                settings_service.WARRANTY_EMAIL_CHECK_SUPER_CODE_KEY,
+                "SUPER-CODE",
+            )
 
             response = await warranty_emails_page(
                 request=self._build_request(),
@@ -91,6 +100,10 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("4天 23:", html)
         self.assertIn("warrantyEmailEditorModal", html)
         self.assertIn("openWarrantyEmailCreateModal", html)
+        self.assertIn("质保超级兑换码", html)
+        self.assertIn("SUPER-CODE", html)
+        self.assertIn("resetWarrantySuperCode", html)
+        self.assertIn("/admin/warranty-emails/super-code/regenerate", html)
         self.assertIn('id="warrantyRedeemCode"', html)
         self.assertIn('id="warrantyRemainingClaims" class="form-control" min="0" value="10" required', html)
         self.assertIn('id="warrantyRemainingHours"', html)
@@ -749,6 +762,19 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entries_by_code["CODE-A"]["remaining_days"], 9)
         self.assertRegex(entries_by_code["CODE-A"]["remaining_time"], r"^8天 01:02:0[0-3]$")
         self.assertNotIn("CODE-B", entries_by_code)
+
+    async def test_regenerate_warranty_email_check_super_code_route(self):
+        async with self.Session() as session:
+            response = await regenerate_warranty_email_check_super_code(
+                db=session,
+                current_user={"username": "admin"},
+            )
+            payload = json.loads(response.body.decode("utf-8"))
+
+        self.assertTrue(payload["success"])
+        self.assertTrue(payload["code"])
+        self.assertEqual(payload["message"], "质保超级兑换码已重置")
+
 
 
 if __name__ == "__main__":

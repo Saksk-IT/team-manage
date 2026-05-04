@@ -80,6 +80,7 @@ class WarrantyCheckResponse(BaseModel):
     skip_redeem_code_generation: bool = False
     missing_redeem_code: bool = False
     wrong_redeem_code: bool = False
+    super_code_matched: bool = False
     usable_linked_team: Optional[dict] = None
     latest_team: Optional[WarrantyLatestTeamInfo] = None
     warranty_info: Optional[dict] = None
@@ -190,6 +191,7 @@ async def check_warranty(
             "skip_redeem_code_generation": should_skip_redeem_code,
             "missing_redeem_code": bool(result.get("missing_redeem_code")),
             "wrong_redeem_code": bool(result.get("wrong_redeem_code")),
+            "super_code_matched": bool(result.get("super_code_matched")),
             "usable_linked_team": result.get("usable_linked_team"),
             "latest_team": None,
             "warranty_info": None,
