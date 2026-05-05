@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 
 <head>
@@ -16,477 +16,420 @@
 
 <body>
     <div class="front-page codex-guide-page">
-        <div class="front-page__ambient front-page__ambient--gold" aria-hidden="true"></div>
-        <div class="front-page__ambient front-page__ambient--blue" aria-hidden="true"></div>
-
-        <div class="container front-shell codex-guide-shell">
-            <nav class="front-topbar codex-guide-topbar" aria-label="页面导航">
-                <a class="front-brand" href="/" aria-label="返回 GPT Team 服务台首页">
-                    <span class="front-brand__mark"><i data-lucide="sparkles"></i></span>
+        <header class="codex-doc-header">
+            <nav class="codex-doc-nav" aria-label="页面导航">
+                <a class="codex-doc-brand" href="/" aria-label="返回 GPT Team 服务台首页">
+                    <img src="/static/favicon.png" alt="Logo">
                     <span>
-                        <strong>GPT Team Service</strong>
-                        <small>API 登录对接教程</small>
+                        <strong>GPT Team</strong>
+                        <small>Codex 使用文档</small>
                     </span>
                 </a>
-                <div class="front-topbar__actions">
-                    <a href="/" class="front-topbar__link"><i data-lucide="home"></i> 返回兑换页</a>
-                    <a href="#quickChecklist" class="front-topbar__link"><i data-lucide="list-checks"></i> 快速检查</a>
-                    <a href="https://api.sakms.top/register" target="_blank" rel="noopener noreferrer" class="btn btn-primary front-topbar__cta">
+                <div class="codex-doc-actions">
+                    <a href="/" class="codex-doc-link"><i data-lucide="home"></i> 返回兑换页</a>
+                    <a href="#quickChecklist" class="codex-doc-link"><i data-lucide="list-checks"></i> 快速检查</a>
+                    <a href="https://api.sakms.top/register" target="_blank" rel="noopener noreferrer" class="codex-doc-cta">
                         <i data-lucide="external-link"></i> 打开中转注册
                     </a>
                 </div>
             </nav>
+        </header>
 
-            <header class="hero-card codex-guide-hero" aria-labelledby="guideTitle">
-                <div class="hero-card__content">
-                    <div class="hero-card__eyebrow">Codex API access guide</div>
-                    <h1 id="guideTitle">兑换中转 API Key，并接入 Codex</h1>
-                    <p class="subtitle">目前 GPT Team 已全部失效，后续可按本教程兑换中转 API Key，再通过 Codex 的 API 登录继续使用；中转使用纯血 Plus 号池，并支持 gpt-5.5。</p>
-                    <div class="hero-card__badges" aria-label="教程要点">
-                        <span class="spots-badge"><i data-lucide="ticket-check"></i><span>先兑换中转码</span></span>
-                        <span class="spots-badge spots-badge--success"><i data-lucide="key-round"></i><span>生成 API Key</span></span>
-                        <span class="spots-badge"><i data-lucide="sparkles"></i><span>支持 gpt-5.5</span></span>
-                        <span class="spots-badge spots-badge--success"><i data-lucide="image"></i><span>Image 2.0 生图</span></span>
-                        <span class="spots-badge"><i data-lucide="laptop"></i><span>Windows / Mac 通用</span></span>
+        <main class="codex-doc-shell">
+            <section class="codex-doc-hero" aria-labelledby="guideTitle">
+                <p class="codex-doc-base">API base_url: https://api.sakms.top/</p>
+                <h1 id="guideTitle">兑换中转 API Key，并接入 Codex</h1>
+                <p class="codex-doc-lead">模仿 TCDMX 文档页的静态教程布局：从注册中转账户、兑换中转码、创建 API 密钥，到手动配置 Codex、使用 cc-switch 和常见排错，一页完成。</p>
+                <div class="codex-doc-badges" aria-label="教程要点">
+                    <span><i data-lucide="ticket-check"></i> 先兑换中转码</span>
+                    <span><i data-lucide="key-round"></i> 生成 API Key</span>
+                    <span><i data-lucide="sparkles"></i> 支持 gpt-5.5</span>
+                    <span><i data-lucide="image"></i> Image 2.0 生图</span>
+                </div>
+                <nav class="codex-doc-jump" aria-label="章节快捷入口">
+                    <a href="#chapterPrepare">准备</a>
+                    <a href="#chapterKey">拿 Key</a>
+                    <a href="#chapterClient">接入 Codex</a>
+                    <a href="#chapterTrouble">验证排错</a>
+                </nav>
+            </section>
+
+            <article class="codex-doc-article">
+                <h1>Codex API 登录对接教程</h1>
+
+                <section class="codex-callout codex-callout--important" aria-label="站点信息卡">
+                    <p><strong>重要｜站点信息卡</strong></p>
+                    <div class="codex-doc-table-wrap">
+                        <table class="codex-doc-table">
+                            <tbody>
+                                <tr>
+                                    <th>中转注册页</th>
+                                    <td><a href="https://api.sakms.top/register" target="_blank" rel="noopener noreferrer">https://api.sakms.top/register</a></td>
+                                </tr>
+                                <tr>
+                                    <th>额度查询页</th>
+                                    <td><a href="https://api.sakms.top/profile" target="_blank" rel="noopener noreferrer">https://api.sakms.top/profile</a></td>
+                                </tr>
+                                <tr>
+                                    <th>卡密自助购买地址</th>
+                                    <td><a href="https://pay.ldxp.cn/shop/LSSZLMUY" target="_blank" rel="noopener noreferrer">https://pay.ldxp.cn/shop/LSSZLMUY</a></td>
+                                </tr>
+                                <tr>
+                                    <th>推荐客户端</th>
+                                    <td>Codex APP / Codex CLI；新手可使用 cc-switch 一键配置。</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <h2>📖 阅读指南</h2>
+                <p>本教程把使用流程拆成 <strong>「准备 → 拿 Key → 接入 Codex → 验证」</strong> 四步。无论是通过质保兑换补发的中转兑换码，还是在链动小铺上面购买的额度包兑换码，都适用以下教程。</p>
+                <div class="codex-doc-table-wrap">
+                    <table class="codex-doc-table">
+                        <thead>
+                            <tr>
+                                <th>你的身份</th>
+                                <th>阅读路径</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>第一次使用，从零开始</td>
+                                <td>第一章 → 第二章 → 第三章 → 第四章</td>
+                            </tr>
+                            <tr>
+                                <td>已有中转账号，只想配置 Codex</td>
+                                <td>第二章 → 第三章</td>
+                            </tr>
+                            <tr>
+                                <td>配置后登录失败或限额</td>
+                                <td>第四章验证与排错</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <section class="codex-callout" aria-label="名词速懂">
+                    <p><strong>提示｜三个名词速懂</strong></p>
+                    <ul>
+                        <li><strong>中转兑换码：</strong>把质保补发或额度包转换为站内余额 / 订阅权益。</li>
+                        <li><strong>API 密钥：</strong>形如 <code>sk-xxxx</code> 的调用凭证，只能粘贴到自己的 Codex 配置或登录框中，不要发给他人。</li>
+                        <li><strong>Codex 配置：</strong>把“使用密钥”弹窗给出的 <code>config.toml</code> 与 <code>auth.json</code> 内容写入本机 <code>.codex</code> 目录。</li>
+                    </ul>
+                </section>
+
+                <hr>
+
+                <h1 id="chapterPrepare">第一章 准备工作</h1>
+
+                <h2 id="notice">1.1 使用前说明</h2>
+                <p>目前 GPT Team 已全部失效，后续可以接入中转使用 GPT Codex。中转使用纯血 Plus 号池，支持 gpt-5.5，并支持 Image 2.0 生图。</p>
+                <p>Codex.app 是 GPT 官方推出的强大软件，具备网页版的核心能力，并且在本地客户端中提供更强的使用体验。</p>
+
+                <div class="codex-alert codex-alert--info">
+                    <i data-lucide="badge-help"></i>
+                    <div>
+                        <strong>兑换码来源都适用。</strong>
+                        <span>本教程同时适用于按邮箱质保剩余时间补发的中转兑换码，也就是质保补发的中转兑换码，以及在链动小铺购买的额度包兑换码。</span>
                     </div>
                 </div>
-            </header>
 
-            <main class="codex-guide-layout">
-                <aside class="codex-guide-sidebar" aria-label="教程目录">
-                    <section class="card side-card codex-guide-sticky">
-                        <div class="side-card-title">
-                            <i data-lucide="map"></i>
-                            <span>教程目录</span>
+                <div class="codex-group-grid" aria-label="API Key 分组选择规则">
+                    <article class="codex-group-card codex-group-card--plus">
+                        <i data-lucide="badge-alert"></i>
+                        <div>
+                            <strong>额度兑换码：必须选择 GPT-Plus</strong>
+                            <span>链动小铺购买的额度包 / 余额包兑换码，新建 API Key 时必须选择“GPT-Plus”。不能选“质保补偿”，否则无法使用。</span>
                         </div>
-                        <ol class="codex-guide-toc">
-                            <li><a href="#notice">使用前说明</a></li>
-                            <li><a href="#register">注册中转账户</a></li>
-                            <li><a href="#redeem">兑换中转码</a></li>
-                            <li><a href="#createKey">创建 API 密钥</a></li>
-                            <li><a href="#installCodex">下载 Codex</a></li>
-                            <li><a href="#configureCodex">配置方式一：手动文件配置</a></li>
-                            <li><a href="#configureCcSwitch">配置方式二：cc-switch</a></li>
-                            <li><a href="#loginCodex">API 登录 Codex</a></li>
-                            <li><a href="#faq">常见问题</a></li>
-                        </ol>
-                    </section>
-                </aside>
-
-                <div class="codex-guide-content">
-                    <section id="notice" class="card codex-guide-section codex-guide-section--notice">
-                        <div class="codex-section-heading">
-                            <span class="codex-step-index">说明</span>
-                            <div>
-                                <h2>使用前请先确认</h2>
-                                <p>本教程同时适用于按邮箱质保剩余时间补发的中转兑换码，也就是质保补发的中转兑换码，以及在链动小铺购买的额度包兑换码。页面中的密钥截图已脱敏，请务必使用你自己页面中生成的 API Key。</p>
-                            </div>
+                    </article>
+                    <article class="codex-group-card codex-group-card--warranty">
+                        <i data-lucide="shield-check"></i>
+                        <div>
+                            <strong>质保补发码：选择质保补偿</strong>
+                            <span>通过质保网站补发的中转兑换码，在新建 API Key 时选择“质保补偿”分组。</span>
                         </div>
-                        <div class="codex-alert codex-alert--info">
-                            <i data-lucide="badge-help"></i>
-                            <div>
-                                <strong>Codex.app 是 GPT 官方推出的强大软件。</strong>
-                                <span>它具备网页版所有功能，并在本地客户端中提供更强大的使用体验；中转接入后可继续使用 GPT Codex、gpt-5.5 和 Image 2.0 生图能力。</span>
-                            </div>
-                        </div>
-                        <div class="codex-group-grid" aria-label="兑换码分组选择要求">
-                            <article class="codex-group-card codex-group-card--plus">
-                                <i data-lucide="badge-alert"></i>
-                                <div>
-                                    <strong>额度兑换码：必须选择 GPT-Plus</strong>
-                                    <span>链动小铺购买的额度包 / 余额包兑换码，新建 API Key 时必须选择“GPT-Plus”。不能选“质保补偿”，否则无法使用。</span>
-                                </div>
-                            </article>
-                            <article class="codex-group-card codex-group-card--warranty">
-                                <i data-lucide="shield-check"></i>
-                                <div>
-                                    <strong>质保补发码：选择质保补偿</strong>
-                                    <span>通过质保网站补发的中转兑换码，新建 API Key 时选择“质保补偿”分组。</span>
-                                </div>
-                            </article>
-                        </div>
-                        <div class="codex-billing-grid" aria-label="计费模式提醒">
-                            <article>
-                                <i data-lucide="calendar-clock"></i>
-                                <div>
-                                    <strong>订阅模式</strong>
-                                    <span>每天有一定额度，每天 0 点后自动刷新。</span>
-                                </div>
-                            </article>
-                            <article>
-                                <i data-lucide="coins"></i>
-                                <div>
-                                    <strong>额度模式</strong>
-                                    <span>使用时消耗网站账户里的额度，用完就没有了。</span>
-                                </div>
-                            </article>
-                        </div>
-                        <div class="codex-alert codex-alert--warning">
-                            <i data-lucide="alert-triangle"></i>
-                            <div>
-                                <strong>配置文件前必须完全关闭 Codex。</strong>
-                                <span>请确认 Codex 进程没有运行，再编辑 <code>config.toml</code> 和 <code>auth.json</code>，否则配置可能不会生效。</span>
-                            </div>
-                        </div>
-                        <div class="codex-alert">
-                            <i data-lucide="shield-check"></i>
-                            <div>
-                                <strong>账号与密钥安全。</strong>
-                                <span>注册中转账户时不要复用重要账户密码；API Key 只粘贴到自己的 Codex 配置或登录框中，不要发给他人。</span>
-                            </div>
-                        </div>
-                        <div class="codex-support-grid">
-                            <article class="codex-support-card">
-                                <div>
-                                    <strong>需要额外购买卡密？</strong>
-                                    <span>可通过链动小铺自助购买额度包兑换码。</span>
-                                </div>
-                                <a class="codex-link-card" href="https://pay.ldxp.cn/shop/LSSZLMUY" target="_blank" rel="noopener noreferrer">
-                                    <i data-lucide="shopping-bag"></i>
-                                    <span>打开卡密自助购买地址</span>
-                                </a>
-                            </article>
-                            <figure class="codex-figure codex-support-qr">
-                                <img src="/static/img/codex-guide/image-16.png" alt="问题交流群二维码" loading="lazy">
-                                <figcaption>有任何问题请扫码加群，联系群主处理。</figcaption>
-                            </figure>
-                        </div>
-                    </section>
-
-                    <section id="register" class="card codex-guide-section">
-                        <div class="codex-section-heading">
-                            <span class="codex-step-index">01</span>
-                            <div>
-                                <h2>打开中转链接并创建账户</h2>
-                                <p>访问注册页，输入邮箱和密码，填写验证码后完成创建中转账户。</p>
-                            </div>
-                        </div>
-                        <a class="codex-link-card" href="https://api.sakms.top/register" target="_blank" rel="noopener noreferrer">
-                            <i data-lucide="external-link"></i>
-                            <span>https://api.sakms.top/register</span>
-                        </a>
-                        <figure class="codex-figure">
-                            <img src="/static/img/codex-guide/image.png" alt="中转服务注册页面截图" loading="lazy">
-                            <figcaption>注册页面：输入邮箱、密码后创建账户。</figcaption>
-                        </figure>
-                    </section>
-
-                    <section id="redeem" class="card codex-guide-section">
-                        <div class="codex-section-heading">
-                            <span class="codex-step-index">02</span>
-                            <div>
-                                <h2>在兑换页面输入兑换码</h2>
-                                <p>登录后进入兑换页面，输入提供给你的中转兑换码或额度包兑换码并点击“兑换”。</p>
-                            </div>
-                        </div>
-                        <figure class="codex-figure">
-                            <img src="/static/img/codex-guide/image-1.png" alt="兑换成功后的页面截图" loading="lazy">
-                            <figcaption>兑换成功后，账户会获得对应余额或权益。</figcaption>
-                        </figure>
-                    </section>
-
-                    <section id="createKey" class="card codex-guide-section">
-                        <div class="codex-section-heading">
-                            <span class="codex-step-index">03</span>
-                            <div>
-                                <h2>创建并查看 API 密钥</h2>
-                                <p>在“API 密钥”页面新建密钥，按兑换码来源选择对应分组，然后点击“使用密钥”获取后续配置内容。</p>
-                            </div>
-                        </div>
-                        <div class="codex-group-grid" aria-label="API Key 分组选择规则">
-                            <article class="codex-group-card codex-group-card--warranty">
-                                <i data-lucide="badge-info"></i>
-                                <div>
-                                    <strong>订阅类分组：质保补偿 / 30刀订阅</strong>
-                                    <span>“质保补偿”和“30刀订阅”是订阅制度，不需要消耗余额；质保网站补发的中转码选“质保补偿”。</span>
-                                </div>
-                            </article>
-                            <article class="codex-group-card codex-group-card--plus">
-                                <i data-lucide="circle-dollar-sign"></i>
-                                <div>
-                                    <strong>额度类分组：GPT-Plus</strong>
-                                    <span>链动小铺购买余额包或额度兑换码时，应选择“GPT-Plus”分组。创建密钥前请再次确认自己使用的是订阅还是额度。</span>
-                                </div>
-                            </article>
-                        </div>
-                        <div class="codex-alert codex-alert--important">
-                            <i data-lucide="badge-alert"></i>
-                            <div>
-                                <strong>分组选错会导致无法使用。</strong>
-                                <span>请先判断兑换码来源，再选择对应分组；额度兑换码不要选择“质保补偿”。</span>
-                            </div>
-                        </div>
-                        <div class="codex-billing-grid" aria-label="创建密钥计费模式提醒">
-                            <article>
-                                <i data-lucide="calendar-clock"></i>
-                                <div>
-                                    <strong>订阅模式</strong>
-                                    <span>每天有一定额度，每天 0 点后自动刷新。</span>
-                                </div>
-                            </article>
-                            <article>
-                                <i data-lucide="coins"></i>
-                                <div>
-                                    <strong>额度模式</strong>
-                                    <span>使用时消耗网站账户里的额度，用完就没有了。</span>
-                                </div>
-                            </article>
-                        </div>
-
-                        <div class="codex-key-flow" aria-label="API 密钥创建步骤">
-                            <article class="codex-key-step">
-                                <div class="codex-key-step__copy">
-                                    <span class="codex-key-step__badge">3.1</span>
-                                    <h3>创建密钥</h3>
-                                    <p>进入“API 密钥”页面，点击“创建密钥”，名称可按自己需要随便填写。</p>
-                                </div>
-                                <figure class="codex-key-step__media codex-key-step__media--wide">
-                                    <img src="/static/img/codex-guide/image-2.png" alt="API 密钥页面创建密钥按钮" loading="lazy">
-                                    <figcaption>如果列表为空，直接点击页面中的“创建密钥”。</figcaption>
-                                </figure>
-                            </article>
-
-                            <article class="codex-key-step codex-key-step--focus">
-                                <div class="codex-key-step__copy">
-                                    <span class="codex-key-step__badge">3.2</span>
-                                    <h3>选择正确分组</h3>
-                                    <p>质保网站补发的中转码选“质保补偿”；链动小铺额度兑换码选“GPT-Plus”。</p>
-                                </div>
-                                <figure class="codex-key-step__media codex-key-step__media--tall">
-                                    <img src="/static/img/codex-guide/image-13.png" alt="创建密钥弹窗中选择 API 分组" loading="lazy">
-                                    <figcaption>分组决定密钥使用的权益来源，选错会影响后续可用额度。</figcaption>
-                                </figure>
-                            </article>
-
-                            <article class="codex-key-step">
-                                <div class="codex-key-step__copy">
-                                    <span class="codex-key-step__badge">3.3</span>
-                                    <h3>使用密钥</h3>
-                                    <p>创建后回到密钥列表，点击“使用密钥”。</p>
-                                </div>
-                                <figure class="codex-key-step__media codex-key-step__media--wide">
-                                    <img src="/static/img/codex-guide/image-4.png" alt="密钥列表使用密钥入口" loading="lazy">
-                                    <figcaption>进入弹窗后，复制自己的 Codex 配置内容。</figcaption>
-                                </figure>
-                            </article>
-                        </div>
-
-                        <figure class="codex-figure codex-config-result">
-                            <img src="/static/img/codex-guide/image-5.png" alt="使用 API 密钥弹窗中的 Codex 配置示例，密钥已脱敏" loading="lazy">
-                            <figcaption>最终复制你自己的 <code>config.toml</code> 和 <code>auth.json</code> 内容；截图中的 API Key 已脱敏。</figcaption>
-                        </figure>
-                    </section>
-
-                    <section id="installCodex" class="card codex-guide-section">
-                        <div class="codex-section-heading">
-                            <span class="codex-step-index">04</span>
-                            <div>
-                                <h2>下载 Codex 软件</h2>
-                                <p>前往 OpenAI Codex 下载页，按你的系统下载并安装客户端。</p>
-                            </div>
-                        </div>
-                        <div class="codex-alert codex-alert--important codex-alert--standout">
-                            <i data-lucide="badge-alert"></i>
-                            <div>
-                                <strong>下载好后必须先打开一次 Codex。</strong>
-                                <span>先打开 Codex 初始化配置文件，然后再完全关闭 Codex，继续下一步文件配置。</span>
-                            </div>
-                        </div>
-                        <a class="codex-link-card" href="https://openai.com/zh-Hans-CN/codex/" target="_blank" rel="noopener noreferrer">
-                            <i data-lucide="download"></i>
-                            <span>https://openai.com/zh-Hans-CN/codex/</span>
-                        </a>
-                        <figure class="codex-figure">
-                            <img src="/static/img/codex-guide/image-6.png" alt="OpenAI Codex 下载页面截图" loading="lazy">
-                            <figcaption>点击页面中的下载入口获取 Codex。</figcaption>
-                        </figure>
-                    </section>
-
-                    <section id="configureCodex" class="card codex-guide-section">
-                        <div class="codex-section-heading">
-                            <span class="codex-step-index">05</span>
-                            <div>
-                                <h2>配置方式一：手动配置 Codex 文件</h2>
-                                <p>找到或创建 <code>.codex</code> 配置目录，然后将“使用密钥”页面给出的内容分别写入 <code>config.toml</code> 和 <code>auth.json</code>。</p>
-                            </div>
-                        </div>
-                        <div class="codex-alert codex-alert--important codex-alert--standout">
-                            <i data-lucide="badge-alert"></i>
-                            <div>
-                                <strong>配置文件时一定要保持 Codex 进程关闭。</strong>
-                                <span>请确保 Codex 进程没有在运行，再编辑 <code>config.toml</code> 和 <code>auth.json</code>，否则配置可能不会生效。</span>
-                            </div>
-                        </div>
-
-                        <div class="codex-platform-grid">
-                            <article class="codex-platform-card">
-                                <div class="side-card-title"><i data-lucide="monitor"></i><span>Windows 用户</span></div>
-                                <ol>
-                                    <li>按 <kbd>Win</kbd> + <kbd>R</kbd> 打开运行窗口。</li>
-                                    <li>输入 <code>%userprofile%\.codex</code> 并回车。</li>
-                                    <li>如目录不存在，请手动创建 <code>.codex</code> 文件夹。</li>
-                                    <li>在目录中找到或新建 <code>config.toml</code> 和 <code>auth.json</code>。</li>
-                                    <li>双击文件没有反应时，可右键选择“记事本”打开。</li>
-                                </ol>
-                            </article>
-                            <article class="codex-platform-card">
-                                <div class="side-card-title"><i data-lucide="apple"></i><span>Mac 用户</span></div>
-                                <ol>
-                                    <li>可运行 <code>mkdir -p ~/.codex</code> 创建配置目录。</li>
-                                    <li>在访达用户目录中找到 <code>.codex</code> 文件夹。</li>
-                                    <li>找不到隐藏文件时，按 <kbd>Option</kbd> + <kbd>Shift</kbd> + <kbd>.</kbd> 显示隐藏文件。</li>
-                                    <li>在目录中找到或新建 <code>config.toml</code> 和 <code>auth.json</code>。</li>
-                                </ol>
-                            </article>
-                        </div>
-
-                        <div class="codex-image-grid">
-                            <figure class="codex-figure">
-                                <img src="/static/img/codex-guide/image-7.png" alt="Mac 访达中找到 .codex 文件夹" loading="lazy">
-                                <figcaption>Mac：在用户目录中找到 <code>.codex</code>。</figcaption>
-                            </figure>
-                            <figure class="codex-figure">
-                                <img src="/static/img/codex-guide/image-8.png" alt=".codex 文件夹中的 config.toml 和 auth.json" loading="lazy">
-                                <figcaption>确认存在 <code>config.toml</code> 和 <code>auth.json</code>。</figcaption>
-                            </figure>
-                        </div>
-
-                        <div class="codex-alert">
-                            <i data-lucide="copy-check"></i>
-                            <div>
-                                <strong>粘贴位置要对应。</strong>
-                                <span>把“使用密钥”页面显示的 <code>config.toml</code> 内容粘贴到 <code>config.toml</code>，把 <code>auth.json</code> 内容粘贴到 <code>auth.json</code>。不要复制教程截图中的脱敏内容。</span>
-                            </div>
-                        </div>
-                        <figure class="codex-figure">
-                            <img src="/static/img/codex-guide/image-9.png" alt="Codex 配置内容粘贴示例，密钥已脱敏" loading="lazy">
-                            <figcaption>配置示例：截图中的 API Key 已脱敏，请使用你自己的密钥。</figcaption>
-                        </figure>
-                    </section>
-
-                    <section id="configureCcSwitch" class="card codex-guide-section">
-                        <div class="codex-section-heading">
-                            <span class="codex-step-index">06</span>
-                            <div>
-                                <h2>配置方式二：使用 cc-switch 一键配置</h2>
-                                <p>新手也可以下载 cc-switch，通过图形界面添加 Codex 供应商，填入 API Key 和 API 地址后启用。</p>
-                            </div>
-                        </div>
-                        <a class="codex-link-card" href="https://github.com/farion1231/cc-switch/releases" target="_blank" rel="noopener noreferrer">
-                            <i data-lucide="download-cloud"></i>
-                            <span>cc-switch releases</span>
-                        </a>
-                        <div class="codex-mini-steps codex-mini-steps--four" aria-label="cc-switch 配置步骤">
-                            <article>
-                                <strong>1. 下载并打开</strong>
-                                <span>下载 cc-switch，打开后点击右上角“+”。</span>
-                            </article>
-                            <article>
-                                <strong>2. 添加供应商</strong>
-                                <span>选择“Codex 供应商”，再选择“自定义配置”。</span>
-                            </article>
-                            <article>
-                                <strong>3. 填写配置</strong>
-                                <span>API KEY 填写上一步创建得到的 API Key，API 地址填写 <code>https://api.sakms.top/</code>。</span>
-                            </article>
-                            <article>
-                                <strong>4. 开启使用</strong>
-                                <span>回到 cc-switch 主页面点击开启，重新打开 Codex 即可正常使用。</span>
-                            </article>
-                        </div>
-                        <figure class="codex-figure">
-                            <img src="/static/img/codex-guide/image-15.png" alt="cc-switch 添加 Codex 供应商并选择自定义配置" loading="lazy">
-                            <figcaption>cc-switch：添加 Codex 供应商，并选择自定义配置。</figcaption>
-                        </figure>
-                    </section>
-
-                    <section id="loginCodex" class="card codex-guide-section">
-                        <div class="codex-section-heading">
-                            <span class="codex-step-index">07</span>
-                            <div>
-                                <h2>重新打开 Codex 并使用 API 登录</h2>
-                                <p>完成文件配置后重新打开 Codex，选择“换种方式登录”，再选择 API 登录并粘贴自己的 API 密钥。</p>
-                            </div>
-                        </div>
-                        <div class="codex-image-grid codex-image-grid--three">
-                            <figure class="codex-figure">
-                                <img src="/static/img/codex-guide/image-10.png" alt="Codex 选择换种方式登录" loading="lazy">
-                                <figcaption>选择“换种方式登录”。</figcaption>
-                            </figure>
-                            <figure class="codex-figure">
-                                <img src="/static/img/codex-guide/image-11.png" alt="Codex API 登录输入框" loading="lazy">
-                                <figcaption>选择 API 登录并粘贴密钥。</figcaption>
-                            </figure>
-                            <figure class="codex-figure">
-                                <img src="/static/img/codex-guide/image-12.png" alt="中转服务 API 密钥复制位置，密钥已脱敏" loading="lazy">
-                                <figcaption>从中转后台复制你自己的 API Key。</figcaption>
-                            </figure>
-                        </div>
-                    </section>
-
-                    <section id="quickChecklist" class="card codex-guide-section codex-guide-section--checklist">
-                        <div class="codex-section-heading">
-                            <span class="codex-step-index">检查</span>
-                            <div>
-                                <h2>登录失败时快速检查</h2>
-                                <p>如果无法登录或 Codex 没有读取到配置，请按下面顺序排查。</p>
-                            </div>
-                        </div>
-                        <ul class="codex-checklist">
-                            <li><i data-lucide="check-circle-2"></i><span>编辑配置前是否已经完全关闭 Codex？</span></li>
-                            <li><i data-lucide="check-circle-2"></i><span><code>config.toml</code> 和 <code>auth.json</code> 是否放在同一个 <code>.codex</code> 目录？</span></li>
-                            <li><i data-lucide="check-circle-2"></i><span>是否粘贴了你自己生成的 API Key，而不是教程截图中的示例？</span></li>
-                            <li><i data-lucide="check-circle-2"></i><span>创建密钥时是否按来源选择正确分组：质保网站补发的中转码选“质保补偿”，链动小铺额度兑换码选“GPT-Plus”？</span></li>
-                            <li><i data-lucide="check-circle-2"></i><span>如果使用 cc-switch，API 地址是否填写为 <code>https://api.sakms.top/</code>，并在主页面点击开启后重新打开 Codex？</span></li>
-                        </ul>
-                    </section>
-
-                    <section id="faq" class="card codex-guide-section codex-guide-section--faq">
-                        <div class="codex-section-heading">
-                            <span class="codex-step-index">FAQ</span>
-                            <div>
-                                <h2>常见问题</h2>
-                                <p>按教程操作后仍异常时，优先检查 Codex 是否读取了最新配置，以及原聊天记录是否需要单独同步。</p>
-                            </div>
-                        </div>
-
-                        <div class="codex-faq-list">
-                            <article class="codex-faq-card">
-                                <div class="side-card-title"><i data-lucide="circle-alert"></i><span>问题一：登录时报 401 / Incorrect API key</span></div>
-                                <p>通常是因为配置 <code>config.toml</code> 时 Codex 已经在运行，客户端没有读取到新的中转配置。</p>
-                                <ol>
-                                    <li>关闭 Codex 软件。</li>
-                                    <li>重新配置 <code>config.toml</code>。</li>
-                                    <li>重新使用 API 密钥登录。</li>
-                                </ol>
-                                <figure class="codex-figure">
-                                    <img src="/static/img/codex-guide/image-14.png" alt="Codex 登录时报 401 Incorrect API key，密钥已脱敏" loading="lazy">
-                                    <figcaption>错误示例：API Key 片段已脱敏。</figcaption>
-                                </figure>
-                            </article>
-
-                            <article class="codex-faq-card">
-                                <div class="side-card-title"><i data-lucide="history"></i><span>问题二：原 Codex 聊天记录恢复</span></div>
-                                <p>使用 API 中转后，部分用户可能看不到原来的聊天记录。可参考下载同步工具恢复。</p>
-                                <a class="codex-link-card" href="https://github.com/Dailin521/codex-provider-sync/releases" target="_blank" rel="noopener noreferrer">
-                                    <i data-lucide="download-cloud"></i>
-                                    <span>codex-provider-sync releases</span>
-                                </a>
-                            </article>
-
-                            <article class="codex-faq-card">
-                                <div class="side-card-title"><i data-lucide="gauge"></i><span>问题三：提示 429 Too Many Requests / 限额</span></div>
-                                <p>如果出现 <code>exceeded retry limit</code>、<code>429 Too Many Requests</code> 等提示，一般是当前额度或频率已经触发限制。</p>
-                                <a class="codex-link-card" href="https://api.sakms.top/profile" target="_blank" rel="noopener noreferrer">
-                                    <i data-lucide="wallet-cards"></i>
-                                    <span>打开额度查询页面</span>
-                                </a>
-                            </article>
-                        </div>
-                    </section>
+                    </article>
                 </div>
-            </main>
-        </div>
+
+                <div class="codex-billing-grid" aria-label="计费模式提醒">
+                    <article>
+                        <i data-lucide="calendar-clock"></i>
+                        <div>
+                            <strong>订阅模式</strong>
+                            <span>每天有一定额度，每天 0 点后自动刷新。</span>
+                        </div>
+                    </article>
+                    <article>
+                        <i data-lucide="coins"></i>
+                        <div>
+                            <strong>额度模式</strong>
+                            <span>使用时消耗网站账户里的额度，用完就没有了。</span>
+                        </div>
+                    </article>
+                </div>
+
+                <div class="codex-support-grid">
+                    <article class="codex-support-card">
+                        <strong>需要额外购买卡密？</strong>
+                        <span>可通过链动小铺自助购买额度包兑换码。</span>
+                        <a class="codex-link-card" href="https://pay.ldxp.cn/shop/LSSZLMUY" target="_blank" rel="noopener noreferrer">
+                            <i data-lucide="shopping-bag"></i>
+                            <span>打开卡密自助购买地址</span>
+                        </a>
+                    </article>
+                    <figure class="codex-figure codex-support-qr">
+                        <img src="/static/img/codex-guide/image-16.png" alt="问题交流群二维码" loading="lazy">
+                        <figcaption>有任何问题请扫码加群，联系群主处理。</figcaption>
+                    </figure>
+                </div>
+
+                <h2 id="register">1.2 注册中转账户</h2>
+                <p><strong>操作步骤：</strong>打开中转链接，输入邮箱和密码，填写验证码后完成创建中转账户。</p>
+                <a class="codex-link-card" href="https://api.sakms.top/register" target="_blank" rel="noopener noreferrer">
+                    <i data-lucide="external-link"></i>
+                    <span>https://api.sakms.top/register</span>
+                </a>
+                <figure class="codex-figure">
+                    <img src="/static/img/codex-guide/image.png" alt="中转服务注册页面截图" loading="lazy">
+                    <figcaption>图 1：注册页面，输入邮箱、密码和验证码后创建账户。</figcaption>
+                </figure>
+
+                <h2 id="redeem">1.3 兑换中转码</h2>
+                <p>登录后进入兑换页面，输入提供给你的中转兑换码或额度包兑换码，点击“兑换”。</p>
+                <figure class="codex-figure">
+                    <img src="/static/img/codex-guide/image-1.png" alt="兑换成功后的页面截图" loading="lazy">
+                    <figcaption>图 2：兑换成功后，账户会获得对应余额或权益。</figcaption>
+                </figure>
+
+                <hr>
+
+                <h1 id="chapterKey">第二章 创建 API 密钥（所有接入方式通用）</h1>
+                <section class="codex-callout codex-callout--important">
+                    <p><strong>重要｜本章是所有接入方式的前置步骤。</strong>无论后面使用手动文件配置，还是使用 cc-switch，都要先拿到自己的 API Key。</p>
+                </section>
+
+                <h2 id="createKey">2.1 创建新密钥并选择正确分组</h2>
+                <p>在“API 密钥”页面，点击“创建密钥”。名称可按自己需要随便填写，然后按兑换码来源选择分组。</p>
+                <div class="codex-group-grid" aria-label="创建密钥计费模式提醒">
+                    <article class="codex-group-card codex-group-card--warranty">
+                        <i data-lucide="badge-info"></i>
+                        <div>
+                            <strong>订阅类分组：质保补偿 / 30刀订阅</strong>
+                            <span>“质保补偿”和“30刀订阅”是订阅制度，不需要消耗余额；质保网站补发的中转码选“质保补偿”。</span>
+                        </div>
+                    </article>
+                    <article class="codex-group-card codex-group-card--plus">
+                        <i data-lucide="circle-dollar-sign"></i>
+                        <div>
+                            <strong>额度类分组：GPT-Plus</strong>
+                            <span>链动小铺购买余额包或额度兑换码时，应选择“GPT-Plus”分组。创建密钥前请再次确认自己使用的是订阅还是额度。</span>
+                        </div>
+                    </article>
+                </div>
+                <div class="codex-alert codex-alert--important codex-alert--standout">
+                    <i data-lucide="badge-alert"></i>
+                    <div>
+                        <strong>分组选错会导致无法使用。</strong>
+                        <span>分组决定密钥使用的权益来源，请先判断兑换码来源，再选择对应分组。</span>
+                    </div>
+                </div>
+
+                <div class="codex-key-flow" aria-label="API 密钥创建步骤">
+                    <article class="codex-key-step">
+                        <div class="codex-key-step__copy">
+                            <span class="codex-key-step__badge">2.1</span>
+                            <h3>创建密钥</h3>
+                            <p>进入“API 密钥”页面，点击“创建密钥”。</p>
+                        </div>
+                        <figure class="codex-key-step__media codex-key-step__media--wide">
+                            <img src="/static/img/codex-guide/image-2.png" alt="API 密钥页面创建密钥按钮" loading="lazy">
+                            <figcaption>图 3：如果列表为空，直接点击页面中的“创建密钥”。</figcaption>
+                        </figure>
+                    </article>
+                    <article class="codex-key-step codex-key-step--focus">
+                        <div class="codex-key-step__copy">
+                            <span class="codex-key-step__badge">2.2</span>
+                            <h3>选择分组</h3>
+                            <p>质保网站补发的中转码选“质保补偿”；链动小铺额度兑换码选“GPT-Plus”。</p>
+                        </div>
+                        <figure class="codex-key-step__media codex-key-step__media--tall">
+                            <img src="/static/img/codex-guide/image-13.png" alt="创建密钥弹窗中选择 API 分组" loading="lazy">
+                            <figcaption>图 4：分组决定密钥使用的权益来源，选错会影响后续可用额度。</figcaption>
+                        </figure>
+                    </article>
+                    <article class="codex-key-step">
+                        <div class="codex-key-step__copy">
+                            <span class="codex-key-step__badge">2.3</span>
+                            <h3>使用密钥</h3>
+                            <p>创建后回到密钥列表，点击“使用密钥”。</p>
+                        </div>
+                        <figure class="codex-key-step__media codex-key-step__media--wide">
+                            <img src="/static/img/codex-guide/image-4.png" alt="密钥列表使用密钥入口" loading="lazy">
+                            <figcaption>图 5：进入弹窗后，复制自己的 Codex 配置内容。</figcaption>
+                        </figure>
+                    </article>
+                </div>
+
+                <h2>2.2 一键查看接入配置</h2>
+                <p>点击“使用密钥”后会看到后续操作需要的配置内容。最终复制你自己的 <code>config.toml</code> 和 <code>auth.json</code> 内容；截图中的 API Key 已脱敏。</p>
+                <figure class="codex-figure codex-config-result">
+                    <img src="/static/img/codex-guide/image-5.png" alt="使用 API 密钥弹窗中的 Codex 配置示例，密钥已脱敏" loading="lazy">
+                    <figcaption>图 6：不要复制教程截图中的示例密钥，请使用你自己页面中生成的 API Key。</figcaption>
+                </figure>
+
+                <hr>
+
+                <h1 id="chapterClient">第三章 接入 Codex</h1>
+
+                <h2 id="installCodex">3.1 下载 Codex 软件</h2>
+                <div class="codex-alert codex-alert--important codex-alert--standout">
+                    <i data-lucide="badge-alert"></i>
+                    <div>
+                        <strong>下载好后必须先打开一次 Codex。</strong>
+                        <span>先打开 Codex 初始化配置文件，然后再完全关闭 Codex，继续下一步文件配置。</span>
+                    </div>
+                </div>
+                <a class="codex-link-card" href="https://openai.com/zh-Hans-CN/codex/" target="_blank" rel="noopener noreferrer">
+                    <i data-lucide="download"></i>
+                    <span>https://openai.com/zh-Hans-CN/codex/</span>
+                </a>
+                <figure class="codex-figure">
+                    <img src="/static/img/codex-guide/image-6.png" alt="OpenAI Codex 下载页面截图" loading="lazy">
+                    <figcaption>图 7：点击页面中的下载入口获取 Codex。</figcaption>
+                </figure>
+
+                <h2 id="configureCodex">3.2 配置方式一：手动文件配置</h2>
+                <div class="codex-alert codex-alert--important codex-alert--standout">
+                    <i data-lucide="badge-alert"></i>
+                    <div>
+                        <strong>配置文件前必须完全关闭 Codex。</strong>
+                        <span>配置文件时一定要保持 Codex 进程关闭。请确保 Codex 进程没有在运行，再编辑 <code>config.toml</code> 和 <code>auth.json</code>，否则配置可能不会生效。</span>
+                    </div>
+                </div>
+                <div class="codex-doc-table-wrap">
+                    <table class="codex-doc-table">
+                        <thead>
+                            <tr>
+                                <th>系统</th>
+                                <th>配置目录</th>
+                                <th>打开方式</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Windows</td>
+                                <td><code>%userprofile%\.codex</code></td>
+                                <td>按 <kbd>Win</kbd> + <kbd>R</kbd>，输入目录并回车；文件双击没有反应时，右键选择“记事本”打开。</td>
+                            </tr>
+                            <tr>
+                                <td>Mac</td>
+                                <td><code>~/.codex</code></td>
+                                <td>可运行 <code>mkdir -p ~/.codex</code> 创建目录；访达中看不到隐藏文件时按 <kbd>Option</kbd> + <kbd>Shift</kbd> + <kbd>.</kbd>。</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <section class="codex-callout">
+                    <p><strong>提示：</strong>如果目录或文件不存在，可手动新建 <code>.codex</code> 目录，以及 <code>config.toml</code> / <code>auth.json</code> 两个文件。</p>
+                </section>
+                <div class="codex-image-grid">
+                    <figure class="codex-figure">
+                        <img src="/static/img/codex-guide/image-7.png" alt="Mac 访达中找到 .codex 文件夹" loading="lazy">
+                        <figcaption>图 8：Mac 在用户目录中找到 <code>.codex</code>。</figcaption>
+                    </figure>
+                    <figure class="codex-figure">
+                        <img src="/static/img/codex-guide/image-8.png" alt=".codex 文件夹中的 config.toml 和 auth.json" loading="lazy">
+                        <figcaption>图 9：确认存在 <code>config.toml</code> 和 <code>auth.json</code>。</figcaption>
+                    </figure>
+                </div>
+                <p>后续操作 Mac 和 Windows 一样：把你自己获得的内容分别粘贴到 <code>config.toml</code> 和 <code>auth.json</code> 文件中。不要粘贴截图里的脱敏内容。</p>
+                <figure class="codex-figure">
+                    <img src="/static/img/codex-guide/image-9.png" alt="Codex 配置内容粘贴示例，密钥已脱敏" loading="lazy">
+                    <figcaption>图 10：配置示例，截图中的 API Key 已脱敏。</figcaption>
+                </figure>
+
+                <h2 id="configureCcSwitch">3.3 配置方式二：使用 cc-switch 一键配置</h2>
+                <p>新手可以使用 cc-switch 一键配置秘钥。下载后选择右上角“+”，选择 Codex 供应商，再选择自定义配置。</p>
+                <a class="codex-link-card" href="https://github.com/farion1231/cc-switch/releases" target="_blank" rel="noopener noreferrer">
+                    <i data-lucide="download-cloud"></i>
+                    <span>cc-switch releases</span>
+                </a>
+                <ol class="codex-steps-list">
+                    <li>API KEY 填写上一步创建得到的 API Key。</li>
+                    <li>API 地址填写 <code>https://api.sakms.top/</code>。</li>
+                    <li>回到主页面点击开启，重新打开 Codex 即可正常使用。</li>
+                </ol>
+                <figure class="codex-figure">
+                    <img src="/static/img/codex-guide/image-15.png" alt="cc-switch 添加 Codex 供应商并选择自定义配置" loading="lazy">
+                    <figcaption>图 11：cc-switch 添加 Codex 供应商，并选择自定义配置。</figcaption>
+                </figure>
+
+                <h2 id="loginCodex">3.4 重新打开 Codex 并使用 API 登录</h2>
+                <p>完成文件配置后重新打开 Codex，选择“换种方式登录”，再选择 API 登录并粘贴自己的 API 密钥。</p>
+                <div class="codex-image-grid codex-image-grid--three">
+                    <figure class="codex-figure">
+                        <img src="/static/img/codex-guide/image-10.png" alt="Codex 选择换种方式登录" loading="lazy">
+                        <figcaption>图 12：选择“换种方式登录”。</figcaption>
+                    </figure>
+                    <figure class="codex-figure">
+                        <img src="/static/img/codex-guide/image-11.png" alt="Codex API 登录输入框" loading="lazy">
+                        <figcaption>图 13：选择 API 登录并粘贴密钥。</figcaption>
+                    </figure>
+                    <figure class="codex-figure">
+                        <img src="/static/img/codex-guide/image-12.png" alt="中转服务 API 密钥复制位置，密钥已脱敏" loading="lazy">
+                        <figcaption>图 14：从中转后台复制你自己的 API Key。</figcaption>
+                    </figure>
+                </div>
+
+                <hr>
+
+                <h1 id="chapterTrouble">第四章 验证与排错</h1>
+
+                <h2 id="quickChecklist">4.1 登录失败时快速检查</h2>
+                <ul class="codex-checklist">
+                    <li><i data-lucide="check-circle-2"></i><span>编辑配置前是否已经完全关闭 Codex？</span></li>
+                    <li><i data-lucide="check-circle-2"></i><span><code>config.toml</code> 和 <code>auth.json</code> 是否放在同一个 <code>.codex</code> 目录？</span></li>
+                    <li><i data-lucide="check-circle-2"></i><span>是否粘贴了你自己生成的 API Key，而不是教程截图中的示例？</span></li>
+                    <li><i data-lucide="check-circle-2"></i><span>创建密钥时是否按来源选择正确分组：质保网站补发的中转码选“质保补偿”，链动小铺额度兑换码选“GPT-Plus”？</span></li>
+                    <li><i data-lucide="check-circle-2"></i><span>如果使用 cc-switch，API 地址是否填写为 <code>https://api.sakms.top/</code>，并在主页面点击开启后重新打开 Codex？</span></li>
+                </ul>
+
+                <h2 id="faq">4.2 常见问题</h2>
+                <div class="codex-doc-table-wrap">
+                    <table class="codex-doc-table">
+                        <thead>
+                            <tr>
+                                <th>现象</th>
+                                <th>原因</th>
+                                <th>处理方式</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>401 / Incorrect API key</td>
+                                <td>配置时 Codex 已经在运行，或 API Key 粘贴错误。</td>
+                                <td>关闭 Codex 软件，重新配置 <code>config.toml</code>，再用 API 密钥登录。</td>
+                            </tr>
+                            <tr>
+                                <td>原聊天记录不见</td>
+                                <td>切换 API 中转后，本地 provider 不一致。</td>
+                                <td>参考 <a href="https://github.com/Dailin521/codex-provider-sync/releases" target="_blank" rel="noopener noreferrer">codex-provider-sync releases</a> 恢复。</td>
+                            </tr>
+                            <tr>
+                                <td>429 Too Many Requests</td>
+                                <td>一般是当前额度或频率已经触发限制。</td>
+                                <td><a href="https://api.sakms.top/profile" target="_blank" rel="noopener noreferrer">打开额度查询页面</a> 查看余额和额度。</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <figure class="codex-figure codex-error-figure">
+                    <img src="/static/img/codex-guide/image-14.png" alt="Codex 登录时报 401 Incorrect API key，密钥已脱敏" loading="lazy">
+                    <figcaption>图 15：错误示例，API Key 片段已脱敏。</figcaption>
+                </figure>
+            </article>
+        </main>
     </div>
 
     <script>
