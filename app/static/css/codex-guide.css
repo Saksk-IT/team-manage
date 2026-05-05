@@ -591,6 +591,43 @@ body {
     padding: 0.08rem 0.34rem;
 }
 
+.codex-code-block {
+    width: 100%;
+    overflow-x: auto;
+    margin: 1rem 0;
+    padding: 1rem;
+    border: 1px solid var(--doc-line);
+    border-radius: 18px;
+    background: #07131b;
+    color: #d9fff3;
+    box-shadow: 0 18px 48px rgba(7, 19, 27, 0.12);
+}
+
+.codex-code-block code {
+    display: block;
+    min-width: max-content;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-size: 0.9rem;
+    line-height: 1.7;
+    white-space: pre;
+}
+
+.codex-faq-list {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.codex-faq-list p {
+    margin: 0;
+    padding: 1rem;
+    border: 1px solid var(--doc-line);
+    border-radius: 18px;
+    background: #fff;
+}
+
 .codex-error-figure img {
     max-height: 520px;
     object-fit: contain;
