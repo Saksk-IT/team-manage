@@ -65,6 +65,48 @@ async def codex_guide_page(request: Request):
     )
 
 
+@router.get("/claude-code-guide", response_class=HTMLResponse)
+async def claude_code_guide_page(request: Request):
+    """Claude Code 配置教程页面。"""
+    from app.main import templates
+
+    return templates.TemplateResponse(
+        request,
+        "user/client_guides/claude_code.html",
+        {
+            "request": request,
+        }
+    )
+
+
+@router.get("/open-code-guide", response_class=HTMLResponse)
+async def open_code_guide_page(request: Request):
+    """Open Code 配置教程页面。"""
+    from app.main import templates
+
+    return templates.TemplateResponse(
+        request,
+        "user/client_guides/open_code.html",
+        {
+            "request": request,
+        }
+    )
+
+
+@router.get("/open-claw-guide", response_class=HTMLResponse)
+async def open_claw_guide_page(request: Request):
+    """Open Claw 配置教程页面。"""
+    from app.main import templates
+
+    return templates.TemplateResponse(
+        request,
+        "user/client_guides/open_claw.html",
+        {
+            "request": request,
+        }
+    )
+
+
 @router.get("/", response_class=HTMLResponse)
 async def redeem_page(
     request: Request,

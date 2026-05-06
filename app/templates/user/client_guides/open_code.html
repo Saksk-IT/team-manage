@@ -1,0 +1,78 @@
+{% extends "user/client_guides/base.html" %}
+
+{% block title %}Open Code 配置教程{% endblock %}
+
+{% block hero %}
+<h1 id="guideTitle">Open Code 配置教程</h1>
+<p class="codex-doc-lead">适用于 Open Code CLI。可写入 <code>opencode.json</code> 长期生效，也可在客户端内使用 <code>/connect</code> 临时切换。</p>
+<div class="codex-doc-badges" aria-label="教程要点">
+    <span><i data-lucide="folder-cog"></i> opencode.json</span>
+    <span><i data-lucide="file-json"></i> OpenAI-compatible</span>
+    <span><i data-lucide="terminal"></i> /connect</span>
+    <span><i data-lucide="circle-check"></i> opencode 验证</span>
+</div>
+<nav class="codex-doc-jump" aria-label="章节快捷入口">
+    <a href="#openCodePrepare">准备</a>
+    <a href="#openCodePath">目录</a>
+    <a href="#openCodeJson">JSON</a>
+    <a href="#openCodeVerify">验证</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<h1>Open Code</h1>
+<section id="openCodePrepare" class="codex-callout codex-callout--important">
+    <p><strong>开始前请先完成：</strong>回到 <a href="/codex-guide#chapterKey">Codex 总教程第二章</a> 创建 API Key。Open Code 通常使用 OpenAI-compatible 地址：<code>https://api.sakms.top/v1</code>。</p>
+</section>
+<p>适用范围：<strong>Open Code CLI</strong>。Open Code 可写入 <code>opencode.json</code> 永久生效，也可以在客户端内用 <code>/connect</code> 临时切换。</p>
+
+<h2 id="openCodePath">1. 定位 Open Code 配置目录</h2>
+<div class="codex-doc-table-wrap">
+    <table class="codex-doc-table">
+        <thead><tr><th>系统</th><th>配置目录</th><th>配置文件</th></tr></thead>
+        <tbody>
+            <tr><td><strong>Windows</strong></td><td><code>%USERPROFILE%\.config\opencode\</code></td><td><code>opencode.json</code></td></tr>
+            <tr><td><strong>macOS</strong></td><td><code>~/.config/opencode/</code></td><td><code>opencode.json</code></td></tr>
+            <tr><td><strong>Linux</strong></td><td><code>~/.config/opencode/</code></td><td><code>opencode.json</code></td></tr>
+        </tbody>
+    </table>
+</div>
+<section class="codex-callout">
+    <p><strong>提示：</strong>配置文件不存在时需手动创建，也可使用支持注释的 <code>opencode.jsonc</code>。Windows 用户记得显示文件扩展名，避免变成 <code>opencode.json.txt</code>。</p>
+</section>
+
+<h2 id="openCodeJson">2. 方式 A：写入 <code>opencode.json</code>（推荐，永久生效）</h2>
+<pre class="codex-code-block"><code>{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "sakms": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "SAKMS",
+      "options": {
+        "baseURL": "https://api.sakms.top/v1",
+        "apiKey": "填写你的 API 密钥"
+      },
+      "models": {
+        "gpt-5.5": { "name": "GPT-5.5" },
+        "gpt-5.4": { "name": "GPT-5.4" }
+      }
+    }
+  }
+}</code></pre>
+<ul class="codex-steps-list">
+    <li><code>provider</code> 下的键名（这里写 <code>sakms</code>）可自定义，也可按客户端习惯使用 <code>openai</code> / <code>anthropic</code> / <code>google</code>。</li>
+    <li><code>models</code> 下可按需添加多个模型条目，具体模型 ID 以中转站提供的清单为准。</li>
+    <li>示例仅供参考，字段细节以 <a href="https://opencode.ai/docs/config" target="_blank" rel="noopener noreferrer">Open Code 官方文档</a> 最新版为准。</li>
+</ul>
+
+<h2 id="openCodeConnect">3. 方式 B：客户端内 <code>/connect</code> 命令（适合临时切换）</h2>
+<pre class="codex-code-block"><code>/connect</code></pre>
+<p>启动 Open Code 后，在交互界面输入 <code>/connect</code>，按提示填入 <code>baseURL</code>（例如 <code>https://api.sakms.top/v1</code>）与 <code>apiKey</code>（你的 API Key）即可。此方式无需手动编辑 JSON，适合多账号或临时测试。</p>
+
+<h2 id="openCodeVerify">4. 验证 Open Code</h2>
+<ul class="codex-checklist">
+    <li><i data-lucide="check-circle-2"></i><span>任意终端输入 <code>opencode</code> 启动客户端。</span></li>
+    <li><i data-lucide="check-circle-2"></i><span>发起一次对话测试，能正常返回响应即成功。</span></li>
+    <li><i data-lucide="check-circle-2"></i><span>如果返回 <code>404</code>，优先检查 <code>baseURL</code> 是否包含 <code>/v1</code>。</span></li>
+</ul>
+{% endblock %}

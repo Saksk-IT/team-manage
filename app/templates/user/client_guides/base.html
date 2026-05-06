@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}客户端配置教程{% endblock %}</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="stylesheet" href="/static/css/user.css">
+    <link rel="stylesheet" href="/static/css/user-front.css">
+    <link rel="stylesheet" href="/static/css/user-front-components.css">
+    <link rel="stylesheet" href="/static/css/user-front-responsive.css">
+    <link rel="stylesheet" href="/static/css/codex-guide.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+    <div class="front-page codex-guide-page codex-client-guide-page">
+        <header class="codex-doc-header">
+            <nav class="codex-doc-nav" aria-label="页面导航">
+                <a class="codex-doc-brand" href="/" aria-label="返回 GPT Team 服务台首页">
+                    <img src="/static/favicon.png" alt="Logo">
+                    <span>
+                        <strong>GPT Team</strong>
+                        <small>客户端配置文档</small>
+                    </span>
+                </a>
+                <div class="codex-doc-actions">
+                    <a href="/codex-guide" class="codex-doc-link"><i data-lucide="book-open"></i> Codex 总教程</a>
+                    <a href="/codex-guide#chapterKey" class="codex-doc-link"><i data-lucide="key-round"></i> 先创建 Key</a>
+                    <a href="https://api.sakms.top/profile" target="_blank" rel="noopener noreferrer" class="codex-doc-cta">
+                        <i data-lucide="external-link"></i> 打开额度查询
+                    </a>
+                </div>
+            </nav>
+        </header>
+
+        <main class="codex-doc-shell">
+            <section class="codex-doc-hero" aria-labelledby="guideTitle">
+                <p class="codex-doc-base">API base_url: https://api.sakms.top/</p>
+                {% block hero %}{% endblock %}
+            </section>
+
+            <article class="codex-doc-article">
+                {% block content %}{% endblock %}
+            </article>
+        </main>
+    </div>
+
+    <script>
+        if (window.lucide) lucide.createIcons();
+    </script>
+</body>
+
+</html>

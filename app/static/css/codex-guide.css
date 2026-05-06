@@ -45,7 +45,7 @@ body {
 }
 
 .codex-doc-nav {
-    width: min(100%, 1120px);
+    width: min(100%, 1280px);
     margin: 0 auto;
     display: flex;
     align-items: center;
@@ -145,7 +145,7 @@ body {
 }
 
 .codex-doc-shell {
-    width: min(100%, 980px);
+    width: min(100%, 1180px);
     margin: 0 auto;
     padding-top: 2rem;
 }
@@ -177,7 +177,7 @@ body {
 
 .codex-doc-hero h1 {
     margin: 0;
-    max-width: 780px;
+    max-width: 900px;
     color: #10252e;
     font-size: clamp(2rem, 6vw, 4.2rem);
     line-height: 1.02;
@@ -185,7 +185,7 @@ body {
 }
 
 .codex-doc-lead {
-    max-width: 780px;
+    max-width: 900px;
     margin: 0;
     color: var(--doc-muted);
     font-size: clamp(1rem, 2.3vw, 1.2rem);
@@ -615,6 +615,57 @@ body {
     white-space: pre;
 }
 
+
+.codex-client-guide-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.9rem;
+    margin: 1rem 0;
+}
+
+.codex-client-guide-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.8rem;
+    align-items: center;
+    min-height: 116px;
+    padding: 1rem;
+    border: 1px solid rgba(19, 185, 154, 0.24);
+    border-radius: 20px;
+    background: linear-gradient(135deg, #f4fffb, #ffffff);
+    color: var(--doc-text);
+    text-decoration: none;
+    box-shadow: 0 16px 38px rgba(38, 84, 74, 0.08);
+    transition: 0.18s ease;
+}
+
+.codex-client-guide-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--doc-accent);
+    box-shadow: 0 20px 48px rgba(13, 162, 132, 0.14);
+}
+
+.codex-client-guide-card i {
+    width: 1.45rem;
+    height: 1.45rem;
+    color: var(--doc-accent-dark);
+}
+
+.codex-client-guide-card strong,
+.codex-client-guide-card small {
+    display: block;
+}
+
+.codex-client-guide-card strong {
+    font-weight: 950;
+}
+
+.codex-client-guide-card small {
+    margin-top: 0.25rem;
+    color: var(--doc-muted);
+    line-height: 1.55;
+}
+
 .codex-faq-list {
     display: grid;
     gap: 0.8rem;
@@ -664,6 +715,7 @@ body {
     }
 
     .codex-doc-jump,
+    .codex-client-guide-grid,
     .codex-group-grid,
     .codex-billing-grid,
     .codex-support-grid,

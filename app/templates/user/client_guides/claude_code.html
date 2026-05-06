@@ -1,0 +1,70 @@
+{% extends "user/client_guides/base.html" %}
+
+{% block title %}Claude Code 配置教程{% endblock %}
+
+{% block hero %}
+<h1 id="guideTitle">Claude Code 配置教程</h1>
+<p class="codex-doc-lead">适用于 Claude Code CLI 与 VSCode Claude 插件。先在中转站创建 API Key，再选择环境变量或 <code>settings.json</code> 方式接入。</p>
+<div class="codex-doc-badges" aria-label="教程要点">
+    <span><i data-lucide="folder-cog"></i> 定位 .claude</span>
+    <span><i data-lucide="terminal"></i> 配置环境变量</span>
+    <span><i data-lucide="file-json"></i> settings.json</span>
+    <span><i data-lucide="circle-check"></i> claude 验证</span>
+</div>
+<nav class="codex-doc-jump" aria-label="章节快捷入口">
+    <a href="#prepareClaude">准备</a>
+    <a href="#claudePath">目录</a>
+    <a href="#claudeEnv">变量</a>
+    <a href="#claudeVerify">验证</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<h1>Claude Code 系列（CLI / VSCode 插件）</h1>
+<section id="prepareClaude" class="codex-callout codex-callout--important">
+    <p><strong>开始前请先完成：</strong>回到 <a href="/codex-guide#chapterKey">Codex 总教程第二章</a> 创建 API Key，并在“使用密钥”弹窗中复制 Claude Code 对应配置。不要复制教程截图中的示例密钥。</p>
+</section>
+<p>适用范围：<strong>Claude Code CLI、VSCode Claude 插件</strong>。配置方式有两种：环境变量或 <code>settings.json</code>，二选一即可。建议优先使用 <code>settings.json</code>，便于后续排查。</p>
+
+<h2 id="claudePath">1. 定位 Claude 配置目录</h2>
+<div class="codex-doc-table-wrap">
+    <table class="codex-doc-table">
+        <thead><tr><th>系统</th><th>配置目录</th><th>打开方式</th></tr></thead>
+        <tbody>
+            <tr><td><strong>Windows</strong></td><td><code>%userprofile%\.claude</code></td><td>按 <kbd>Win</kbd> + <kbd>R</kbd>，输入 <code>%userprofile%\.claude</code> 并回车；目录不存在时可手动新建。</td></tr>
+            <tr><td><strong>macOS</strong></td><td><code>~/.claude</code></td><td>终端执行 <code>open ~/.claude</code>；如不存在先执行 <code>mkdir -p ~/.claude</code>。</td></tr>
+            <tr><td><strong>Linux</strong></td><td><code>~/.claude</code></td><td>终端执行 <code>cd ~/.claude</code> 或直接进入；如不存在先执行 <code>mkdir -p ~/.claude</code>。</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<h2 id="claudeEnv">2. 方式 A：配置环境变量</h2>
+<p>复制“使用密钥”弹窗中 Claude Code 给出的环境变量，通常包含 <code>ANTHROPIC_BASE_URL</code>、<code>ANTHROPIC_AUTH_TOKEN</code> 等。下面示例仅用于说明，请把密钥替换成自己的真实 API Key。</p>
+<div class="codex-doc-table-wrap">
+    <table class="codex-doc-table">
+        <thead><tr><th>系统</th><th>设置方法</th></tr></thead>
+        <tbody>
+            <tr><td><strong>Windows</strong></td><td>控制面板 → 系统 → 高级系统设置 → 环境变量 → 新建用户变量；或用 PowerShell：<code>setx ANTHROPIC_BASE_URL "https://api.sakms.top/v1"</code>。</td></tr>
+            <tr><td><strong>macOS</strong></td><td>在 <code>~/.zshrc</code> 末尾追加：<code>export ANTHROPIC_BASE_URL="https://api.sakms.top/v1"</code>，保存后执行 <code>source ~/.zshrc</code>。</td></tr>
+            <tr><td><strong>Linux</strong></td><td>在 <code>~/.bashrc</code> 或 <code>~/.zshrc</code> 末尾追加同上 export 语句，再执行 <code>source</code>。</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<h2 id="claudeSettings">3. 方式 B：修改 <code>settings.json</code>（建议）</h2>
+<p>进入上表对应的 <code>.claude</code> 目录，编辑或新建 <code>settings.json</code>，按“使用密钥”弹窗给出的内容填写。完成顺序：先设环境变量或改 <code>settings.json</code> → 重启终端 → 输入 <code>claude</code> 启动。</p>
+<figure class="codex-figure codex-config-result">
+    <img src="/static/img/codex-guide/image-22.png" alt="Claude Code 配置弹窗示例，密钥已脱敏" loading="lazy">
+    <figcaption>Claude Code 配置示例，截图中的 API Key 已脱敏。请选择与系统匹配的页签后复制。</figcaption>
+</figure>
+<section class="codex-callout">
+    <p><strong>提示：</strong>旧终端不会自动读取新环境变量。修改完成后请关闭旧终端，打开新终端再启动 Claude Code。</p>
+</section>
+
+<h2 id="claudeVerify">4. 验证 Claude Code</h2>
+<ul class="codex-checklist">
+    <li><i data-lucide="check-circle-2"></i><span>打开新终端窗口，输入 <code>claude</code>。</span></li>
+    <li><i data-lucide="check-circle-2"></i><span>能正常进入交互并发起一次对话，即表示配置成功。</span></li>
+    <li><i data-lucide="check-circle-2"></i><span>如果提示密钥错误，回到中转站重新复制 Claude Code 配置，并确认 API Key 没有泄露或被删除。</span></li>
+</ul>
+{% endblock %}

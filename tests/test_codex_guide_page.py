@@ -3,7 +3,12 @@ from pathlib import Path
 
 from starlette.requests import Request
 
-from app.routes.user import codex_guide_page
+from app.routes.user import (
+    claude_code_guide_page,
+    codex_guide_page,
+    open_claw_guide_page,
+    open_code_guide_page,
+)
 
 
 class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
@@ -16,6 +21,7 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("Codex API 登录对接教程", html)
         self.assertIn("兑换中转 API Key，并接入 Codex", html)
+        self.assertIn("Claude Code、Open Code、Open Claw 已拆为独立教程页", html)
         self.assertIn("目前 GPT Team 已全部失效", html)
         self.assertIn("纯血 Plus 号池", html)
         self.assertIn("Image 2.0 生图", html)
@@ -25,17 +31,17 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("有任何问题请扫码加群", html)
         self.assertIn("https://api.sakms.top/register", html)
         self.assertIn("填写验证码后完成创建中转账户", html)
-        self.assertIn("配置文件前必须完全关闭 Codex", html)
+        self.assertIn("填写邮箱、获取验证码、设置密码后完成注册", html)
+        self.assertIn("配置文件前必须退出登录并完全关闭 Codex", html)
         self.assertIn("按邮箱质保剩余时间补发的中转兑换码", html)
         self.assertIn("质保补发的中转兑换码", html)
-        self.assertIn("30刀订阅", html)
+        self.assertIn("订阅类分组：质保补偿 / 订阅**", html)
         self.assertIn("额度兑换码：必须选择 GPT-Plus", html)
         self.assertIn("不能选“质保补偿”，否则无法使用", html)
         self.assertIn("质保补发码：选择质保补偿", html)
         self.assertIn("通过质保网站补发的中转兑换码", html)
         self.assertIn("选择“质保补偿”分组", html)
-        self.assertIn("订阅类分组：质保补偿 / 30刀订阅", html)
-        self.assertIn("额度类分组：GPT-Plus", html)
+        self.assertIn("额度类分组：GPT", html)
         self.assertIn("分组选错会导致无法使用", html)
         self.assertIn("订阅模式", html)
         self.assertIn("每天 0 点后自动刷新", html)
@@ -55,13 +61,23 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("/static/img/codex-guide/image-15.png", html)
         self.assertIn("GPT-Plus", html)
         self.assertIn("链动小铺", html)
-        self.assertIn("/static/img/codex-guide/image-13.png", html)
+        self.assertIn("/static/img/codex-guide/image-19.png", html)
         self.assertIn("/static/img/codex-guide/image-14.png", html)
+        self.assertIn("/static/img/codex-guide/image-17.png", html)
+        self.assertIn("/static/img/codex-guide/image-18.png", html)
+        self.assertIn("/static/img/codex-guide/image-20.png", html)
+        self.assertIn("/static/img/codex-guide/image-21.png", html)
         self.assertIn("codex-provider-sync/releases", html)
         self.assertIn("429 Too Many Requests", html)
         self.assertIn("https://api.sakms.top/profile", html)
         self.assertIn("打开额度查询页面", html)
         self.assertIn("支持 gpt-5.5", html)
+        self.assertIn('href="/claude-code-guide"', html)
+        self.assertIn('href="/open-code-guide"', html)
+        self.assertIn('href="/open-claw-guide"', html)
+        self.assertNotIn('id="configureClaudeCode"', html)
+        self.assertNotIn('id="configureOpenCode"', html)
+        self.assertNotIn('id="configureOpenClaw"', html)
         self.assertIn("返回兑换页", html)
         self.assertIn('class="codex-key-flow"', html)
         self.assertIn('class="codex-key-step codex-key-step--focus"', html)
@@ -82,13 +98,49 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
     def test_sanitized_guide_assets_are_kept_under_static_directory(self):
         asset_dir = Path("app/static/img/codex-guide")
 
-        for image_name in ("image-4.png", "image-5.png", "image-9.png", "image-12.png", "image-13.png", "image-14.png", "image-15.png", "image-16.png"):
+        for image_name in ("image-5.png", "image-12.png", "image-14.png", "image-15.png", "image-16.png", "image-17.png", "image-18.png", "image-19.png", "image-20.png", "image-21.png", "image-22.png"):
             self.assertTrue((asset_dir / image_name).exists())
 
         template = Path("app/templates/user/codex_guide.html").read_text(encoding="utf-8")
 
         self.assertIn("截图中的 API Key 已脱敏", template)
         self.assertIn("不要发给他人", template)
+
+    async def test_split_client_guide_pages_render(self):
+        cases = (
+            (
+                claude_code_guide_page,
+                "/claude-code-guide",
+                ("Claude Code 配置教程", "ANTHROPIC_BASE_URL", "/static/img/codex-guide/image-22.png"),
+            ),
+            (
+                open_code_guide_page,
+                "/open-code-guide",
+                ("Open Code 配置教程", "opencode.json", "https://opencode.ai/docs/config"),
+            ),
+            (
+                open_claw_guide_page,
+                "/open-claw-guide",
+                ("Open Claw 配置教程", "openai-responses", "腾讯云在线配置"),
+            ),
+        )
+
+        for view_func, path, expected_values in cases:
+            with self.subTest(path=path):
+                response = await view_func(request=Request({"type": "http", "method": "GET", "path": path, "headers": []}))
+                html = response.body.decode("utf-8")
+
+                self.assertIn('href="/codex-guide"', html)
+                self.assertIn("先创建 Key", html)
+                for expected in expected_values:
+                    self.assertIn(expected, html)
+
+    def test_static_guide_default_width_is_wider(self):
+        css = Path("app/static/css/codex-guide.css").read_text(encoding="utf-8")
+
+        self.assertIn("width: min(100%, 1180px);", css)
+        self.assertIn("width: min(100%, 1280px);", css)
+        self.assertIn(".codex-client-guide-grid", css)
 
 
 if __name__ == "__main__":
