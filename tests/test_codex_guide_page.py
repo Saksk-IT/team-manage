@@ -64,7 +64,8 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("点击“启用”，系统会自动配置", html)
         self.assertIn("这里也可以直接查看账户余额", html)
         self.assertIn("完成 CC Switch 导入后，重新打开 Codex 即可直接使用", html)
-        self.assertIn("/static/img/codex-guide/image-23.png", html)
+        self.assertIn("注意：一定要重启 Codex", html)
+        self.assertIn("/static/img/codex-guide/image-27.png", html)
         self.assertIn("/static/img/codex-guide/image-26.png", html)
         self.assertIn("GPT-Plus", html)
         self.assertIn("链动小铺", html)
@@ -105,7 +106,7 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
     def test_sanitized_guide_assets_are_kept_under_static_directory(self):
         asset_dir = Path("app/static/img/codex-guide")
 
-        for image_name in ("image-5.png", "image-12.png", "image-14.png", "image-16.png", "image-17.png", "image-18.png", "image-19.png", "image-20.png", "image-21.png", "image-22.png", "image-23.png", "image-26.png"):
+        for image_name in ("image-5.png", "image-12.png", "image-14.png", "image-16.png", "image-17.png", "image-18.png", "image-19.png", "image-20.png", "image-21.png", "image-22.png", "image-23.png", "image-26.png", "image-27.png"):
             self.assertTrue((asset_dir / image_name).exists())
 
         template = Path("app/templates/user/codex_guide.html").read_text(encoding="utf-8")
@@ -118,17 +119,36 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
             (
                 claude_code_guide_page,
                 "/claude-code-guide",
-                ("Claude Code 配置教程", "ANTHROPIC_BASE_URL", "/static/img/codex-guide/image-22.png"),
+                (
+                    "Claude Code 配置教程",
+                    "从第一步开始：注册、兑换、创建 Key",
+                    "cc-switch 一键导入 Claude Code",
+                    "ANTHROPIC_BASE_URL",
+                    "/static/img/codex-guide/image-22.png",
+                    "/static/img/codex-guide/image-27.png",
+                ),
             ),
             (
                 open_code_guide_page,
                 "/open-code-guide",
-                ("Open Code 配置教程", "opencode.json", "https://opencode.ai/docs/config"),
+                (
+                    "Open Code 配置教程",
+                    "从第一步开始：注册、兑换、创建 Key",
+                    "安装并首次启动 Open Code",
+                    "opencode.json",
+                    "https://opencode.ai/docs/config",
+                ),
             ),
             (
                 open_claw_guide_page,
                 "/open-claw-guide",
-                ("Open Claw 配置教程", "openai-responses", "腾讯云在线配置"),
+                (
+                    "Open Claw 配置教程",
+                    "从第一步开始：注册、兑换、创建 Key",
+                    "models.providers",
+                    "openai-responses",
+                    "腾讯云在线配置",
+                ),
             ),
         )
 

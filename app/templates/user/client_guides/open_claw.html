@@ -4,15 +4,15 @@
 
 {% block hero %}
 <h1 id="guideTitle">Open Claw 配置教程</h1>
-<p class="codex-doc-lead">适用于 Open Claw。支持腾讯云在线配置和本地配置，请根据自己的部署方式选择对应 JSON。</p>
+<p class="codex-doc-lead">从注册中转账户、兑换额度、创建 API Key 开始，完整接入 Open Claw。支持腾讯云在线配置，也支持本地 <code>~/.openclaw</code> 配置。</p>
 <div class="codex-doc-badges" aria-label="教程要点">
+    <span><i data-lucide="user-plus"></i> 注册中转</span>
     <span><i data-lucide="cloud-cog"></i> 腾讯云在线配置</span>
-    <span><i data-lucide="file-json"></i> 本地 openclaw.json</span>
-    <span><i data-lucide="route"></i> /v1 地址</span>
+    <span><i data-lucide="file-json"></i> 本地配置</span>
     <span><i data-lucide="circle-check"></i> 模型测试</span>
 </div>
 <nav class="codex-doc-jump" aria-label="章节快捷入口">
-    <a href="#openClawPrepare">准备</a>
+    <a href="#openClawStart">从零开始</a>
     <a href="#openClawCloud">云端</a>
     <a href="#openClawLocal">本地</a>
     <a href="#openClawCheck">检查</a>
@@ -20,19 +20,28 @@
 {% endblock %}
 
 {% block content %}
-<h1>Open Claw</h1>
-<section id="openClawPrepare" class="codex-callout codex-callout--important">
-    <p><strong>开始前请先完成：</strong>回到 <a href="/codex-guide#chapterKey">Codex 总教程第二章</a> 创建 API Key。Open Claw 的 OpenAI-compatible 地址通常填写 <code>https://api.sakms.top/v1</code>。</p>
+<h1>Open Claw 完整接入流程</h1>
+<section id="openClawStart" class="codex-callout codex-callout--important">
+    <p><strong>开始前请先完成 API Key 准备：</strong>Open Claw 的 OpenAI-compatible 地址通常填写 <code>https://api.sakms.top/v1</code>。如果“使用密钥”弹窗给出的地址不同，请以弹窗为准。</p>
 </section>
-<p>Open Claw 支持两种部署方式：<strong>腾讯云在线配置</strong>（推荐新手）和<strong>本地配置</strong>。</p>
 
-<h2 id="openClawCloud">1. 腾讯云在线配置</h2>
-<p><strong>适用场景：</strong>你已经在腾讯云开通了“龙虾服务器”，希望直接通过云端面板接入。</p>
+<h2>1. 从第一步开始：注册、兑换、创建 Key</h2>
 <ol class="codex-steps-list">
-    <li>登录腾讯云，进入你的龙虾服务器控制台。</li>
-    <li>点击“应用管理” → 找到“模型”模块。</li>
-    <li>在下拉菜单中选择“自定义模型” → “JSON 输入”。</li>
-    <li>把下方 JSON 粘贴进去，替换 API Key 后点击“添加并应用”。</li>
+    <li>打开 <a href="https://api.sakms.top/register" target="_blank" rel="noopener noreferrer">中转注册页</a>，填写邮箱、验证码和密码，完成账户注册。</li>
+    <li>使用质保补发兑换码、站内兑换码，或通过 <a href="https://pay.ldxp.cn/shop/LSSZLMUY" target="_blank" rel="noopener noreferrer">链动小铺卡密地址</a> 购买额度包并兑换。</li>
+    <li>兑换后打开 <a href="https://api.sakms.top/profile" target="_blank" rel="noopener noreferrer">额度查询页</a>，确认余额或订阅权益到账。</li>
+    <li>进入 <a href="https://api.sakms.top/keys" target="_blank" rel="noopener noreferrer">API 密钥页面</a>，点击“创建密钥”，按兑换码来源选择“质保补偿”或 GPT / GPT-Plus 分组。</li>
+    <li>创建后点击“使用密钥”，复制 Open Claw 或 OpenAI-compatible 配置中的 <code>base_url</code> 和 <code>api_key</code>。</li>
+</ol>
+
+<h2 id="openClawCloud">2. 方式 A：腾讯云在线配置（推荐新手）</h2>
+<p><strong>适用场景：</strong>你已经在腾讯云开通 Open Claw / 龙虾服务器，希望直接在云端面板中接入中转模型。</p>
+<ol class="codex-steps-list">
+    <li>登录腾讯云，进入你的 Open Claw / 龙虾服务器控制台。</li>
+    <li>进入“应用管理”或模型相关页面，找到模型配置入口。</li>
+    <li>选择“自定义模型”或“JSON 输入”。不同面板版本文字可能略有差异，核心是添加自定义 OpenAI-compatible provider。</li>
+    <li>把下方 JSON 粘贴进去，将 <code>api_key</code> 替换成自己的真实 API Key，再点击“添加并应用”。</li>
+    <li>回到对话或模型测试页面，选择刚添加的 GPT-5.5 模型并发起一次测试。</li>
 </ol>
 <pre class="codex-code-block"><code>{
   "provider": "openai",
@@ -45,34 +54,48 @@
   }
 }</code></pre>
 <section class="codex-callout">
-    <p><strong>注意：</strong><code>api_key</code> 字段务必替换为自己的 API Key，不要直接提交带有占位符的 JSON。</p>
+    <p><strong>注意：</strong><code>api_key</code> 字段务必替换为自己的 API Key，不要提交占位符；模型 ID 以中转后台可用模型清单为准。</p>
 </section>
 
-<h2 id="openClawLocal">2. 本地配置（Windows / macOS / Linux）</h2>
+<h2 id="openClawLocal">3. 方式 B：本地配置（Windows / macOS / Linux）</h2>
+<p>如果你使用本地 Open Claw，可在配置目录中新增中转 provider。官方文档中的 provider 配置使用 <code>models.providers</code> 结构；本页示例保留一个 <code>sakms</code> provider，便于和默认模型区分。</p>
 <div class="codex-doc-table-wrap">
     <table class="codex-doc-table">
         <thead><tr><th>系统</th><th>配置目录</th><th>打开方式</th></tr></thead>
         <tbody>
-            <tr><td><strong>Windows</strong></td><td><code>%USERPROFILE%\.openclaw</code></td><td>按 <kbd>Win</kbd> + <kbd>R</kbd>，输入 <code>%USERPROFILE%\.openclaw</code> 并回车。</td></tr>
-            <tr><td><strong>macOS</strong></td><td><code>~/.openclaw</code></td><td>终端执行 <code>open ~/.openclaw</code>。</td></tr>
-            <tr><td><strong>Linux</strong></td><td><code>~/.openclaw</code></td><td>终端执行 <code>xdg-open ~/.openclaw</code> 或直接进入。</td></tr>
+            <tr><td><strong>Windows</strong></td><td><code>%USERPROFILE%\.openclaw</code></td><td>按 <kbd>Win</kbd> + <kbd>R</kbd>，输入 <code>%USERPROFILE%\.openclaw</code> 并回车；不存在时先新建。</td></tr>
+            <tr><td><strong>macOS</strong></td><td><code>~/.openclaw</code></td><td>终端执行 <code>mkdir -p ~/.openclaw && open ~/.openclaw</code>。</td></tr>
+            <tr><td><strong>Linux</strong></td><td><code>~/.openclaw</code></td><td>终端执行 <code>mkdir -p ~/.openclaw && cd ~/.openclaw</code>。</td></tr>
         </tbody>
     </table>
 </div>
-<p>进入上述目录，编辑或新建 <code>openclaw.json</code>，写入：</p>
+<p>进入上述目录，编辑或新建 <code>openclaw.json</code>。如果已有配置，请只合并 <code>models.providers.sakms</code> 这一段，避免覆盖原来的本地设置。</p>
 <pre class="codex-code-block"><code>{
-  "baseUrl": "https://api.sakms.top/v1",
-  "api": "openai-responses",
-  "apiKey": "填写你的 API 密钥"
+  "models": {
+    "providers": {
+      "sakms": {
+        "apiKey": "填写你的 API 密钥",
+        "baseURL": "https://api.sakms.top/v1",
+        "api": "openai-responses",
+        "models": [
+          {
+            "id": "gpt-5.5",
+            "name": "GPT-5.5"
+          }
+        ]
+      }
+    }
+  }
 }</code></pre>
 <section class="codex-callout">
-    <p><strong>提示：</strong>Open Claw 本地配置通常使用 <code>openai-responses</code>，与腾讯云端示例里的 <code>openai-completions</code> 不同，不要混用。</p>
+    <p><strong>提示：</strong>腾讯云端示例使用 <code>openai-completions</code>，本地 Open Claw 示例使用 <code>openai-responses</code>。如果你的客户端版本明确要求另一种 API 类型，请以客户端提示为准。</p>
 </section>
 
-<h2 id="openClawCheck">3. 快速检查</h2>
+<h2 id="openClawCheck">4. 验证与快速检查</h2>
 <ul class="codex-checklist">
-    <li><i data-lucide="check-circle-2"></i><span><code>base_url</code> / <code>baseUrl</code> 是否为 <code>https://api.sakms.top/v1</code>。</span></li>
-    <li><i data-lucide="check-circle-2"></i><span><code>api_key</code> / <code>apiKey</code> 是否已替换为自己的真实 API Key。</span></li>
-    <li><i data-lucide="check-circle-2"></i><span>云端配置使用 <code>openai-completions</code>，本地配置使用 <code>openai-responses</code>，不要混用。</span></li>
+    <li><i data-lucide="check-circle-2"></i><span><code>base_url</code> / <code>baseURL</code> 是否为 <code>https://api.sakms.top/v1</code>，或是否与“使用密钥”弹窗一致。</span></li>
+    <li><i data-lucide="check-circle-2"></i><span><code>api_key</code> / <code>apiKey</code> 是否已替换成自己的真实 API Key，没有保留“填写你的 API 密钥”。</span></li>
+    <li><i data-lucide="check-circle-2"></i><span>云端配置使用 <code>openai-completions</code>，本地配置使用 <code>openai-responses</code>，除非客户端版本另有提示。</span></li>
+    <li><i data-lucide="check-circle-2"></i><span>出现 <code>401</code> 时重新复制 Key；出现 <code>404</code> 时检查 <code>/v1</code>；出现额度不足时打开 <a href="https://api.sakms.top/profile" target="_blank" rel="noopener noreferrer">额度查询页</a>。</span></li>
 </ul>
 {% endblock %}
