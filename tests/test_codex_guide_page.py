@@ -21,6 +21,7 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("Codex API 登录对接教程", html)
         self.assertIn("兑换中转 API Key，并接入 Codex", html)
+        self.assertIn("cc-switch 极速配置", html)
         self.assertIn("Claude Code、Open Code、Open Claw 已拆为独立教程页", html)
         self.assertIn("目前 GPT Team 已全部失效", html)
         self.assertIn("纯血 Plus 号池", html)
@@ -55,10 +56,16 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("请确保 Codex 进程没有在运行", html)
         self.assertIn("否则配置可能不会生效", html)
         self.assertIn("右键选择“记事本”打开", html)
-        self.assertIn("配置方式二：使用 cc-switch 一键配置", html)
+        self.assertIn("简单方法极速配置：使用 cc-switch 一键配置", html)
         self.assertIn("https://github.com/farion1231/cc-switch/releases", html)
-        self.assertIn("API 地址填写 <code>https://api.sakms.top/</code>", html)
-        self.assertIn("/static/img/codex-guide/image-15.png", html)
+        self.assertIn("https://api.sakms.top/keys", html)
+        self.assertIn("导入到 CCS", html)
+        self.assertIn("出现 <strong>Sak AI</strong>，说明导入成功", html)
+        self.assertIn("点击“启用”，系统会自动配置", html)
+        self.assertIn("这里也可以直接查看账户余额", html)
+        self.assertIn("完成 CC Switch 导入后，重新打开 Codex 即可直接使用", html)
+        self.assertIn("/static/img/codex-guide/image-23.png", html)
+        self.assertIn("/static/img/codex-guide/image-26.png", html)
         self.assertIn("GPT-Plus", html)
         self.assertIn("链动小铺", html)
         self.assertIn("/static/img/codex-guide/image-19.png", html)
@@ -98,7 +105,7 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
     def test_sanitized_guide_assets_are_kept_under_static_directory(self):
         asset_dir = Path("app/static/img/codex-guide")
 
-        for image_name in ("image-5.png", "image-12.png", "image-14.png", "image-15.png", "image-16.png", "image-17.png", "image-18.png", "image-19.png", "image-20.png", "image-21.png", "image-22.png"):
+        for image_name in ("image-5.png", "image-12.png", "image-14.png", "image-16.png", "image-17.png", "image-18.png", "image-19.png", "image-20.png", "image-21.png", "image-22.png", "image-23.png", "image-26.png"):
             self.assertTrue((asset_dir / image_name).exists())
 
         template = Path("app/templates/user/codex_guide.html").read_text(encoding="utf-8")
