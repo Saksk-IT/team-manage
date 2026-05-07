@@ -1,3 +1,4 @@
+{% from "user/client_guides/_guide_switcher.html" import render_guide_switcher %}
 <!doctype html>
 <html lang="zh-CN">
 
@@ -52,6 +53,7 @@
                     <a href="#configureCcSwitch">极速配置</a>
                     <a href="#chapterTrouble">验证排错</a>
                 </nav>
+                {{ render_guide_switcher("codex") }}
             </section>
 
             <article class="codex-doc-article">
@@ -320,21 +322,21 @@
                 <ol class="codex-steps-list">
                     <li>打开 <a href="https://api.sakms.top/keys" target="_blank" rel="noopener noreferrer">https://api.sakms.top/keys</a>，进入 API 密钥页面。</li>
                     <li>在自己的密钥操作区域点击“导入到 CCS”。</li>
+                </ol>
+                <figure class="codex-figure">
+                    <img src="/static/img/codex-guide/image-27.png" alt="API 密钥页面导入到 CCS 按钮" loading="lazy">
+                    <figcaption>图 8：在 API 密钥页面点击“导入到 CCS”。</figcaption>
+                </figure>
+                <ol class="codex-steps-list" start="3">
                     <li>cc-switch 中出现 <strong>Sak AI</strong>，说明导入成功。</li>
                     <li>点击“启用”，系统会自动配置；这里也可以直接查看账户余额。</li>
                     <li>完成 CC Switch 导入后，重新打开 Codex 即可直接使用。</li>
                     <li>注意：一定要重启 Codex。</li>
                 </ol>
-                <div class="codex-image-grid">
-                    <figure class="codex-figure">
-                        <img src="/static/img/codex-guide/image-27.png" alt="API 密钥页面导入到 CCS 按钮" loading="lazy">
-                        <figcaption>图 8：在 API 密钥页面点击“导入到 CCS”。</figcaption>
-                    </figure>
-                    <figure class="codex-figure">
-                        <img src="/static/img/codex-guide/image-26.png" alt="cc-switch 中 Sak AI 导入成功并启用配置" loading="lazy">
-                        <figcaption>图 9：出现 Sak AI 后点击“启用”，也可以在这里查看账户余额。</figcaption>
-                    </figure>
-                </div>
+                <figure class="codex-figure">
+                    <img src="/static/img/codex-guide/image-26.png" alt="cc-switch 中 Sak AI 导入成功并启用配置" loading="lazy">
+                    <figcaption>图 9：出现 Sak AI 后点击“启用”，也可以在这里查看账户余额。</figcaption>
+                </figure>
 
                 <h2 id="installCodex">3.2 备用方式：手动配置 Codex 系列</h2>
                 <p>适用范围：<strong>Codex CLI、Codex VSCode 插件、Codex APP</strong>，三者共用同一份 <code>.codex</code> 配置。</p>

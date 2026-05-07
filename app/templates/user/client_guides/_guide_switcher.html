@@ -1,0 +1,35 @@
+{% macro render_guide_switcher(active) -%}
+<nav class="codex-guide-switcher" aria-label="四个客户端教程互跳入口">
+    <p class="codex-guide-switcher__label">客户端配置教程</p>
+    <div class="codex-client-guide-grid codex-client-guide-grid--all">
+        <a class="codex-client-guide-card codex-client-guide-card--compact{% if active == 'codex' %} codex-client-guide-card--active{% endif %}" href="/codex-guide"{% if active == 'codex' %} aria-current="page"{% endif %}>
+            <i data-lucide="bot"></i>
+            <span>
+                <strong>Codex 配置教程</strong>
+                <small>cc-switch / config.toml / auth.json</small>
+            </span>
+        </a>
+        <a class="codex-client-guide-card codex-client-guide-card--compact{% if active == 'claude' %} codex-client-guide-card--active{% endif %}" href="/claude-code-guide"{% if active == 'claude' %} aria-current="page"{% endif %}>
+            <i data-lucide="terminal-square"></i>
+            <span>
+                <strong>Claude Code 配置教程</strong>
+                <small>cc-switch / settings.json / CLI 验证</small>
+            </span>
+        </a>
+        <a class="codex-client-guide-card codex-client-guide-card--compact{% if active == 'open-code' %} codex-client-guide-card--active{% endif %}" href="/open-code-guide"{% if active == 'open-code' %} aria-current="page"{% endif %}>
+            <i data-lucide="braces"></i>
+            <span>
+                <strong>Open Code 配置教程</strong>
+                <small>opencode.json / /connect 临时切换</small>
+            </span>
+        </a>
+        <a class="codex-client-guide-card codex-client-guide-card--compact{% if active == 'open-claw' %} codex-client-guide-card--active{% endif %}" href="/open-claw-guide"{% if active == 'open-claw' %} aria-current="page"{% endif %}>
+            <i data-lucide="cloud-cog"></i>
+            <span>
+                <strong>Open Claw 配置教程</strong>
+                <small>腾讯云在线配置 / 本地配置</small>
+            </span>
+        </a>
+    </div>
+</nav>
+{%- endmacro %}

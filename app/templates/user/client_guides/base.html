@@ -1,3 +1,4 @@
+{% from "user/client_guides/_guide_switcher.html" import render_guide_switcher %}
 <!doctype html>
 <html lang="zh-CN">
 
@@ -39,6 +40,7 @@
             <section class="codex-doc-hero" aria-labelledby="guideTitle">
                 <p class="codex-doc-base">API base_url: https://api.sakms.top/</p>
                 {% block hero %}{% endblock %}
+                {{ render_guide_switcher(active_guide | default('')) }}
             </section>
 
             <article class="codex-doc-article">

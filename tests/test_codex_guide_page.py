@@ -80,9 +80,12 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("https://api.sakms.top/profile", html)
         self.assertIn("打开额度查询页面", html)
         self.assertIn("支持 gpt-5.5", html)
+        self.assertIn("四个客户端教程互跳入口", html)
+        self.assertIn("Codex 配置教程", html)
         self.assertIn('href="/claude-code-guide"', html)
         self.assertIn('href="/open-code-guide"', html)
         self.assertIn('href="/open-claw-guide"', html)
+        self.assertIn('aria-current="page"', html)
         self.assertNotIn('id="configureClaudeCode"', html)
         self.assertNotIn('id="configureOpenCode"', html)
         self.assertNotIn('id="configureOpenClaw"', html)
@@ -92,6 +95,18 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('class="codex-group-grid"', html)
         self.assertIn('class="codex-alert codex-alert--important codex-alert--standout"', html)
         self.assertIn("分组决定密钥使用的权益来源", html)
+        self.assertLess(
+            html.index("在自己的密钥操作区域点击“导入到 CCS”"),
+            html.index("/static/img/codex-guide/image-27.png"),
+        )
+        self.assertLess(
+            html.index("/static/img/codex-guide/image-27.png"),
+            html.index("出现 <strong>Sak AI</strong>，说明导入成功"),
+        )
+        self.assertLess(
+            html.index("注意：一定要重启 Codex"),
+            html.index("/static/img/codex-guide/image-26.png"),
+        )
 
     def test_redeem_page_links_to_codex_guide(self):
         template = Path("app/templates/user/redeem.html").read_text(encoding="utf-8")
@@ -158,6 +173,11 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
                 html = response.body.decode("utf-8")
 
                 self.assertIn('href="/codex-guide"', html)
+                self.assertIn('href="/claude-code-guide"', html)
+                self.assertIn('href="/open-code-guide"', html)
+                self.assertIn('href="/open-claw-guide"', html)
+                self.assertIn("四个客户端教程互跳入口", html)
+                self.assertIn('aria-current="page"', html)
                 self.assertIn("先创建 Key", html)
                 for expected in expected_values:
                     self.assertIn(expected, html)
@@ -168,6 +188,8 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("width: min(100%, 1180px);", css)
         self.assertIn("width: min(100%, 1280px);", css)
         self.assertIn(".codex-client-guide-grid", css)
+        self.assertIn(".codex-client-guide-grid--all", css)
+        self.assertIn(".codex-client-guide-card--active", css)
 
 
 if __name__ == "__main__":

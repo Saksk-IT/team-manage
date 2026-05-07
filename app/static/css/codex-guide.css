@@ -623,6 +623,24 @@ body {
     margin: 1rem 0;
 }
 
+.codex-guide-switcher {
+    display: grid;
+    gap: 0.7rem;
+    margin-top: 0.35rem;
+}
+
+.codex-guide-switcher__label {
+    margin: 0;
+    color: var(--doc-muted);
+    font-size: 0.9rem;
+    font-weight: 900;
+}
+
+.codex-client-guide-grid--all {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0;
+}
+
 .codex-client-guide-card {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -637,6 +655,17 @@ body {
     text-decoration: none;
     box-shadow: 0 16px 38px rgba(38, 84, 74, 0.08);
     transition: 0.18s ease;
+}
+
+.codex-client-guide-card--compact {
+    min-height: 96px;
+    padding: 0.88rem;
+}
+
+.codex-client-guide-card--active {
+    border-color: rgba(13, 162, 132, 0.62);
+    background: linear-gradient(135deg, #e8faf5, #ffffff);
+    box-shadow: 0 18px 42px rgba(13, 162, 132, 0.16);
 }
 
 .codex-client-guide-card:hover {
@@ -716,6 +745,7 @@ body {
 
     .codex-doc-jump,
     .codex-client-guide-grid,
+    .codex-client-guide-grid--all,
     .codex-group-grid,
     .codex-billing-grid,
     .codex-support-grid,
