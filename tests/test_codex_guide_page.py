@@ -61,12 +61,19 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("https://api.sakms.top/keys", html)
         self.assertIn("导入到 CCS", html)
         self.assertIn("出现 <strong>Sak AI</strong>，说明导入成功", html)
+        self.assertIn("点击箭头指向的编辑按钮", html)
+        self.assertIn("打开“完整 URL”按钮", html)
         self.assertIn("点击“启用”，系统会自动配置", html)
         self.assertIn("这里也可以直接查看账户余额", html)
         self.assertIn("完成 CC Switch 导入后，重新打开 Codex 即可直接使用", html)
+        self.assertIn("如果需要输入 API 密钥", html)
+        self.assertIn("从网站复制自己的 API Key 后直接粘贴进去", html)
         self.assertIn("注意：一定要重启 Codex", html)
         self.assertIn("/static/img/codex-guide/image-27.png", html)
+        self.assertIn("/static/img/codex-guide/image-28.png", html)
+        self.assertIn("/static/img/codex-guide/image-29.png", html)
         self.assertIn("/static/img/codex-guide/image-26.png", html)
+        self.assertIn("/static/img/codex-guide/image-30.png", html)
         self.assertIn("GPT-Plus", html)
         self.assertIn("链动小铺", html)
         self.assertIn("/static/img/codex-guide/image-19.png", html)
@@ -104,8 +111,32 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
             html.index("出现 <strong>Sak AI</strong>，说明导入成功"),
         )
         self.assertLess(
+            html.index("点击箭头指向的编辑按钮"),
+            html.index("/static/img/codex-guide/image-28.png"),
+        )
+        self.assertLess(
+            html.index("/static/img/codex-guide/image-28.png"),
+            html.index("打开“完整 URL”按钮"),
+        )
+        self.assertLess(
+            html.index("打开“完整 URL”按钮"),
+            html.index("/static/img/codex-guide/image-29.png"),
+        )
+        self.assertLess(
+            html.index("/static/img/codex-guide/image-29.png"),
+            html.index("点击“启用”，系统会自动配置"),
+        )
+        self.assertLess(
             html.index("注意：一定要重启 Codex"),
             html.index("/static/img/codex-guide/image-26.png"),
+        )
+        self.assertLess(
+            html.index("/static/img/codex-guide/image-26.png"),
+            html.index("如果需要输入 API 密钥"),
+        )
+        self.assertLess(
+            html.index("如果需要输入 API 密钥"),
+            html.index("/static/img/codex-guide/image-30.png"),
         )
 
     def test_redeem_page_links_to_codex_guide(self):
@@ -121,7 +152,7 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
     def test_sanitized_guide_assets_are_kept_under_static_directory(self):
         asset_dir = Path("app/static/img/codex-guide")
 
-        for image_name in ("image-5.png", "image-12.png", "image-14.png", "image-16.png", "image-17.png", "image-18.png", "image-19.png", "image-20.png", "image-21.png", "image-22.png", "image-23.png", "image-26.png", "image-27.png"):
+        for image_name in ("image-5.png", "image-12.png", "image-14.png", "image-16.png", "image-17.png", "image-18.png", "image-19.png", "image-20.png", "image-21.png", "image-22.png", "image-23.png", "image-26.png", "image-27.png", "image-28.png", "image-29.png", "image-30.png"):
             self.assertTrue((asset_dir / image_name).exists())
 
         template = Path("app/templates/user/codex_guide.html").read_text(encoding="utf-8")

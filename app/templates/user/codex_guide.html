@@ -312,33 +312,6 @@
                 <section class="codex-callout">
                     <p><strong>说明：</strong>新手优先使用 cc-switch 一键导入配置，这是最简单的极速配置方法；手动修改 <code>config.toml</code> / <code>auth.json</code> 作为备用方式保留。Claude Code、Open Code、Open Claw 已拆成独立静态教程页，配置前仍需先完成第二章创建 API Key。</p>
                 </section>
-
-                <h2 id="configureCcSwitch">3.1 简单方法极速配置：使用 cc-switch 一键配置</h2>
-                <p>新手可以使用 cc-switch 一键配置秘钥。先下载并打开 cc-switch，然后在 API 密钥页面直接导入配置。</p>
-                <a class="codex-link-card" href="https://github.com/farion1231/cc-switch/releases" target="_blank" rel="noopener noreferrer">
-                    <i data-lucide="download-cloud"></i>
-                    <span>cc-switch releases</span>
-                </a>
-                <ol class="codex-steps-list">
-                    <li>打开 <a href="https://api.sakms.top/keys" target="_blank" rel="noopener noreferrer">https://api.sakms.top/keys</a>，进入 API 密钥页面。</li>
-                    <li>在自己的密钥操作区域点击“导入到 CCS”。</li>
-                </ol>
-                <figure class="codex-figure">
-                    <img src="/static/img/codex-guide/image-27.png" alt="API 密钥页面导入到 CCS 按钮" loading="lazy">
-                    <figcaption>图 8：在 API 密钥页面点击“导入到 CCS”。</figcaption>
-                </figure>
-                <ol class="codex-steps-list" start="3">
-                    <li>cc-switch 中出现 <strong>Sak AI</strong>，说明导入成功。</li>
-                    <li>点击“启用”，系统会自动配置；这里也可以直接查看账户余额。</li>
-                    <li>完成 CC Switch 导入后，重新打开 Codex 即可直接使用。</li>
-                    <li>注意：一定要重启 Codex。</li>
-                </ol>
-                <figure class="codex-figure">
-                    <img src="/static/img/codex-guide/image-26.png" alt="cc-switch 中 Sak AI 导入成功并启用配置" loading="lazy">
-                    <figcaption>图 9：出现 Sak AI 后点击“启用”，也可以在这里查看账户余额。</figcaption>
-                </figure>
-
-                <h2 id="installCodex">3.2 备用方式：手动配置 Codex 系列</h2>
                 <p>适用范围：<strong>Codex CLI、Codex VSCode 插件、Codex APP</strong>，三者共用同一份 <code>.codex</code> 配置。</p>
                 <div class="codex-alert codex-alert--important codex-alert--standout">
                     <i data-lucide="badge-alert"></i>
@@ -353,8 +326,56 @@
                 </a>
                 <figure class="codex-figure">
                     <img src="/static/img/codex-guide/image-6.png" alt="OpenAI Codex 下载页面截图" loading="lazy">
-                    <figcaption>图 10：点击页面中的下载入口获取 Codex。</figcaption>
+                    <figcaption>图 8：点击页面中的下载入口获取 Codex。</figcaption>
                 </figure>
+
+                <h2 id="configureCcSwitch">3.1 简单方法极速配置：使用 cc-switch 一键配置</h2>
+                <p>新手可以使用 cc-switch 一键配置秘钥。先下载并打开 cc-switch，然后在 API 密钥页面直接导入配置。</p>
+                <a class="codex-link-card" href="https://github.com/farion1231/cc-switch/releases" target="_blank" rel="noopener noreferrer">
+                    <i data-lucide="download-cloud"></i>
+                    <span>cc-switch releases</span>
+                </a>
+                <ol class="codex-steps-list">
+                    <li>打开 <a href="https://api.sakms.top/keys" target="_blank" rel="noopener noreferrer">https://api.sakms.top/keys</a>，进入 API 密钥页面。</li>
+                    <li>在自己的密钥操作区域点击“导入到 CCS”。</li>
+                </ol>
+                <figure class="codex-figure">
+                    <img src="/static/img/codex-guide/image-27.png" alt="API 密钥页面导入到 CCS 按钮" loading="lazy">
+                    <figcaption>图 9：在 API 密钥页面点击“导入到 CCS”。</figcaption>
+                </figure>
+                <ol class="codex-steps-list" start="3">
+                    <li>cc-switch 中出现 <strong>Sak AI</strong>，说明导入成功。</li>
+                    <li>点击箭头指向的编辑按钮。</li>
+                </ol>
+                <figure class="codex-figure">
+                    <img src="/static/img/codex-guide/image-28.png" alt="cc-switch 中 Sak AI 配置的编辑按钮" loading="lazy">
+                    <figcaption>图 10：导入后先点击编辑按钮检查配置。</figcaption>
+                </figure>
+                <ol class="codex-steps-list" start="5">
+                    <li>打开“完整 URL”按钮。</li>
+                </ol>
+                <figure class="codex-figure">
+                    <img src="/static/img/codex-guide/image-29.png" alt="cc-switch 完整 URL 开关" loading="lazy">
+                    <figcaption>图 11：确认“完整 URL”开关已打开。</figcaption>
+                </figure>
+                <ol class="codex-steps-list" start="6">
+                    <li>点击“启用”，系统会自动配置；这里也可以直接查看账户余额。</li>
+                    <li>注意：一定要重启 Codex。</li>
+                </ol>
+                <figure class="codex-figure">
+                    <img src="/static/img/codex-guide/image-26.png" alt="cc-switch 中 Sak AI 导入成功并启用配置" loading="lazy">
+                    <figcaption>图 12：出现 Sak AI 后点击“启用”，也可以在这里查看账户余额。</figcaption>
+                </figure>
+                <ol class="codex-steps-list" start="8">
+                    <li>完成 CC Switch 导入后，重新打开 Codex 即可直接使用；如果需要输入 API 密钥，则从网站复制自己的 API Key 后直接粘贴进去。</li>
+                </ol>
+                <figure class="codex-figure">
+                    <img src="/static/img/codex-guide/image-30.png" alt="Codex 中输入 API 密钥的提示" loading="lazy">
+                    <figcaption>图 13：需要输入 API Key 时，粘贴自己在中转后台创建的密钥。</figcaption>
+                </figure>
+
+                <h2 id="installCodex">3.2 备用方式：手动配置 Codex 系列</h2>
+                <p>如果 cc-switch 不方便使用，可以手动修改 <code>config.toml</code> / <code>auth.json</code>。手动配置同样适用于 <strong>Codex CLI、Codex VSCode 插件、Codex APP</strong>。</p>
 
                 <h3 id="configureCodex">3.2.1 定位 Codex 配置目录</h3>
                 <div class="codex-alert codex-alert--important codex-alert--standout">
@@ -398,11 +419,11 @@
                 <div class="codex-image-grid">
                     <figure class="codex-figure">
                         <img src="/static/img/codex-guide/image-7.png" alt="Mac 访达中找到 .codex 文件夹" loading="lazy">
-                        <figcaption>图 11：Mac 在用户目录中找到 <code>.codex</code>。</figcaption>
+                        <figcaption>图 14：Mac 在用户目录中找到 <code>.codex</code>。</figcaption>
                     </figure>
                     <figure class="codex-figure">
                         <img src="/static/img/codex-guide/image-8.png" alt=".codex 文件夹中的 config.toml 和 auth.json" loading="lazy">
-                        <figcaption>图 12：确认存在 <code>config.toml</code> 和 <code>auth.json</code>。</figcaption>
+                        <figcaption>图 15：确认存在 <code>config.toml</code> 和 <code>auth.json</code>。</figcaption>
                     </figure>
                 </div>
 
@@ -415,7 +436,7 @@
                 </ul>
                 <figure class="codex-figure">
                     <img src="/static/img/codex-guide/image-21.png" alt="Codex 配置内容粘贴示例，密钥已脱敏" loading="lazy">
-                    <figcaption>图 13：配置示例，截图中的 API Key 已脱敏。请使用你自己的密钥，不要复制教程截图。</figcaption>
+                    <figcaption>图 16：配置示例，截图中的 API Key 已脱敏。请使用你自己的密钥，不要复制教程截图。</figcaption>
                 </figure>
                 <h3>3.2.3 验证 Codex</h3>
                 <ul class="codex-steps-list">
@@ -454,15 +475,15 @@
                 <div class="codex-image-grid codex-image-grid--three">
                     <figure class="codex-figure">
                         <img src="/static/img/codex-guide/image-10.png" alt="Codex 选择换种方式登录" loading="lazy">
-                        <figcaption>图 14：选择“换种方式登录”。</figcaption>
+                        <figcaption>图 17：选择“换种方式登录”。</figcaption>
                     </figure>
                     <figure class="codex-figure">
                         <img src="/static/img/codex-guide/image-11.png" alt="Codex API 登录输入框" loading="lazy">
-                        <figcaption>图 15：选择 API 登录并粘贴密钥。</figcaption>
+                        <figcaption>图 18：选择 API 登录并粘贴密钥。</figcaption>
                     </figure>
                     <figure class="codex-figure">
                         <img src="/static/img/codex-guide/image-12.png" alt="中转服务 API 密钥复制位置，密钥已脱敏" loading="lazy">
-                        <figcaption>图 16：从中转后台复制你自己的 API Key。</figcaption>
+                        <figcaption>图 19：从中转后台复制你自己的 API Key。</figcaption>
                     </figure>
                 </div>
                 <hr>
@@ -538,7 +559,7 @@
                 </div>
                 <figure class="codex-figure codex-error-figure">
                     <img src="/static/img/codex-guide/image-14.png" alt="Codex 登录时报 401 Incorrect API key，密钥已脱敏" loading="lazy">
-                    <figcaption>图 17：错误示例，API Key 片段已脱敏。</figcaption>
+                    <figcaption>图 20：错误示例，API Key 片段已脱敏。</figcaption>
                 </figure>
 
                 <h1 id="faq">第五章 FAQ</h1>
