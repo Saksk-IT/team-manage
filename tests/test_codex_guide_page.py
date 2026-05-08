@@ -81,7 +81,8 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("/static/img/codex-guide/image-17.png", html)
         self.assertIn("/static/img/codex-guide/image-18.png", html)
         self.assertIn("/static/img/codex-guide/image-20.png", html)
-        self.assertIn("/static/img/codex-guide/image-21.png", html)
+        self.assertIn("链动小铺额度兑换码选“GPT”或订阅分组", html)
+        self.assertIn("/static/img/codex-guide/image-31.png", html)
         self.assertIn("codex-provider-sync/releases", html)
         self.assertIn("429 Too Many Requests", html)
         self.assertIn("https://api.sakms.top/profile", html)
@@ -152,7 +153,7 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
     def test_sanitized_guide_assets_are_kept_under_static_directory(self):
         asset_dir = Path("app/static/img/codex-guide")
 
-        for image_name in ("image-5.png", "image-12.png", "image-14.png", "image-16.png", "image-17.png", "image-18.png", "image-19.png", "image-20.png", "image-21.png", "image-22.png", "image-23.png", "image-26.png", "image-27.png", "image-28.png", "image-29.png", "image-30.png"):
+        for image_name in ("image-5.png", "image-12.png", "image-14.png", "image-16.png", "image-17.png", "image-18.png", "image-19.png", "image-20.png", "image-22.png", "image-23.png", "image-26.png", "image-27.png", "image-28.png", "image-29.png", "image-30.png", "image-31.png"):
             self.assertTrue((asset_dir / image_name).exists())
 
         template = Path("app/templates/user/codex_guide.html").read_text(encoding="utf-8")
