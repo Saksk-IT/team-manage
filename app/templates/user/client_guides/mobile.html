@@ -1,0 +1,135 @@
+{% extends "user/client_guides/base.html" %}
+
+{% block title %}移动端配置教程{% endblock %}
+{% set active_guide = "mobile" %}
+
+{% block hero %}
+<h1 id="guideTitle">移动端配置教程</h1>
+<p class="codex-doc-lead">使用 Chatbox 在 iOS、Android 等移动设备接入 sak API 服务，从下载应用、添加模型提供方到完成模型选择，按步骤配置即可。</p>
+<div class="codex-doc-badges" aria-label="教程要点">
+    <span><i data-lucide="download"></i> 下载 Chatbox</span>
+    <span><i data-lucide="smartphone"></i> 手机端配置</span>
+    <span><i data-lucide="plug-zap"></i> OpenAI response API 兼容</span>
+    <span><i data-lucide="messages-square"></i> 新对话切换模型</span>
+</div>
+<nav class="codex-doc-jump" aria-label="章节快捷入口">
+    <a href="#mobileDownload">下载应用</a>
+    <a href="#mobileConfig">配置步骤</a>
+    <a href="#mobileCheck">完成检查</a>
+    <a href="#mobileUse">开始使用</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<h1>移动端完整接入流程</h1>
+<section class="codex-callout codex-callout--important">
+    <p><strong>开始前请先准备自己的 API Key：</strong>请先在 <a href="/codex-guide#chapterKey">Codex 总教程第二章</a> 完成中转账户注册、权益兑换与 API Key 创建，再回到本页做移动端接入。</p>
+</section>
+
+<h2 id="mobileDownload">1. 前往官网下载 Chatbox</h2>
+<p>浏览器打开 Chatbox 官网 <a href="https://chatboxai.app/zh" target="_blank" rel="noopener noreferrer">https://chatboxai.app/zh</a>，选择适配你设备的版本。该应用支持 iOS、Android 等移动端平台。</p>
+<figure class="codex-figure">
+    <img src="/static/img/codex-guide/image-32.png" alt="Chatbox 官网下载页面" loading="lazy">
+    <figcaption>图 1：前往 Chatbox 官网下载移动端应用。</figcaption>
+</figure>
+
+<h2>2. 确认安装后的应用界面</h2>
+<p>下载并安装完成后，打开应用，确认界面与下图类似，再开始添加自定义模型提供方。</p>
+<figure class="codex-figure">
+    <img src="/static/img/codex-guide/image-33.png" alt="移动端 Chatbox 应用首页" loading="lazy">
+    <figcaption>图 2：安装完成后的 Chatbox 首页示意。</figcaption>
+</figure>
+
+<h2 id="mobileConfig">3. 配置步骤</h2>
+<ol class="codex-steps-list">
+    <li>打开应用后，点击左上角菜单按钮。</li>
+    <li>进入“设置”。</li>
+    <li>打开“模型提供方”。</li>
+    <li>点击“添加”，新建一个自定义提供方。</li>
+    <li>API 模式选择 <strong>OpenAI response API 兼容</strong>。</li>
+    <li>按下方说明填写 API 主机、API 密钥，并获取模型列表。</li>
+</ol>
+
+<div class="codex-image-grid codex-image-grid--three">
+    <figure class="codex-figure">
+        <img src="/static/img/codex-guide/image-34.png" alt="点击移动端左上角菜单" loading="lazy">
+        <figcaption>图 3：打开左上角菜单。</figcaption>
+    </figure>
+    <figure class="codex-figure">
+        <img src="/static/img/codex-guide/image-35.png" alt="点击设置入口" loading="lazy">
+        <figcaption>图 4：进入设置页。</figcaption>
+    </figure>
+    <figure class="codex-figure">
+        <img src="/static/img/codex-guide/image-36.png" alt="选择模型提供方" loading="lazy">
+        <figcaption>图 5：打开模型提供方配置。</figcaption>
+    </figure>
+    <figure class="codex-figure">
+        <img src="/static/img/codex-guide/image-37.png" alt="添加新的模型提供方" loading="lazy">
+        <figcaption>图 6：点击添加。</figcaption>
+    </figure>
+    <figure class="codex-figure">
+        <img src="/static/img/codex-guide/image-38.png" alt="选择 OpenAI response API 兼容模式" loading="lazy">
+        <figcaption>图 7：API 模式选择 OpenAI response API 兼容。</figcaption>
+    </figure>
+    <figure class="codex-figure">
+        <img src="/static/img/codex-guide/image-39.png" alt="移动端填写 API 配置" loading="lazy">
+        <figcaption>图 8：进入 API 配置页。</figcaption>
+    </figure>
+</div>
+
+<section class="codex-callout">
+    <p><strong>填写规则：</strong>API 主机填写 <code>https://api.sakms.top/</code>；API 密钥请前往 <a href="https://api.sakms.top/keys" target="_blank" rel="noopener noreferrer">https://api.sakms.top/keys</a> 创建并复制你自己的 Key。</p>
+</section>
+
+<figure class="codex-figure codex-config-result">
+    <img src="/static/img/codex-guide/image-40.png" alt="从中转后台复制 API 密钥" loading="lazy">
+    <figcaption>图 9：在中转后台复制自己的 API 密钥后粘贴到移动端配置里。</figcaption>
+</figure>
+
+<h3>3.1 获取并选择模型</h3>
+<ol class="codex-steps-list">
+    <li>点击“获取”拉取当前可用模型列表。</li>
+    <li>在模型列表中点击右侧加号，添加你要使用的主流模型。</li>
+    <li>回到配置页检查 API 主机、API 密钥和模型是否都已保存。</li>
+</ol>
+
+<div class="codex-image-grid">
+    <figure class="codex-figure">
+        <img src="/static/img/codex-guide/image-41.png" alt="点击获取模型列表" loading="lazy">
+        <figcaption>图 10：点击获取模型。</figcaption>
+    </figure>
+    <figure class="codex-figure">
+        <img src="/static/img/codex-guide/image-42.png" alt="在模型列表中添加主流模型" loading="lazy">
+        <figcaption>图 11：点击右侧加号添加模型。</figcaption>
+    </figure>
+    <figure class="codex-figure">
+        <img src="/static/img/codex-guide/image-43.png" alt="检查移动端配置是否完成" loading="lazy">
+        <figcaption>图 12：确认主要配置项都已完成。</figcaption>
+    </figure>
+</div>
+
+<h2 id="mobileCheck">4. 完成检查</h2>
+<ul class="codex-checklist">
+    <li><i data-lucide="check-circle-2"></i><span>API 模式已选择 <code>OpenAI response API 兼容</code>。</span></li>
+    <li><i data-lucide="check-circle-2"></i><span>API 主机已填写 <code>https://api.sakms.top/</code>。</span></li>
+    <li><i data-lucide="check-circle-2"></i><span>API 密钥来自你自己的 <a href="https://api.sakms.top/keys" target="_blank" rel="noopener noreferrer">中转后台</a>，不是教程示例。</span></li>
+    <li><i data-lucide="check-circle-2"></i><span>至少已添加一个可用模型，避免新建对话后没有模型可选。</span></li>
+</ul>
+
+<h2 id="mobileUse">5. 开始使用</h2>
+<p>配置完成后，新建一个对话，在右下角入口中切换到刚添加的模型即可开始使用。</p>
+<div class="codex-image-grid">
+    <figure class="codex-figure">
+        <img src="/static/img/codex-guide/image-44.png" alt="打开移动端新对话并点击右下角" loading="lazy">
+        <figcaption>图 13：新建对话后点击右下角模型入口。</figcaption>
+    </figure>
+    <figure class="codex-figure">
+        <img src="/static/img/codex-guide/image-45.png" alt="选择自己配置的移动端模型" loading="lazy">
+        <figcaption>图 14：下滑找到自己配置的模型并点击使用。</figcaption>
+    </figure>
+    <figure class="codex-figure">
+        <img src="/static/img/codex-guide/image-46.png" alt="移动端模型配置成功后的界面" loading="lazy">
+        <figcaption>图 15：配置成功后即可正常使用。</figcaption>
+    </figure>
+</div>
+{% endblock %}

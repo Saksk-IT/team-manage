@@ -107,6 +107,20 @@ async def open_claw_guide_page(request: Request):
     )
 
 
+@router.get("/mobile-guide", response_class=HTMLResponse)
+async def mobile_guide_page(request: Request):
+    """移动端配置教程页面。"""
+    from app.main import templates
+
+    return templates.TemplateResponse(
+        request,
+        "user/client_guides/mobile.html",
+        {
+            "request": request,
+        }
+    )
+
+
 @router.get("/", response_class=HTMLResponse)
 async def redeem_page(
     request: Request,

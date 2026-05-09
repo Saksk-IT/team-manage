@@ -6,6 +6,7 @@ from starlette.requests import Request
 from app.routes.user import (
     claude_code_guide_page,
     codex_guide_page,
+    mobile_guide_page,
     open_claw_guide_page,
     open_code_guide_page,
 )
@@ -22,7 +23,7 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Codex API 登录对接教程", html)
         self.assertIn("兑换中转 API Key，并接入 Codex", html)
         self.assertIn("手动接入 Codex", html)
-        self.assertIn("Claude Code、Open Code、Open Claw 已拆为独立教程页", html)
+        self.assertIn("Claude Code、Open Code、Open Claw、移动端 已拆为独立教程页", html)
         self.assertIn("目前 GPT Team 已全部失效", html)
         self.assertIn("纯血 Plus 号池", html)
         self.assertIn("Image 2.0 生图", html)
@@ -73,11 +74,12 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("https://api.sakms.top/profile", html)
         self.assertIn("打开额度查询页面", html)
         self.assertIn("支持 gpt-5.5", html)
-        self.assertIn("四个客户端教程互跳入口", html)
+        self.assertIn("客户端教程互跳入口", html)
         self.assertIn("Codex 配置教程", html)
         self.assertIn('href="/claude-code-guide"', html)
         self.assertIn('href="/open-code-guide"', html)
         self.assertIn('href="/open-claw-guide"', html)
+        self.assertIn('href="/mobile-guide"', html)
         self.assertIn('aria-current="page"', html)
         self.assertNotIn('id="configureClaudeCode"', html)
         self.assertNotIn('id="configureOpenCode"', html)
@@ -107,7 +109,39 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
     def test_sanitized_guide_assets_are_kept_under_static_directory(self):
         asset_dir = Path("app/static/img/codex-guide")
 
-        for image_name in ("image-5.png", "image-12.png", "image-14.png", "image-16.png", "image-17.png", "image-18.png", "image-19.png", "image-20.png", "image-22.png", "image-23.png", "image-26.png", "image-27.png", "image-28.png", "image-29.png", "image-30.png", "image-31.png"):
+        for image_name in (
+            "image-5.png",
+            "image-12.png",
+            "image-14.png",
+            "image-16.png",
+            "image-17.png",
+            "image-18.png",
+            "image-19.png",
+            "image-20.png",
+            "image-22.png",
+            "image-23.png",
+            "image-26.png",
+            "image-27.png",
+            "image-28.png",
+            "image-29.png",
+            "image-30.png",
+            "image-31.png",
+            "image-32.png",
+            "image-33.png",
+            "image-34.png",
+            "image-35.png",
+            "image-36.png",
+            "image-37.png",
+            "image-38.png",
+            "image-39.png",
+            "image-40.png",
+            "image-41.png",
+            "image-42.png",
+            "image-43.png",
+            "image-44.png",
+            "image-45.png",
+            "image-46.png",
+        ):
             self.assertTrue((asset_dir / image_name).exists())
 
         template = Path("app/templates/user/codex_guide.html").read_text(encoding="utf-8")
@@ -150,6 +184,17 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
                     "腾讯云在线配置",
                 ),
             ),
+            (
+                mobile_guide_page,
+                "/mobile-guide",
+                (
+                    "移动端配置教程",
+                    "Chatbox",
+                    "OpenAI response API 兼容",
+                    "https://chatboxai.app/zh",
+                    "/static/img/codex-guide/image-32.png",
+                ),
+            ),
         )
 
         for view_func, path, expected_values in cases:
@@ -161,7 +206,8 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn('href="/claude-code-guide"', html)
                 self.assertIn('href="/open-code-guide"', html)
                 self.assertIn('href="/open-claw-guide"', html)
-                self.assertIn("四个客户端教程互跳入口", html)
+                self.assertIn('href="/mobile-guide"', html)
+                self.assertIn("客户端教程互跳入口", html)
                 self.assertIn('aria-current="page"', html)
                 self.assertIn("先创建 Key", html)
                 for expected in expected_values:
@@ -179,6 +225,7 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(".codex-client-guide-grid", css)
         self.assertIn(".codex-client-guide-grid--all", css)
         self.assertIn(".codex-client-guide-card--active", css)
+        self.assertIn("grid-template-columns: repeat(5, minmax(0, 1fr));", css)
 
 
 if __name__ == "__main__":

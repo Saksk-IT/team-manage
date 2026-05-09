@@ -1,5 +1,5 @@
 {% macro render_guide_switcher(active) -%}
-<nav class="codex-guide-switcher" aria-label="四个客户端教程互跳入口">
+<nav class="codex-guide-switcher" aria-label="客户端教程互跳入口">
     <p class="codex-guide-switcher__label">客户端配置教程</p>
     <div class="codex-client-guide-grid codex-client-guide-grid--all">
         <a class="codex-client-guide-card codex-client-guide-card--compact{% if active == 'codex' %} codex-client-guide-card--active{% endif %}" href="/codex-guide"{% if active == 'codex' %} aria-current="page"{% endif %}>
@@ -28,6 +28,13 @@
             <span>
                 <strong>Open Claw 配置教程</strong>
                 <small>腾讯云在线配置 / 本地配置</small>
+            </span>
+        </a>
+        <a class="codex-client-guide-card codex-client-guide-card--compact{% if active == 'mobile' %} codex-client-guide-card--active{% endif %}" href="/mobile-guide"{% if active == 'mobile' %} aria-current="page"{% endif %}>
+            <i data-lucide="smartphone"></i>
+            <span>
+                <strong>移动端配置教程</strong>
+                <small>Chatbox / 手机配置 / 模型切换</small>
             </span>
         </a>
     </div>
