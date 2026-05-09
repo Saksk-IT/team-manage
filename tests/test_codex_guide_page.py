@@ -21,7 +21,7 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("Codex API 登录对接教程", html)
         self.assertIn("兑换中转 API Key，并接入 Codex", html)
-        self.assertIn("cc-switch 极速配置", html)
+        self.assertIn("手动接入 Codex", html)
         self.assertIn("Claude Code、Open Code、Open Claw 已拆为独立教程页", html)
         self.assertIn("目前 GPT Team 已全部失效", html)
         self.assertIn("纯血 Plus 号池", html)
@@ -56,24 +56,9 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("请确保 Codex 进程没有在运行", html)
         self.assertIn("否则配置可能不会生效", html)
         self.assertIn("右键选择“记事本”打开", html)
-        self.assertIn("简单方法极速配置：使用 cc-switch 一键配置", html)
-        self.assertIn("https://github.com/farion1231/cc-switch/releases", html)
         self.assertIn("https://api.sakms.top/keys", html)
-        self.assertIn("导入到 CCS", html)
-        self.assertIn("出现 <strong>Sak AI</strong>，说明导入成功", html)
-        self.assertIn("点击箭头指向的编辑按钮", html)
-        self.assertIn("打开“完整 URL”按钮", html)
-        self.assertIn("点击“启用”，系统会自动配置", html)
-        self.assertIn("这里也可以直接查看账户余额", html)
-        self.assertIn("完成 CC Switch 导入后，重新打开 Codex 即可直接使用", html)
-        self.assertIn("如果需要输入 API 密钥", html)
-        self.assertIn("从网站复制自己的 API Key 后直接粘贴进去", html)
-        self.assertIn("注意：一定要重启 Codex", html)
-        self.assertIn("/static/img/codex-guide/image-27.png", html)
-        self.assertIn("/static/img/codex-guide/image-28.png", html)
-        self.assertIn("/static/img/codex-guide/image-29.png", html)
-        self.assertIn("/static/img/codex-guide/image-26.png", html)
-        self.assertIn("/static/img/codex-guide/image-30.png", html)
+        self.assertIn("3.1 手动配置 Codex 系列", html)
+        self.assertIn("按第二章“使用密钥”弹窗中的 Codex CLI 接入配置", html)
         self.assertIn("GPT-Plus", html)
         self.assertIn("链动小铺", html)
         self.assertIn("/static/img/codex-guide/image-19.png", html)
@@ -103,42 +88,11 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('class="codex-group-grid"', html)
         self.assertIn('class="codex-alert codex-alert--important codex-alert--standout"', html)
         self.assertIn("分组决定密钥使用的权益来源", html)
-        self.assertLess(
-            html.index("在自己的密钥操作区域点击“导入到 CCS”"),
-            html.index("/static/img/codex-guide/image-27.png"),
-        )
-        self.assertLess(
-            html.index("/static/img/codex-guide/image-27.png"),
-            html.index("出现 <strong>Sak AI</strong>，说明导入成功"),
-        )
-        self.assertLess(
-            html.index("点击箭头指向的编辑按钮"),
-            html.index("/static/img/codex-guide/image-28.png"),
-        )
-        self.assertLess(
-            html.index("/static/img/codex-guide/image-28.png"),
-            html.index("打开“完整 URL”按钮"),
-        )
-        self.assertLess(
-            html.index("打开“完整 URL”按钮"),
-            html.index("/static/img/codex-guide/image-29.png"),
-        )
-        self.assertLess(
-            html.index("/static/img/codex-guide/image-29.png"),
-            html.index("点击“启用”，系统会自动配置"),
-        )
-        self.assertLess(
-            html.index("注意：一定要重启 Codex"),
-            html.index("/static/img/codex-guide/image-26.png"),
-        )
-        self.assertLess(
-            html.index("/static/img/codex-guide/image-26.png"),
-            html.index("如果需要输入 API 密钥"),
-        )
-        self.assertLess(
-            html.index("如果需要输入 API 密钥"),
-            html.index("/static/img/codex-guide/image-30.png"),
-        )
+        self.assertNotIn("cc-switch", html)
+        self.assertNotIn("CC Switch", html)
+        self.assertNotIn("导入到 CCS", html)
+        self.assertNotIn("Sak AI", html)
+        self.assertNotIn("完整 URL", html)
 
     def test_redeem_page_links_to_codex_guide(self):
         template = Path("app/templates/user/redeem.html").read_text(encoding="utf-8")
@@ -169,10 +123,9 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
                 (
                     "Claude Code 配置教程",
                     "从第一步开始：注册、兑换、创建 Key",
-                    "cc-switch 一键导入 Claude Code",
+                    "通过 <code>settings.json</code> 或系统环境变量手动接入 Claude Code",
                     "ANTHROPIC_BASE_URL",
                     "/static/img/codex-guide/image-22.png",
-                    "/static/img/codex-guide/image-27.png",
                 ),
             ),
             (
@@ -213,6 +166,10 @@ class CodexGuidePageTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("先创建 Key", html)
                 for expected in expected_values:
                     self.assertIn(expected, html)
+                if path in ("/codex-guide", "/claude-code-guide"):
+                    self.assertNotIn("cc-switch", html)
+                    self.assertNotIn("导入到 CCS", html)
+                    self.assertNotIn("Sak AI", html)
 
     def test_static_guide_default_width_is_wider(self):
         css = Path("app/static/css/codex-guide.css").read_text(encoding="utf-8")

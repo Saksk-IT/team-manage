@@ -5,16 +5,15 @@
 
 {% block hero %}
 <h1 id="guideTitle">Claude Code 配置教程</h1>
-<p class="codex-doc-lead">从注册中转账户、兑换额度、创建 API Key，到使用 cc-switch 一键导入 Claude Code；手动环境变量和 <code>settings.json</code> 方式作为备用方案。</p>
+<p class="codex-doc-lead">从注册中转账户、兑换额度、创建 API Key，到通过 <code>settings.json</code> 或系统环境变量手动接入 Claude Code。</p>
 <div class="codex-doc-badges" aria-label="教程要点">
     <span><i data-lucide="user-plus"></i> 注册中转</span>
     <span><i data-lucide="ticket-check"></i> 兑换额度</span>
-    <span><i data-lucide="toggle-right"></i> cc-switch 导入</span>
+    <span><i data-lucide="settings"></i> 手动配置</span>
     <span><i data-lucide="terminal"></i> claude 验证</span>
 </div>
 <nav class="codex-doc-jump" aria-label="章节快捷入口">
     <a href="#claudeStart">从零开始</a>
-    <a href="#claudeCcSwitch">一键导入</a>
     <a href="#claudeManual">手动配置</a>
     <a href="#claudeVerify">验证排错</a>
 </nav>
@@ -39,37 +38,10 @@
     <figcaption>Claude Code 配置示例，截图中的 API Key 已脱敏。请以自己的“使用密钥”弹窗为准。</figcaption>
 </figure>
 
-<h2 id="claudeCcSwitch">2. 推荐方式：cc-switch 一键导入 Claude Code</h2>
-<p>新手优先使用 cc-switch。它会把中转配置写入本机 Claude Code 使用的环境，减少手动复制变量时写错 Key 或地址的概率。</p>
-<a class="codex-link-card" href="https://github.com/farion1231/cc-switch/releases" target="_blank" rel="noopener noreferrer">
-    <i data-lucide="download-cloud"></i>
-    <span>下载 cc-switch releases</span>
-</a>
-<ol class="codex-steps-list">
-    <li>下载并打开 cc-switch，保持软件在运行状态。</li>
-    <li>打开 <a href="https://api.sakms.top/keys" target="_blank" rel="noopener noreferrer">API 密钥页面</a>，在自己的密钥操作区域点击“导入到 CCS”。</li>
-    <li>浏览器如弹出是否打开外部应用，请允许打开 cc-switch。</li>
-    <li>cc-switch 中出现 <strong>Sak AI</strong> 后，点击“启用”。</li>
-    <li>关闭旧终端并重新打开新终端，再输入 <code>claude</code> 启动 Claude Code。</li>
-</ol>
-<div class="codex-image-grid">
-    <figure class="codex-figure">
-        <img src="/static/img/codex-guide/image-27.png" alt="API 密钥页面导入到 CCS 按钮" loading="lazy">
-        <figcaption>在 API 密钥页面点击“导入到 CCS”。</figcaption>
-    </figure>
-    <figure class="codex-figure">
-        <img src="/static/img/codex-guide/image-26.png" alt="cc-switch 中 Sak AI 导入成功并启用配置" loading="lazy">
-        <figcaption>出现 Sak AI 后点击“启用”，也可以在这里查看账户余额。</figcaption>
-    </figure>
-</div>
-<section class="codex-callout">
-    <p><strong>注意：</strong>一键导入后一定要重启 Claude Code，命令行用户还要关闭旧终端再打开新终端，否则旧环境变量可能还没有生效。</p>
-</section>
+<h2 id="claudeManual">2. 手动配置 Claude Code</h2>
+<p>按“使用密钥”弹窗中的 Claude Code 配置，手动写入环境变量。Claude Code 支持在 <code>settings.json</code> 里通过 <code>env</code> 为每次会话注入变量；也可以直接写到系统环境变量中。</p>
 
-<h2 id="claudeManual">3. 备用方式：手动配置 Claude Code</h2>
-<p>如果 cc-switch 无法打开或需要在服务器上配置，可手动写入环境变量。Claude Code 官方支持在 <code>settings.json</code> 里通过 <code>env</code> 为每次会话注入变量；也可以直接写到系统环境变量中。</p>
-
-<h3 id="claudePath">3.1 定位 Claude 配置目录</h3>
+<h3 id="claudePath">2.1 定位 Claude 配置目录</h3>
 <div class="codex-doc-table-wrap">
     <table class="codex-doc-table">
         <thead><tr><th>系统</th><th>配置目录</th><th>打开方式</th></tr></thead>
@@ -81,7 +53,7 @@
     </table>
 </div>
 
-<h3>3.2 方式 A：写入 <code>settings.json</code>（推荐备用）</h3>
+<h3>2.2 方式 A：写入 <code>settings.json</code>（推荐）</h3>
 <p>在 <code>~/.claude/settings.json</code> 中写入下面结构。<code>ANTHROPIC_BASE_URL</code> 和 <code>ANTHROPIC_AUTH_TOKEN</code> 请复制“使用密钥”弹窗里的真实值；如果弹窗给出的地址带 <code>/v1</code>，就照弹窗填写。</p>
 <pre class="codex-code-block"><code>{
   "env": {
@@ -94,7 +66,7 @@
     <p><strong>提示：</strong>如果文件里已经有其他设置，只新增或合并 <code>env</code> 字段，不要覆盖原有 <code>permissions</code>、<code>hooks</code> 等配置。</p>
 </section>
 
-<h3>3.3 方式 B：配置系统环境变量</h3>
+<h3>2.3 方式 B：配置系统环境变量</h3>
 <div class="codex-doc-table-wrap">
     <table class="codex-doc-table">
         <thead><tr><th>系统</th><th>设置方法</th></tr></thead>
@@ -106,11 +78,11 @@
     </table>
 </div>
 
-<h2 id="claudeVerify">4. 验证与排错</h2>
+<h2 id="claudeVerify">3. 验证与排错</h2>
 <ul class="codex-checklist">
     <li><i data-lucide="check-circle-2"></i><span>打开新终端窗口，输入 <code>claude</code>，能进入交互并发起一次对话即配置成功。</span></li>
     <li><i data-lucide="check-circle-2"></i><span>如果提示认证失败，回到中转站重新复制 Claude Code 配置，并确认没有复制教程截图里的脱敏密钥。</span></li>
-    <li><i data-lucide="check-circle-2"></i><span>如果 cc-switch 已启用但仍无效，先退出 Claude Code，再关闭旧终端，重新打开终端后再次输入 <code>claude</code>。</span></li>
+    <li><i data-lucide="check-circle-2"></i><span>如果配置后仍无效，先退出 Claude Code，再关闭旧终端，重新打开终端后再次输入 <code>claude</code>。</span></li>
     <li><i data-lucide="check-circle-2"></i><span>如果提示额度或限流，打开 <a href="https://api.sakms.top/profile" target="_blank" rel="noopener noreferrer">额度查询页</a> 检查余额、订阅日额度和分组是否正确。</span></li>
 </ul>
 {% endblock %}
