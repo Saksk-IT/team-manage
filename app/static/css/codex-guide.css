@@ -330,6 +330,31 @@ body {
     margin-bottom: 0;
 }
 
+.codex-term-callout {
+    padding: 1.1rem;
+    background: linear-gradient(135deg, #ecfdf7, #f8fffd);
+}
+
+.codex-term-callout > p {
+    margin-bottom: 0.8rem;
+}
+
+.codex-term-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+    padding: 0;
+    list-style: none;
+}
+
+.codex-term-list li {
+    min-width: 0;
+    padding: 0.85rem;
+    border: 1px solid rgba(19, 185, 154, 0.18);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.78);
+}
+
 .codex-doc-table-wrap {
     width: 100%;
     overflow-x: auto;
@@ -407,10 +432,14 @@ body {
     box-shadow: 0 16px 38px rgba(244, 63, 94, 0.08);
 }
 
-.codex-group-grid,
+.codex-group-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 1rem 0;
+}
+
 .codex-billing-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin: 1rem 0;
+    margin: 0.8rem 0 1rem;
 }
 
 .codex-group-card,
@@ -419,6 +448,7 @@ body {
     grid-template-columns: auto minmax(0, 1fr);
     gap: 0.75rem;
     padding: 1rem;
+    align-items: start;
 }
 
 .codex-group-card--plus {
@@ -439,16 +469,17 @@ body {
 
 .codex-support-grid {
     grid-template-columns: minmax(0, 1fr) minmax(180px, 260px);
-    align-items: stretch;
-    margin: 1rem 0;
+    align-items: center;
+    margin: 1.1rem 0;
 }
 
 .codex-support-card {
     display: grid;
-    align-content: center;
-    gap: 0.75rem;
-    padding: 1rem;
-    background: #fff;
+    align-content: start;
+    gap: 0.8rem;
+    min-height: 0;
+    padding: 1.2rem;
+    background: linear-gradient(135deg, #ffffff, #f8fffd);
 }
 
 .codex-link-card {
@@ -474,8 +505,13 @@ body {
 }
 
 .codex-support-qr img {
-    max-height: 260px;
+    max-height: 220px;
     object-fit: contain;
+}
+
+.codex-support-qr {
+    align-self: start;
+    margin: 0;
 }
 
 .codex-image-grid {
@@ -755,6 +791,7 @@ body {
     .codex-doc-jump,
     .codex-client-guide-grid,
     .codex-client-guide-grid--all,
+    .codex-term-list,
     .codex-group-grid,
     .codex-billing-grid,
     .codex-support-grid,
