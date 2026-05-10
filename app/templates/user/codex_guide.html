@@ -40,12 +40,12 @@
             <section class="codex-doc-hero" aria-labelledby="guideTitle">
                 <p class="codex-doc-base">API base_url: https://api.sakms.top/</p>
                 <h1 id="guideTitle">兑换中转 API Key，并接入 Codex</h1>
-                <p class="codex-doc-lead">从注册中转账户、兑换中转码、创建 API 密钥，到手动接入 Codex 和常见排错；Claude Code、Open Code、Open Claw、移动端 已拆为独立教程页。</p>
+                <p class="codex-doc-lead">从注册中转账户、兑换中转码、创建 API 密钥，到手动接入 Codex 和常见排错；Claude Code、Open Code、Open Claw 请打开对应独立教程页，移动端请查看 Chatbox 教程。</p>
                 <div class="codex-doc-badges" aria-label="教程要点">
                     <span><i data-lucide="ticket-check"></i> 先兑换中转码</span>
                     <span><i data-lucide="key-round"></i> 生成 API Key</span>
-                    <span><i data-lucide="sparkles"></i> 支持 gpt-5.5</span>
-                    <span><i data-lucide="image"></i> Image 2.0 生图</span>
+                    <span><i data-lucide="settings"></i> 手动配置 Codex</span>
+                    <span><i data-lucide="smartphone"></i> 移动端 Chatbox</span>
                 </div>
                 <nav class="codex-doc-jump" aria-label="章节快捷入口">
                     <a href="#chapterPrepare">准备</a>
@@ -69,7 +69,7 @@
                                     <td><a href="https://api.sakms.top/register" target="_blank" rel="noopener noreferrer">https://api.sakms.top/register</a></td>
                                 </tr>
                                 <tr>
-                                    <th>额度查询页</th>
+                                    <th>个人资料额度查询页</th>
                                     <td><a href="https://api.sakms.top/profile" target="_blank" rel="noopener noreferrer">https://api.sakms.top/profile</a></td>
                                 </tr>
                                 <tr>
@@ -77,16 +77,16 @@
                                     <td><a href="https://pay.ldxp.cn/shop/LSSZLMUY" target="_blank" rel="noopener noreferrer">https://pay.ldxp.cn/shop/LSSZLMUY</a></td>
                                 </tr>
                                 <tr>
-                                    <th>API base_url</th>
-                                    <td><code>https://api.sakms.top/</code>；如客户端明确要求 OpenAI-compatible <code>/v1</code> 路径，则按“使用密钥”弹窗或客户端提示填写 <code>https://api.sakms.top/v1</code>。</td>
-                                </tr>
-                                <tr>
-                                    <th>API 密钥（api_key）</th>
-                                    <td>自行到中转站“API 密钥”页面创建，格式形如 <code>sk-xxxx</code>，请立即保存并妥善保管。</td>
-                                </tr>
-                                <tr>
                                     <th>推荐客户端</th>
-                                    <td>可手动接入 Codex APP / Codex CLI / Codex VSCode 插件。Claude Code、Open Code、Open Claw、移动端 请打开对应独立教程页。</td>
+                                    <td>可手动接入 Codex APP / Codex CLI / Codex VSCode 插件。Claude Code、Open Code、Open Claw 请打开对应独立教程页。</td>
+                                </tr>
+                                <tr>
+                                    <th>订阅模式</th>
+                                    <td>每天有一定额度，每天 0 点后自动刷新。</td>
+                                </tr>
+                                <tr>
+                                    <th>额度模式</th>
+                                    <td>使用时消耗网站账户里的额度，用完就没有了。</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -121,7 +121,7 @@
                 </div>
 
                 <section class="codex-callout" aria-label="名词速懂">
-                    <p><strong>提示｜三个名词速懂</strong></p>
+                    <p><strong>提示｜名词速懂</strong></p>
                     <ul>
                         <li><strong>base_url：</strong>中转站的前台地址，告诉客户端去哪请求 AI；本教程默认使用 <code>https://api.sakms.top/</code>，部分 OpenAI-compatible 客户端需要按弹窗填写 <code>/v1</code> 后缀。</li>
                         <li><strong>api_key：</strong>你的“门票”，形如 <code>sk-xxxx</code>，用于区分用户与记录消费；不能泄露，不要发给他人，泄露等于钱包给别人。</li>
@@ -134,8 +134,7 @@
                 <h1 id="chapterPrepare">第一章 准备工作</h1>
 
                 <h2 id="notice">1.1 使用前说明</h2>
-                <p>目前 GPT Team 已全部失效，后续可以接入中转使用 GPT Codex。中转使用纯血 Plus 号池，支持 gpt-5.5，并支持 Image 2.0 生图。</p>
-                <p>Codex.app 是 GPT 官方推出的强大软件，具备网页版的核心能力，并且在本地客户端中提供更强的使用体验。</p>
+                <p>Codex App 是 GPT 官方推出的强大软件，具备网页版的核心能力，并且在本地客户端中提供更强的使用体验。</p>
 
                 <div class="codex-alert codex-alert--info">
                     <i data-lucide="badge-help"></i>
@@ -149,8 +148,15 @@
                     <article class="codex-group-card codex-group-card--plus">
                         <i data-lucide="badge-alert"></i>
                         <div>
-                            <strong>额度兑换码：必须选择 GPT-Plus</strong>
-                            <span>链动小铺购买的额度包 / 余额包兑换码，新建 API Key 时必须选择“GPT-Plus”。不能选“质保补偿”，否则无法使用。</span>
+                            <strong>链动小铺额度包：必须选择 GPT 分组</strong>
+                            <span>链动小铺购买的额度包（不限时），新建 API Key 时必须选择 <code>GPT</code> 分组。</span>
+                        </div>
+                    </article>
+                    <article class="codex-group-card codex-group-card--subscription">
+                        <i data-lucide="calendar-days"></i>
+                        <div>
+                            <strong>链动小铺订阅包：选择对应订阅分组</strong>
+                            <span>链动小铺购买的订阅包（不限时），新建 API Key 时选择你购买相应的额度分组。</span>
                         </div>
                     </article>
                     <article class="codex-group-card codex-group-card--warranty">
@@ -213,11 +219,11 @@
                     <li><strong>倍率与套餐：</strong>不同站点、不同分组可能不同，具体以中转后台实时显示为准。</li>
                 </ul>
                 <section class="codex-callout">
-                    <p><strong>注意：</strong>充值、订阅和兑换码都是权益来源；创建 API Key 时仍然要按“质保补偿 / GPT-Plus”等分组选择规则来绑定正确权益。</p>
+                    <p><strong>注意：</strong>充值、订阅和兑换码都是权益来源；创建 API Key 时仍然要按“质保补偿 / GPT / 订阅分组”等选择规则来绑定正确权益。</p>
                 </section>
 
                 <h2 id="redeem">1.4 兑换中转码</h2>
-                <p>登录后进入兑换页面，输入提供给你的中转兑换码或额度包兑换码，点击“兑换”。</p>
+                <p>登录后进入兑换页面 <a href="https://api.sakms.top/redeem" target="_blank" rel="noopener noreferrer">https://api.sakms.top/redeem</a>，输入提供给你的中转兑换码或额度包兑换码，点击“兑换”。</p>
                 <figure class="codex-figure">
                     <img src="/static/img/codex-guide/image-1.png" alt="兑换成功后的页面截图" loading="lazy">
                     <figcaption>图 2：兑换成功后，账户会获得对应余额或权益。</figcaption>
@@ -247,8 +253,15 @@
                     <article class="codex-group-card codex-group-card--plus">
                         <i data-lucide="circle-dollar-sign"></i>
                         <div>
-                            <strong>额度类分组：GPT / GPT-Plus</strong>
-                            <span>链动小铺购买余额包或额度兑换码时，应选择“GPT”或后台标记的 GPT-Plus 分组。创建密钥前请再次确认自己使用的是订阅还是额度。</span>
+                            <strong>额度类分组：GPT</strong>
+                            <span>链动小铺购买余额包或额度包时，应选择 <code>GPT</code> 分组。创建密钥前请再次确认自己使用的是订阅还是额度。</span>
+                        </div>
+                    </article>
+                    <article class="codex-group-card codex-group-card--subscription">
+                        <i data-lucide="calendar-days"></i>
+                        <div>
+                            <strong>订阅类购买：对应订阅分组</strong>
+                            <span>链动小铺购买订阅包时，选择你购买相应的订阅额度分组。</span>
                         </div>
                     </article>
                 </div>
@@ -296,7 +309,7 @@
                     </article>
                 </div>
 
-                <h2>2.2 一键查看接入配置</h2>
+                <h2>2.2 一键查看接入配置，为后续配置做准备，继续往下滑</h2>
                 <p>密钥创建成功后，在密钥列表的操作列点击“使用密钥”，会弹出接入配置。参考页中会直接给出 Codex CLI、Open Code、Claude Code 等客户端的现成配置；本页也按这些客户端补齐了手动配置方法。</p>
                 <section class="codex-callout">
                     <p><strong>重点提示：</strong>Codex VSCode 插件、Codex APP 与 Codex CLI 配置完全相同，通常只填一次。弹窗里的配置已经把 <code>base_url</code> 和 <code>api_key</code> 填好，优先复制弹窗，不要手动拼错。</p>
@@ -310,7 +323,7 @@
 
                 <h1 id="chapterClient">第三章 Codex 客户端接入</h1>
                 <section class="codex-callout">
-                    <p><strong>说明：</strong>本章使用手动修改 <code>config.toml</code> / <code>auth.json</code> 的方式接入 Codex。Claude Code、Open Code、Open Claw、移动端 已拆成独立静态教程页，配置前仍需先完成第二章创建 API Key。</p>
+                    <p><strong>说明：</strong>本章使用手动修改 <code>config.toml</code> / <code>auth.json</code> 的方式接入 Codex。Claude Code、Open Code、Open Claw 已拆成独立静态教程页，移动端请查看 Chatbox 教程；配置前仍需先完成第二章创建 API Key。</p>
                 </section>
                 <p>适用范围：<strong>Codex CLI、Codex VSCode 插件、Codex APP</strong>，三者共用同一份 <code>.codex</code> 配置。</p>
                 <div class="codex-alert codex-alert--important codex-alert--standout">
@@ -332,72 +345,47 @@
                 <h2 id="installCodex">3.1 手动配置 Codex 系列</h2>
                 <p>按第二章“使用密钥”弹窗中的 Codex CLI 接入配置，手动修改 <code>config.toml</code> / <code>auth.json</code>。手动配置适用于 <strong>Codex CLI、Codex VSCode 插件、Codex APP</strong>。</p>
 
-                <h3 id="configureCodex">3.1.1 定位 Codex 配置目录</h3>
                 <div class="codex-alert codex-alert--important codex-alert--standout">
                     <i data-lucide="badge-alert"></i>
                     <div>
                         <strong>配置文件前必须退出登录并完全关闭 Codex。</strong>
-                        <span>配置文件时一定要保持 Codex 进程关闭。请确保 Codex 进程没有在运行，再编辑 <code>config.toml</code> 和 <code>auth.json</code>，否则配置可能不会生效。</span>
+                        <span>请确保 Codex 进程没有在运行，再编辑 <code>config.toml</code> 和 <code>auth.json</code>，否则配置可能不会生效。</span>
                     </div>
                 </div>
-                <div class="codex-doc-table-wrap">
-                    <table class="codex-doc-table">
-                        <thead>
-                            <tr>
-                                <th>系统</th>
-                                <th>配置目录</th>
-                                <th>打开方式</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td><strong>Windows</strong></td>
-                                <td><code>%userprofile%\.codex</code></td>
-                                <td>按 <kbd>Win</kbd> + <kbd>R</kbd>，输入 <code>%userprofile%\.codex</code> 并回车；文件双击没有反应时，右键选择“记事本”打开。</td>
-                            </tr>
-                            <tr>
-                                <td><strong>macOS</strong></td>
-                                <td><code>~/.codex</code></td>
-                                <td>终端执行 <code>open ~/.codex</code>；如不存在先执行 <code>mkdir -p ~/.codex</code>。</td>
-                            </tr>
-                            <tr>
-                                <td><strong>Linux</strong></td>
-                                <td><code>~/.codex</code></td>
-                                <td>终端执行 <code>cd ~/.codex</code> 或直接进入该目录；不存在时先执行 <code>mkdir -p ~/.codex</code>。</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <section class="codex-callout">
-                    <p><strong>提示：</strong>如果目录或文件不存在，可手动新建 <code>.codex</code> 目录，以及 <code>config.toml</code> / <code>auth.json</code> 两个文件。Windows 用户记得显示文件扩展名，避免变成 <code>config.toml.txt</code>。</p>
-                </section>
+
+                <h3 id="configureCodex">Windows</h3>
+                <ol class="codex-steps-list">
+                    <li>首先要保证 Codex 已经下载好，配置文件前必须退出登录并完全关闭 Codex。请确保 Codex 进程没有在运行。</li>
+                    <li>然后在 C 盘找到用户文件夹，在显示中点击显示隐藏文件。</li>
+                    <li>在用户文件夹打开某一用户文件夹，寻找 <code>.codex</code> 文件夹；如果没有找到，就换一个用户文件夹。</li>
+                    <li>打开 <code>.codex</code> 文件夹之后，如果有 <code>config.toml</code> 和 <code>auth.json</code> 这两个配置文件，直接改动即可；如果没有就新建，文件名就是 <code>config.toml</code> 和 <code>auth.json</code>。</li>
+                </ol>
+                <p>如果是新手，直接按下面图片教程替换这两个文件就行了。</p>
+                <figure class="codex-figure">
+                    <img src="/static/img/codex-guide/image-31.png" alt="Codex 配置内容粘贴示例，密钥已脱敏" loading="lazy">
+                    <figcaption>图 9：配置示例，截图中的 API Key 已脱敏。请使用你自己的密钥，不要复制教程截图。</figcaption>
+                </figure>
+
+                <h3>Mac</h3>
+                <ol class="codex-steps-list">
+                    <li>在磁盘用户目录中找到 <code>.codex</code> 文件夹，如果找不到就按 <kbd>Command</kbd> + <kbd>Shift</kbd> + <kbd>.</kbd> 显示隐藏文件。</li>
+                    <li>确认存在 <code>config.toml</code> 和 <code>auth.json</code>，如果没有就新建。文件名就是 <code>config.toml</code> 和 <code>auth.json</code>。</li>
+                </ol>
                 <div class="codex-image-grid">
                     <figure class="codex-figure">
                         <img src="/static/img/codex-guide/image-7.png" alt="Mac 访达中找到 .codex 文件夹" loading="lazy">
-                        <figcaption>图 9：Mac 在用户目录中找到 <code>.codex</code>。</figcaption>
+                        <figcaption>图 10：Mac 在用户目录中找到 <code>.codex</code>。</figcaption>
                     </figure>
                     <figure class="codex-figure">
                         <img src="/static/img/codex-guide/image-8.png" alt=".codex 文件夹中的 config.toml 和 auth.json" loading="lazy">
-                        <figcaption>图 10：确认存在 <code>config.toml</code> 和 <code>auth.json</code>。</figcaption>
+                        <figcaption>图 11：确认存在 <code>config.toml</code> 和 <code>auth.json</code>。</figcaption>
                     </figure>
                 </div>
-
-                <h3>3.1.2 修改 <code>config.toml</code> 与 <code>auth.json</code></h3>
-                <p>打开第二章“使用密钥”弹窗里的 Codex CLI 接入配置，把对应内容填入两个文件即可。三件事必须做对：</p>
-                <ul class="codex-steps-list">
-                    <li><code>config.toml</code> 中的 <code>base_url</code> 必须是 <code>https://api.sakms.top</code>，或与“使用密钥”弹窗保持一致。</li>
-                    <li><code>auth.json</code> 中的 <code>api_key</code> 必须是你自己在第二章创建的 API Key。</li>
-                    <li>文件名后缀必须正确，Windows 下不要变成 <code>config.toml.txt</code> 或 <code>auth.json.txt</code>。</li>
-                </ul>
+                <p>如果是新手，直接按下面图片教程替换这两个文件就行了。</p>
                 <figure class="codex-figure">
                     <img src="/static/img/codex-guide/image-31.png" alt="Codex 配置内容粘贴示例，密钥已脱敏" loading="lazy">
-                    <figcaption>图 11：配置示例，截图中的 API Key 已脱敏。请使用你自己的密钥，不要复制教程截图。</figcaption>
+                    <figcaption>图 12：配置示例，截图中的 API Key 已脱敏。请使用你自己的密钥，不要复制教程截图。</figcaption>
                 </figure>
-                <h3>3.1.3 验证 Codex</h3>
-                <ul class="codex-steps-list">
-                    <li><strong>CLI：</strong>在任意终端输入 <code>codex</code>，看是否能正常启动并响应。</li>
-                    <li><strong>VSCode 插件 / APP：</strong>重启编辑器或 APP，发起一次对话测试。</li>
-                </ul>
 
                 <h2 id="otherClientGuides">3.2 其他客户端独立教程</h2>
                 <p>以下客户端配置已经从 Codex 主教程中单独拆出，方便直接分享给不同用户。打开对应页面后，仍然以第二章“使用密钥”弹窗里的真实 <code>base_url</code> 和 <code>api_key</code> 为准。</p>
@@ -433,19 +421,19 @@
                 </div>
 
                 <h2 id="loginCodex">3.3 重新打开 Codex 并使用 API 登录</h2>
-                <p>完成文件配置后重新打开 Codex，选择“换种方式登录”，再选择 API 登录并粘贴自己的 API 密钥。</p>
+                <p>完成文件配置后重新打开 Codex，选择“换种方式登录”，再选择 API 登录并粘贴自己的 API 密钥。API 密钥从 <a href="https://api.sakms.top/keys" target="_blank" rel="noopener noreferrer">https://api.sakms.top/keys</a> 获取。</p>
                 <div class="codex-image-grid codex-image-grid--three">
                     <figure class="codex-figure">
                         <img src="/static/img/codex-guide/image-10.png" alt="Codex 选择换种方式登录" loading="lazy">
-                        <figcaption>图 12：选择“换种方式登录”。</figcaption>
+                        <figcaption>图 13：选择“换种方式登录”。</figcaption>
                     </figure>
                     <figure class="codex-figure">
                         <img src="/static/img/codex-guide/image-11.png" alt="Codex API 登录输入框" loading="lazy">
-                        <figcaption>图 13：选择 API 登录并粘贴密钥。</figcaption>
+                        <figcaption>图 14：选择 API 登录并粘贴密钥。</figcaption>
                     </figure>
                     <figure class="codex-figure">
                         <img src="/static/img/codex-guide/image-12.png" alt="中转服务 API 密钥复制位置，密钥已脱敏" loading="lazy">
-                        <figcaption>图 14：从中转后台复制你自己的 API Key。</figcaption>
+                        <figcaption>图 15：从中转后台复制你自己的 API Key。</figcaption>
                     </figure>
                 </div>
                 <hr>
@@ -466,7 +454,7 @@
                     <li><i data-lucide="check-circle-2"></i><span>编辑配置前是否已经完全关闭 Codex？</span></li>
                     <li><i data-lucide="check-circle-2"></i><span><code>config.toml</code> 和 <code>auth.json</code> 是否放在同一个 <code>.codex</code> 目录？</span></li>
                     <li><i data-lucide="check-circle-2"></i><span>是否粘贴了你自己生成的 API Key，而不是教程截图中的示例？</span></li>
-                    <li><i data-lucide="check-circle-2"></i><span>创建密钥时是否按来源选择正确分组：质保网站补发的中转码选“质保补偿”，链动小铺额度兑换码选“GPT”或后台标记的 GPT-Plus？</span></li>
+                    <li><i data-lucide="check-circle-2"></i><span>创建密钥时是否按来源选择正确分组：质保网站补发的中转码选“质保补偿”，链动小铺额度兑换码选“GPT”或订阅分组？</span></li>
                 </ul>
 
                 <h2>4.3 常见报错对照表</h2>
@@ -520,7 +508,7 @@
                 </div>
                 <figure class="codex-figure codex-error-figure">
                     <img src="/static/img/codex-guide/image-14.png" alt="Codex 登录时报 401 Incorrect API key，密钥已脱敏" loading="lazy">
-                    <figcaption>图 15：错误示例，API Key 片段已脱敏。</figcaption>
+                    <figcaption>图 16：错误示例，API Key 片段已脱敏。</figcaption>
                 </figure>
 
                 <h1 id="faq">第五章 FAQ</h1>

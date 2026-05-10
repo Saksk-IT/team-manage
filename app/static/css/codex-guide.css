@@ -426,6 +426,11 @@ body {
     background: #fff1f2;
 }
 
+.codex-group-card--subscription {
+    border-color: rgba(245, 158, 11, 0.24);
+    background: #fffbeb;
+}
+
 .codex-group-card--warranty,
 .codex-billing-grid article {
     border-color: rgba(19, 185, 154, 0.24);
@@ -566,6 +571,10 @@ body {
 .codex-group-card--warranty i,
 .codex-billing-grid i {
     color: var(--doc-accent-dark);
+}
+
+.codex-group-card--subscription i {
+    color: #b45309;
 }
 
 .codex-group-card--plus i,
