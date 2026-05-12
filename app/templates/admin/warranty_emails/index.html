@@ -207,6 +207,16 @@
                     <td>{{ entry.updated_at|format_datetime }}</td>
                     <td style="text-align: right;">
                         <div style="display: inline-flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
+                            {% if not entry.transfer_redeem_code %}
+                            <button
+                                type="button"
+                                class="btn btn-secondary btn-sm"
+                                title="强行生成中转兑换码"
+                                onclick="forceGenerateWarrantyEmailTransferCode({{ entry.id }}, '{{ entry.email|escape_js }}', this)"
+                            >
+                                生成中转码
+                            </button>
+                            {% endif %}
                             <button
                                 type="button"
                                 class="btn btn-secondary btn-sm"
@@ -1145,6 +1155,54 @@
             }
         } catch (error) {
             showToast('网络错误', 'error');
+        }
+    }
+
+    async function forceGenerateWarrantyEmailTransferCode(entryId, email, triggerButton = null) {
+        const safeEntryId = Number(entryId);
+        if (!Number.isInteger(safeEntryId) || safeEntryId <= 0) {
+            showToast('质保邮箱记录无效', 'error');
+            return;
+        }
+
+        const confirmed = await showSystemConfirm({
+            title: '确认生成中转兑换码',
+            message: `确定要为 ${email} 强行生成中转兑换码吗？已有中转码时系统会直接复用。`,
+            confirmText: '生成',
+        });
+        if (!confirmed) {
+            return;
+        }
+
+        const button = triggerButton instanceof HTMLElement ? triggerButton : null;
+        const originalText = button?.textContent || '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '生成中...';
+        }
+
+        try {
+            const response = await fetch(`/admin/warranty-emails/${safeEntryId}/transfer-code/force-generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                showToast(data.message || '中转兑换码已生成', 'success');
+                setTimeout(() => window.location.reload(), 300);
+            } else {
+                showToast(data.error || '生成失败', 'error');
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = originalText;
+                }
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
         }
     }
 

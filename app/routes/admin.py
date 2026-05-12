@@ -4731,6 +4731,44 @@ async def delete_warranty_email(
         )
 
 
+@router.post("/warranty-emails/{entry_id}/transfer-code/force-generate")
+async def force_generate_warranty_email_transfer_code(
+    entry_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        result = await warranty_service.force_generate_warranty_email_transfer_code(
+            db_session=db,
+            entry_id=entry_id,
+        )
+        if not result.get("success"):
+            error_message = result.get("error") or "中转兑换码生成失败"
+            response_status = (
+                status.HTTP_404_NOT_FOUND
+                if error_message == "质保邮箱记录不存在"
+                else status.HTTP_400_BAD_REQUEST
+            )
+            return JSONResponse(
+                status_code=response_status,
+                content={"success": False, "error": error_message}
+            )
+
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": "中转兑换码已生成" if not result.get("reused") else "该邮箱已有中转兑换码，已复用",
+                **result,
+            }
+        )
+    except Exception as e:
+        logger.error("强行生成质保邮箱中转兑换码失败 entry_id=%s error=%s", entry_id, e)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": f"生成失败: {str(e)}"}
+        )
+
+
 @router.post("/warranty-emails/super-code/regenerate")
 async def regenerate_warranty_email_check_super_code(
     db: AsyncSession = Depends(get_db),

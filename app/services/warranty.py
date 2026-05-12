@@ -200,13 +200,21 @@ class WarrantyService:
         entry_models: List[WarrantyEmailEntry],
     ) -> Dict[int, WarrantyEmailTemplateLock]:
         entry_ids = [int(entry.id) for entry in entry_models if entry.id]
-        if not entry_ids:
+        emails = {
+            self.normalize_email(entry.email)
+            for entry in entry_models
+            if self.normalize_email(entry.email)
+        }
+        if not entry_ids and not emails:
             return {}
 
         result = await db_session.execute(
             select(WarrantyEmailTemplateLock)
             .where(
-                WarrantyEmailTemplateLock.generated_redeem_code_entry_id.in_(entry_ids),
+                or_(
+                    WarrantyEmailTemplateLock.generated_redeem_code_entry_id.in_(entry_ids),
+                    WarrantyEmailTemplateLock.email.in_(emails),
+                ),
                 WarrantyEmailTemplateLock.generated_redeem_code.isnot(None),
             )
             .order_by(
@@ -216,11 +224,24 @@ class WarrantyService:
             )
         )
 
+        entry_ids_by_email: Dict[str, List[int]] = {}
+        for entry in entry_models:
+            normalized_email = self.normalize_email(entry.email)
+            if normalized_email and entry.id:
+                entry_ids_by_email.setdefault(normalized_email, []).append(int(entry.id))
+
         generated_by_entry: Dict[int, WarrantyEmailTemplateLock] = {}
+        fallback_locks: List[WarrantyEmailTemplateLock] = []
         for lock in result.scalars().all():
             entry_id = int(lock.generated_redeem_code_entry_id or 0)
             if entry_id and entry_id not in generated_by_entry:
                 generated_by_entry[entry_id] = lock
+            fallback_locks.append(lock)
+
+        for lock in fallback_locks:
+            for fallback_entry_id in entry_ids_by_email.get(self.normalize_email(lock.email), []):
+                if fallback_entry_id not in generated_by_entry:
+                    generated_by_entry[fallback_entry_id] = lock
 
         return generated_by_entry
 
@@ -2367,6 +2388,75 @@ class WarrantyService:
             "remaining_days": remaining_days,
             "entry_id": entry.id,
             "reused": False,
+        }
+
+    async def force_generate_warranty_email_transfer_code(
+        self,
+        db_session: AsyncSession,
+        *,
+        entry_id: int,
+    ) -> Dict[str, Any]:
+        """后台按质保邮箱记录强制生成中转兑换码；已有则复用。"""
+        entry = await self.get_warranty_email_entry_by_id(db_session, entry_id)
+        if not entry:
+            return {"success": False, "error": "质保邮箱记录不存在"}
+
+        normalized_email = self.normalize_email(entry.email)
+        if not normalized_email:
+            return {"success": False, "error": "质保邮箱无效"}
+
+        lock = await self._get_warranty_email_template_lock(db_session, normalized_email)
+        if lock and lock.generated_redeem_code:
+            return {
+                "success": True,
+                "code": lock.generated_redeem_code,
+                "remaining_days": lock.generated_redeem_code_remaining_days,
+                "entry_id": lock.generated_redeem_code_entry_id or entry.id,
+                "reused": True,
+                "entry": self.serialize_warranty_email_entry(entry, generated_code=lock),
+            }
+
+        if not lock:
+            now = get_now()
+            lock = WarrantyEmailTemplateLock(
+                email=normalized_email,
+                matched=True,
+                template_key="match-default",
+                created_at=now,
+                updated_at=now,
+            )
+            db_session.add(lock)
+            try:
+                await db_session.commit()
+                await db_session.refresh(lock)
+            except IntegrityError:
+                await db_session.rollback()
+                lock = await self._get_warranty_email_template_lock(db_session, normalized_email)
+
+        if not lock:
+            return {"success": False, "error": "中转兑换码锁定记录创建失败，请稍后重试"}
+
+        if not lock.matched:
+            lock.matched = True
+            lock.template_key = "match-default"
+            lock.updated_at = get_now()
+            await db_session.commit()
+            await db_session.refresh(lock)
+
+        result = await self.ensure_warranty_email_check_redeem_code(
+            db_session=db_session,
+            email=normalized_email,
+            template_lock=lock,
+            warranty_entry=entry,
+        )
+        if not result.get("success"):
+            return result
+
+        await db_session.refresh(entry)
+        await db_session.refresh(lock)
+        return {
+            **result,
+            "entry": self.serialize_warranty_email_entry(entry, generated_code=lock),
         }
 
     async def _get_or_create_warranty_email_template_lock(

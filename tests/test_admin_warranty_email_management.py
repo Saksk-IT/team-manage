@@ -6,6 +6,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from starlette.requests import Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base
@@ -14,6 +15,7 @@ from app.routes.admin import (
     BulkWarrantyEmailDeleteRequest,
     BulkWarrantyEmailUpdateRequest,
     WarrantyEmailSaveRequest,
+    force_generate_warranty_email_transfer_code,
     regenerate_warranty_email_check_super_code,
     bulk_delete_warranty_emails,
     bulk_update_warranty_emails,
@@ -113,6 +115,9 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("批量删除", html)
         self.assertIn("function bulkDeleteWarrantyEmails()", html)
         self.assertIn("/admin/warranty-emails/bulk-delete", html)
+        self.assertIn("强行生成中转兑换码", html)
+        self.assertIn("forceGenerateWarrantyEmailTransferCode", html)
+        self.assertIn("/admin/warranty-emails/${safeEntryId}/transfer-code/force-generate", html)
 
         fill_script_start = html.index("function fillWarrantyEmailForm(entry)")
         fill_script_end = html.index("document.getElementById('warrantyEmailForm')")
@@ -243,6 +248,92 @@ class AdminWarrantyEmailManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("·", transfer_cell_snippet)
         self.assertIn("列设置", html)
         self.assertIn("warrantyEmailColumnDropdown", html)
+
+    async def test_force_generate_transfer_code_route_creates_code(self):
+        async with self.Session() as session:
+            entry = WarrantyEmailEntry(
+                email="buyer@example.com",
+                remaining_claims=2,
+                expires_at=get_now() + timedelta(days=2, hours=1),
+                source="manual",
+                last_redeem_code="CODE-123",
+            )
+            session.add(entry)
+            await session.commit()
+            await session.refresh(entry)
+            await settings_service.update_sub2api_warranty_redeem_config(
+                session,
+                base_url="https://sub2api.example.com",
+                admin_api_key="admin-key",
+                subscription_group_id=12,
+                code_prefix="TMW",
+            )
+
+            with patch(
+                "app.services.warranty.sub2api_warranty_redeem_client.create_subscription_code",
+                return_value={"success": True, "code": "TMW-FORCED", "generated_at": get_now()},
+            ) as mocked_create:
+                response = await force_generate_warranty_email_transfer_code(
+                    entry_id=entry.id,
+                    db=session,
+                    current_user={"username": "admin"},
+                )
+
+            payload = json.loads(response.body.decode("utf-8"))
+            lock = await session.scalar(select(WarrantyEmailTemplateLock))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["code"], "TMW-FORCED")
+        self.assertEqual(payload["entry"]["transfer_redeem_code"], "TMW-FORCED")
+        self.assertFalse(payload["reused"])
+        self.assertEqual(lock.email, "buyer@example.com")
+        self.assertTrue(lock.matched)
+        self.assertEqual(lock.generated_redeem_code, "TMW-FORCED")
+        self.assertEqual(lock.generated_redeem_code_entry_id, entry.id)
+        mocked_create.assert_awaited_once()
+
+    async def test_force_generate_transfer_code_route_reuses_existing_code(self):
+        async with self.Session() as session:
+            now = get_now()
+            entry = WarrantyEmailEntry(
+                email="buyer@example.com",
+                remaining_claims=2,
+                expires_at=now + timedelta(days=5),
+                source="manual",
+            )
+            session.add(entry)
+            await session.flush()
+            session.add(
+                WarrantyEmailTemplateLock(
+                    email="buyer@example.com",
+                    matched=True,
+                    template_key="match-a",
+                    generated_redeem_code="TMW-EXISTING",
+                    generated_redeem_code_remaining_days=5,
+                    generated_redeem_code_entry_id=entry.id,
+                    generated_redeem_code_generated_at=now,
+                )
+            )
+            await session.commit()
+            await session.refresh(entry)
+
+            with patch(
+                "app.services.warranty.sub2api_warranty_redeem_client.create_subscription_code",
+            ) as mocked_create:
+                response = await force_generate_warranty_email_transfer_code(
+                    entry_id=entry.id,
+                    db=session,
+                    current_user={"username": "admin"},
+                )
+
+            payload = json.loads(response.body.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["success"])
+        self.assertTrue(payload["reused"])
+        self.assertEqual(payload["code"], "TMW-EXISTING")
+        mocked_create.assert_not_called()
 
     async def test_warranty_emails_page_filters_by_linked_team_status(self):
         async with self.Session() as session:
