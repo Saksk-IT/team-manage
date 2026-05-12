@@ -31,6 +31,7 @@ class WarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
             config = await settings_service.get_warranty_email_check_config(session)
 
         self.assertFalse(config["enabled"])
+        self.assertFalse(config["ignore_team_status"])
         self.assertIn("质保邮箱列表", config["match_content"])
         self.assertIn("未查询到", config["miss_content"])
 
@@ -117,10 +118,12 @@ class WarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
                 True,
                 "<p>旧命中</p>",
                 "<p>旧未命中</p>",
+                ignore_team_status=True,
             )
             config = await settings_service.get_warranty_email_check_config(session)
 
         self.assertTrue(success)
+        self.assertTrue(config["ignore_team_status"])
         self.assertEqual(config["match_templates"][0]["id"], "match-default")
         self.assertEqual(config["match_templates"][0]["content"], "<p>旧命中</p>")
         self.assertEqual(config["miss_templates"][0]["id"], "miss-default")

@@ -3446,6 +3446,7 @@ async def warranty_email_check_settings_page(
                 current_user,
                 "warranty_email_check",
                 warranty_email_check_enabled=warranty_email_check_config["enabled"],
+                warranty_email_check_ignore_team_status=warranty_email_check_config.get("ignore_team_status", False),
                 warranty_email_check_match_content=warranty_email_check_config["match_content"],
                 warranty_email_check_miss_content=warranty_email_check_config["miss_content"],
                 warranty_email_check_match_templates=warranty_email_check_config.get("match_templates", []),
@@ -3612,6 +3613,7 @@ class WarrantyFakeSuccessSettingsRequest(BaseModel):
 class WarrantyEmailCheckSettingsRequest(BaseModel):
     """前台质保邮箱名单判定模式请求"""
     enabled: bool = Field(..., description="是否启用质保邮箱名单判定模式")
+    ignore_team_status: bool = Field(False, description="是否忽略 Team 状态判定")
     sub2api_base_url: str = Field("", description="Sub2API 基础地址")
     sub2api_admin_api_key: str = Field("", description="Sub2API Admin API Key")
     sub2api_subscription_group_id: Optional[int] = Field(None, description="Sub2API 订阅分组 ID")
@@ -5273,8 +5275,9 @@ async def update_warranty_email_check_settings(
     """更新前台质保邮箱名单判定模式配置。"""
     try:
         logger.info(
-            "管理员更新质保邮箱名单判定模式: enabled=%s match_len=%s miss_len=%s match_templates=%s miss_templates=%s",
+            "管理员更新质保邮箱名单判定模式: enabled=%s ignore_team_status=%s match_len=%s miss_len=%s match_templates=%s miss_templates=%s",
             warranty_data.enabled,
+            warranty_data.ignore_team_status,
             len((warranty_data.match_content or "").strip()),
             len((warranty_data.miss_content or "").strip()),
             len(warranty_data.match_templates or []),
@@ -5288,6 +5291,7 @@ async def update_warranty_email_check_settings(
             warranty_data.miss_content,
             warranty_data.match_templates,
             warranty_data.miss_templates,
+            warranty_data.ignore_team_status,
         )
         fields_set = getattr(warranty_data, "model_fields_set", set())
         has_sub2api_fields = any(

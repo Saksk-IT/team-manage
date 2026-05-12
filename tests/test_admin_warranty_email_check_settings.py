@@ -30,6 +30,7 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
             "app.routes.admin.settings_service.get_warranty_email_check_config",
             new=AsyncMock(return_value={
                 "enabled": True,
+                "ignore_team_status": True,
                 "match_content": "<p><strong>在列表</strong></p>",
                 "miss_content": "<p>不在列表</p>",
                 "match_templates": [
@@ -80,6 +81,8 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('\\u547d\\u4e2d B', html)
         self.assertIn("fetch('/admin/warranty-email-check'", html)
         self.assertIn("validationMessage", html)
+        self.assertIn('id="warrantyEmailCheckIgnoreTeamStatus"', html)
+        self.assertIn("ignore_team_status", html)
         self.assertIn('id="sub2apiWarrantyBaseUrl"', html)
         self.assertIn("https://sub2api.example.com", html)
         self.assertIn('href="/admin/code-generation-records"', html)
@@ -151,7 +154,7 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
 
         payload = json.loads(response.body.decode("utf-8"))
 
-        mocked_update.assert_awaited_once_with(db, True, long_content, "<p>未命中</p>", [], [])
+        mocked_update.assert_awaited_once_with(db, True, long_content, "<p>未命中</p>", [], [], False)
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["success"])
 
@@ -168,6 +171,7 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
             response = await update_warranty_email_check_settings(
                 warranty_data=WarrantyEmailCheckSettingsRequest(
                     enabled=True,
+                    ignore_team_status=True,
                     match_content="<p>在列表</p>",
                     miss_content="<p>不在列表</p>",
                     match_templates=match_templates,
@@ -179,7 +183,15 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
 
         payload = json.loads(response.body.decode("utf-8"))
 
-        mocked_update.assert_awaited_once_with(db, True, "<p>在列表</p>", "<p>不在列表</p>", match_templates, miss_templates)
+        mocked_update.assert_awaited_once_with(
+            db,
+            True,
+            "<p>在列表</p>",
+            "<p>不在列表</p>",
+            match_templates,
+            miss_templates,
+            True,
+        )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["success"])
 
@@ -210,7 +222,7 @@ class AdminWarrantyEmailCheckSettingsTests(unittest.IsolatedAsyncioTestCase):
 
         payload = json.loads(response.body.decode("utf-8"))
 
-        mocked_update.assert_awaited_once_with(db, True, "<p>在列表</p>", "<p>不在列表</p>", [], [])
+        mocked_update.assert_awaited_once_with(db, True, "<p>在列表</p>", "<p>不在列表</p>", [], [], False)
         mocked_sub2api_update.assert_awaited_once_with(
             db,
             base_url="https://sub2api.example.com",

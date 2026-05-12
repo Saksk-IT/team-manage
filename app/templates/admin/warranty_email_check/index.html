@@ -27,6 +27,19 @@
             <p class="form-help">开启后，前台质保服务需同时输入质保邮箱和对应质保兑换码；系统仅判断两者是否匹配质保邮箱列表，不再查询订单、刷新 Team 状态或提交质保；首次查询会随机锁定一个模板，后续同邮箱固定展示该模板。</p>
         </div>
 
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input
+                    type="checkbox"
+                    id="warrantyEmailCheckIgnoreTeamStatus"
+                    name="ignore_team_status"
+                    {% if warranty_email_check_ignore_team_status %}checked{% endif %}
+                >
+                <span>忽略 Team 状态判定</span>
+            </label>
+            <p class="form-help">开启后，用户进行质保服务时不再按关联 Team 是否正常 / 已满跳过生成；只要邮箱和质保兑换码匹配，就可以继续生成中转兑换码，相关 Team 状态在该流程中统一显示为封禁。</p>
+        </div>
+
         <input
             type="file"
             id="warrantyEmailCheckImageInput"
@@ -500,6 +513,7 @@
         event.preventDefault();
 
         const enabled = document.getElementById('warrantyEmailCheckEnabled').checked;
+        const ignore_team_status = document.getElementById('warrantyEmailCheckIgnoreTeamStatus')?.checked || false;
         const match_templates = collectTemplatePayload('match');
         const miss_templates = collectTemplatePayload('miss');
         const match_content = match_templates[0]?.content || '';
@@ -513,6 +527,7 @@
                 },
                 body: JSON.stringify({
                     enabled,
+                    ignore_team_status,
                     match_content,
                     miss_content,
                     match_templates,

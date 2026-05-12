@@ -114,6 +114,7 @@ async def check_warranty(
             warranty_code=request.warranty_code,
             match_templates=email_check_config.get("match_templates", []),
             miss_templates=email_check_config.get("miss_templates", []),
+            ignore_team_status=bool(email_check_config.get("ignore_team_status")),
         )
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error") or "状态查询失败")

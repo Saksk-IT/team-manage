@@ -311,6 +311,46 @@ class WarrantyEmailTemplateLockTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["message"], "您所在的Team可以正常使用，无需提交质保")
             self.assertEqual(result["usable_linked_team"]["status_label"], status_label)
 
+    async def test_membership_ignores_usable_linked_team_when_config_enabled(self):
+        service = WarrantyService()
+
+        async with self.Session() as session:
+            active_team = Team(
+                email="active-owner@example.com",
+                access_token_encrypted="dummy",
+                account_id="acc-active",
+                team_name="Active Team",
+                status="active",
+            )
+            session.add(active_team)
+            await session.flush()
+            session.add(
+                WarrantyEmailEntry(
+                    email="buyer@example.com",
+                    remaining_claims=1,
+                    last_redeem_code="CODE-A",
+                    expires_at=get_now() + timedelta(days=2),
+                    last_warranty_team_id=active_team.id,
+                )
+            )
+            await session.commit()
+
+            with patch("app.services.warranty.secrets.choice", return_value="match-a"):
+                result = await service.check_warranty_email_membership(
+                    session,
+                    "buyer@example.com",
+                    warranty_code="CODE-A",
+                    match_templates=[{"id": "match-a", "content": "<p>命中</p>"}],
+                    miss_templates=[{"id": "miss-a", "content": "<p>未命中</p>"}],
+                    ignore_team_status=True,
+                )
+
+        self.assertTrue(result["matched"])
+        self.assertFalse(result["skip_redeem_code_generation"])
+        self.assertIsNone(result["message"])
+        self.assertEqual(result["usable_linked_team"]["status"], "banned")
+        self.assertEqual(result["usable_linked_team"]["status_label"], "封禁")
+
     async def test_email_with_no_redeem_code_returns_group_contact_message(self):
         service = WarrantyService()
 

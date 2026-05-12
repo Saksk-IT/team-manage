@@ -135,11 +135,15 @@ class WarrantyService:
 
         return max(math.ceil(remaining_seconds / 86400), 0)
 
-    def _serialize_linked_team_summary(self, team: Optional[Team]) -> Optional[Dict[str, Any]]:
+    def _serialize_linked_team_summary(
+        self,
+        team: Optional[Team],
+        force_banned_status: bool = False,
+    ) -> Optional[Dict[str, Any]]:
         if not team:
             return None
 
-        team_status = (team.status or "").strip().lower() or "no_record"
+        team_status = "banned" if force_banned_status else ((team.status or "").strip().lower() or "no_record")
         return {
             "id": team.id,
             "team_name": team.team_name,
@@ -154,6 +158,7 @@ class WarrantyService:
         self,
         db_session: AsyncSession,
         entries: List[WarrantyEmailEntry],
+        ignore_team_status: bool = False,
     ) -> Optional[Dict[str, Any]]:
         team_ids = {
             int(entry.last_warranty_team_id)
@@ -170,6 +175,11 @@ class WarrantyService:
 
         for entry in entries:
             team = teams_by_id.get(int(entry.last_warranty_team_id or 0))
+            if not team:
+                continue
+            if ignore_team_status:
+                return self._serialize_linked_team_summary(team, force_banned_status=True)
+
             team_status = (getattr(team, "status", "") or "").strip().lower()
             if team_status in self.USABLE_LINKED_TEAM_STATUSES:
                 return self._serialize_linked_team_summary(team)
@@ -2205,6 +2215,7 @@ class WarrantyService:
         warranty_code: Optional[str] = None,
         match_templates: Optional[List[Dict[str, Any]]] = None,
         miss_templates: Optional[List[Dict[str, Any]]] = None,
+        ignore_team_status: bool = False,
     ) -> Dict[str, Any]:
         """
         判定邮箱与质保兑换码是否共同命中质保邮箱列表，并为首次查询邮箱随机锁定展示模板。
@@ -2257,16 +2268,21 @@ class WarrantyService:
             templates=templates or [],
         )
         usable_linked_team = (
-            await self._get_usable_linked_team_for_warranty_entries(db_session, [selected_entry])
+            await self._get_usable_linked_team_for_warranty_entries(
+                db_session,
+                [selected_entry],
+                ignore_team_status=ignore_team_status,
+            )
             if selected_entry
             else None
         )
+        should_skip_for_linked_team = usable_linked_team is not None and not ignore_team_status
         message = None
         if has_missing_code:
             message = self.WARRANTY_EMAIL_MISSING_REDEEM_CODE_MESSAGE
         elif has_wrong_code:
             message = self.WARRANTY_EMAIL_WRONG_REDEEM_CODE_MESSAGE
-        elif usable_linked_team is not None:
+        elif should_skip_for_linked_team:
             message = self.TEAM_AVAILABLE_NO_WARRANTY_MESSAGE
 
         return {
@@ -2281,7 +2297,8 @@ class WarrantyService:
             "email_has_redeem_code": bool(entries_with_code),
             "missing_redeem_code": has_missing_code,
             "wrong_redeem_code": has_wrong_code,
-            "skip_redeem_code_generation": usable_linked_team is not None or has_missing_code or has_wrong_code,
+            "ignore_team_status": bool(ignore_team_status),
+            "skip_redeem_code_generation": should_skip_for_linked_team or has_missing_code or has_wrong_code,
             "usable_linked_team": usable_linked_team,
             "message": message,
             "template_key": template_lock.template_key if template_lock else None,

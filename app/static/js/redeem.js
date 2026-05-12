@@ -760,13 +760,16 @@ function renderWarrantyEmailCheckResult(data, email) {
     const skipRedeemCodeGeneration = Boolean(data?.skip_redeem_code_generation);
     const missingRedeemCode = Boolean(data?.missing_redeem_code);
     const wrongRedeemCode = Boolean(data?.wrong_redeem_code);
+    const usableLinkedTeam = data?.usable_linked_team || null;
     const resultBadgeLabel = wrongRedeemCode
         ? '兑换码错误'
         : (missingRedeemCode
             ? '需联系群主'
             : (skipRedeemCodeGeneration
                 ? 'Team 正常'
-                : (matched ? '在质保列表内' : '不在质保列表内')));
+                : (matched && usableLinkedTeam?.status === 'banned'
+                    ? 'Team 封禁'
+                    : (matched ? '在质保列表内' : '不在质保列表内'))));
     const resultBadgeClass = matched ? 'status-badge--success' : 'status-badge--warning';
     const generatedCodeHtml = matched && generatedCode ? `
         <div class="status-panel__message status-panel__message--success warranty-generated-code">
