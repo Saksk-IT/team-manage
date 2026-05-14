@@ -55,7 +55,7 @@
     overflow: auto;
     padding: 0.05rem 0.18rem 0.2rem 0.02rem;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.85rem;
     align-content: start;
 }
