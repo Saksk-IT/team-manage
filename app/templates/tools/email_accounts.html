@@ -15,10 +15,11 @@
         <header class="workbench-bar">
             <div class="workbench-bar__title">
                 <h1>邮箱账户工作台</h1>
-                <p>粘贴入口取件网址即可识别邮箱密码并导入邮箱，点击邮箱复制，点击记录区域提取 6 位验证码；数据仅保存在当前浏览器本地。</p>
+                <p>粘贴入口取件网址或邮箱 token 即可导入邮箱，点击邮箱复制，点击记录区域提取最新 6 位验证码；数据仅保存在当前浏览器本地。</p>
             </div>
             <div class="workbench-bar__meta">
                 <span>支持入口页自动识别邮箱密码</span>
+                <span>支持 LuckMail token 查询</span>
                 <span>自动生成读信 JSON API</span>
                 <span>取件时临时读取接口，不做服务端持久化</span>
                 <a href="/local-tools">验证码工具</a>
@@ -31,7 +32,7 @@
                 <div class="panel__header">
                     <div>
                         <h2>导入邮箱</h2>
-                        <p>一行一个入口网址，例如 <code>http://wsaic.com/eid/10p.php?n=example.txt</code>。</p>
+                        <p>一行一个入口网址或 <code>邮箱----tok_xxx</code>，例如 <code>http://wsaic.com/eid/10p.php?n=example.txt</code>。</p>
                     </div>
                 </div>
 
@@ -47,7 +48,7 @@
                 <textarea
                     id="emailAccountBatchInput"
                     class="batch-textarea"
-                    placeholder="示例：&#10;http://wsaic.com/eid/10p.php?n=20260423vsc34.txt"
+                    placeholder="示例：&#10;http://wsaic.com/eid/10p.php?n=20260423vsc34.txt&#10;sample.user@example.test----tok_xxxxxxxxxxxxxxxxxxxxxxxx"
                 ></textarea>
 
                 <div class="feedback-row">
@@ -65,7 +66,7 @@
                 <div class="panel__header panel__header--data">
                     <div>
                         <h2>邮箱账户</h2>
-                        <p>点击邮箱文字复制账号；点击卡片空白区域自动读取读信 JSON 并显示 6 位验证码。</p>
+                        <p>点击邮箱文字复制账号；点击卡片空白区域自动读取读信接口并显示最新 6 位验证码。</p>
                     </div>
 
                     <div class="panel-tools">

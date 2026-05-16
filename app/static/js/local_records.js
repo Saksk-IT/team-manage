@@ -320,6 +320,8 @@ function createFrozenEmailAccount(emailAccount, sequence) {
         sourceName: normalizeText(emailAccount.sourceName),
         uid: normalizeText(emailAccount.uid),
         password: normalizeText(emailAccount.password),
+        emailToken: normalizeText(emailAccount.emailToken),
+        sourceType: normalizeText(emailAccount.sourceType),
         uiUrl: String(emailAccount.uiUrl || '').trim(),
         apiUrl: String(emailAccount.apiUrl || '').trim(),
         host: normalizeText(emailAccount.host),
@@ -614,6 +616,16 @@ function parseLocalToolLine(line, sequence) {
 }
 
 function isLikelyEmailAccountLine(line) {
+    if (typeof createLuckMailTokenAccountFromLine === 'function') {
+        try {
+            if (createLuckMailTokenAccountFromLine(line, 1)) {
+                return true;
+            }
+        } catch (_error) {
+            return true;
+        }
+    }
+
     if (!isValidHttpUrl(line)) {
         return false;
     }
@@ -1043,6 +1055,7 @@ function buildSearchableEmailText(emailAccount) {
         emailAccount.displayUrl,
         emailAccount.sourceName,
         emailAccount.uid,
+        emailAccount.sourceType,
         emailAccount.host,
         emailAccount.apiUrl,
         emailAccount.uiUrl,
@@ -1523,6 +1536,8 @@ function mergeRecordEmailDiscovery(account, discovery) {
         ...account,
         email: discovery.email || account.email,
         password: discovery.password || account.password,
+        emailToken: discovery.emailToken || account.emailToken,
+        sourceType: discovery.sourceType || account.sourceType,
         uid: discovery.uid || account.uid,
         sourceName: discovery.sourceName || account.sourceName,
         host: discovery.host || account.host,

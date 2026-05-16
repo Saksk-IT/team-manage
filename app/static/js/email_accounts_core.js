@@ -1,4 +1,8 @@
 const EMAIL_REGEX = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+const LUCKMAIL_QUERY_ORIGIN = 'https://mails.luckyous.com';
+const LUCKMAIL_QUERY_PATH = '/api/v1/email/query';
+const LUCKMAIL_QUERY_DISPLAY_URL = `${LUCKMAIL_QUERY_ORIGIN}${LUCKMAIL_QUERY_PATH}`;
+const LUCKMAIL_TOKEN_REGEX = /^tok_[A-Za-z0-9_-]{12,160}$/;
 
 function normalizeEmailText(value) {
     return String(value || '').replace(/\s+/g, ' ').trim();
@@ -55,6 +59,19 @@ function buildInboxInfo(overrides = {}) {
     });
 }
 
+function isLuckMailToken(value) {
+    return LUCKMAIL_TOKEN_REGEX.test(String(value || '').trim());
+}
+
+function buildLuckMailTokenApiUrl(token) {
+    const safeToken = String(token || '').trim();
+    if (!isLuckMailToken(safeToken)) {
+        return '';
+    }
+
+    return `${LUCKMAIL_QUERY_DISPLAY_URL}/${encodeURIComponent(safeToken)}`;
+}
+
 function buildMailJsonApiUrl(baseUrl, email, password) {
     if (!email || !password) {
         return '';
@@ -97,6 +114,8 @@ function createFrozenEmailAccounts(accounts) {
         sourceName: String(account.sourceName || ''),
         uid: String(account.uid || ''),
         password: String(account.password || ''),
+        emailToken: String(account.emailToken || ''),
+        sourceType: String(account.sourceType || ''),
         uiUrl: String(account.uiUrl || ''),
         apiUrl: String(account.apiUrl || ''),
         host: String(account.host || ''),
@@ -121,6 +140,41 @@ function createEmailSourceLinkFromUrl(rawUrl, lineNumber) {
         sourceName: firstParamValue(parsedUrl, ['n', 'name', 'file']),
         uid: firstParamValue(parsedUrl, ['uid', 'id']),
         host: parsedUrl.hostname || parsedUrl.host || '未知站点',
+    });
+}
+
+function createLuckMailTokenAccountFromLine(rawLine, sequence) {
+    const parts = String(rawLine || '').split('----').map((part) => part.trim());
+    if (parts.length !== 2) {
+        return null;
+    }
+
+    const email = firstEmailFromText(parts[0]);
+    const token = parts[1];
+    if (!email || !token.startsWith('tok_')) {
+        return null;
+    }
+
+    if (!isLuckMailToken(token)) {
+        throw new Error('invalid-luckmail-token');
+    }
+
+    const apiUrl = buildLuckMailTokenApiUrl(token);
+    return Object.freeze({
+        sequence,
+        email,
+        sourceUrl: apiUrl,
+        displayUrl: LUCKMAIL_QUERY_DISPLAY_URL,
+        sourceName: 'LuckMail Token',
+        uid: '',
+        password: '',
+        emailToken: token,
+        sourceType: 'luckmail_token',
+        uiUrl: '',
+        apiUrl,
+        host: 'mails.luckyous.com',
+        statusText: '待取件',
+        inbox: buildInboxInfo(),
     });
 }
 
@@ -167,7 +221,8 @@ function parseEmailAccountBatch(content) {
 
     const parsedResult = lines.reduce((result, line, index) => {
         try {
-            const account = createEmailAccountFromUrl(line, result.accounts.length + 1);
+            const account = createLuckMailTokenAccountFromLine(line, result.accounts.length + 1)
+                || createEmailAccountFromUrl(line, result.accounts.length + 1);
             return {
                 accounts: result.accounts.concat([account]),
                 sourceLinks: result.sourceLinks,
@@ -189,6 +244,8 @@ function parseEmailAccountBatch(content) {
 
             const reason = error.message === 'missing-email'
                 ? '未识别邮箱参数 email/u'
+                : error.message === 'invalid-luckmail-token'
+                    ? 'LuckMail token 格式无效'
                 : '不是有效的 http/https 取件网址';
             return {
                 ...result,
@@ -455,24 +512,33 @@ function normalizeJsonMessage(value) {
 
     const from = extractMessageField(value, ['from', 'sender', 'fromname', 'from_email', 'mailfrom']);
     const subject = extractMessageField(value, ['subject', 'title', 'name']);
-    const time = extractMessageField(value, ['date', 'time', 'date_beijing', 'date_original', 'created_at', 'created', 'sendtime']);
+    const time = extractMessageField(value, ['date', 'time', 'date_beijing', 'date_original', 'created_at', 'created', 'sendtime', 'received_at']);
     const content = extractMessageField(value, [
         'content',
         'body',
         'body_text',
         'body_html',
         'body_html_raw',
+        'html_body',
         'html',
         'text',
         'message',
         'mailcontent',
+        'verification_code',
     ]);
 
-    if (!from && !subject && !time && !content) {
+    const verificationCode = extractMessageField(value, ['verification_code', 'verificationcode', 'code', 'otp']);
+
+    if (!from && !subject && !time && !content && !verificationCode) {
         return null;
     }
 
-    return Object.freeze({ from, subject, time, content });
+    return Object.freeze({
+        from,
+        subject,
+        time,
+        content: [verificationCode, content].filter(Boolean).join(' '),
+    });
 }
 
 function collectJsonMessages(value, depth = 0) {

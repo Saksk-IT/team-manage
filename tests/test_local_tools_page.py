@@ -580,6 +580,37 @@ process.stdout.write(JSON.stringify({
         self.assertGreater(payload["emailIndex"], payload["phoneIndex"])
         self.assertIn("demo@wsaic.com", payload["searchableText"])
 
+    def test_local_record_parser_merges_luckmail_token_email_by_order(self):
+        payload = self._run_local_records_node("""
+const parsed = sandbox.parseRecordBatch(
+  'JENNIFER WALL----5318 S 105 ST, OMAHA NE 68127, US\\n' +
+  'sample.user@example.test----tok_test1234567890abcdef1234567890abcd',
+  { combineEnabled: true }
+);
+const combined = parsed.records[0];
+process.stdout.write(JSON.stringify({
+  count: parsed.records.length,
+  recordCount: parsed.recordCount,
+  emailAccountCount: parsed.emailAccountCount,
+  invalidCount: parsed.invalidLines.length,
+  combinedEmail: combined.emailAccount && combined.emailAccount.email,
+  combinedToken: combined.emailAccount && combined.emailAccount.emailToken,
+  combinedSourceType: combined.emailAccount && combined.emailAccount.sourceType,
+  combinedEmailApi: combined.emailAccount && combined.emailAccount.apiUrl,
+  searchableText: sandbox.buildSearchableRecordText(combined),
+}));
+""")
+
+        self.assertEqual(1, payload["count"])
+        self.assertEqual(1, payload["recordCount"])
+        self.assertEqual(1, payload["emailAccountCount"])
+        self.assertEqual(0, payload["invalidCount"])
+        self.assertEqual("sample.user@example.test", payload["combinedEmail"])
+        self.assertEqual("tok_test1234567890abcdef1234567890abcd", payload["combinedToken"])
+        self.assertEqual("luckmail_token", payload["combinedSourceType"])
+        self.assertIn("mails.luckyous.com/api/v1/email/query", payload["combinedEmailApi"])
+        self.assertIn("luckmail_token", payload["searchableText"])
+
     def test_local_record_incremental_import_merges_with_existing_records(self):
         payload = self._run_local_records_node("""
 const firstImport = sandbox.parseRecordBatch(
@@ -833,6 +864,38 @@ process.stdout.write(JSON.stringify({
         self.assertEqual("20260423vsc34.txt", payload["sourceName"])
         self.assertEqual("http://wsaic.com/eid/10p.php", payload["displayUrl"])
 
+    def test_email_account_parser_accepts_luckmail_token_import_line(self):
+        payload = self._run_email_accounts_node("""
+const parsed = sandbox.parseEmailAccountBatch('sample.user@example.test----tok_test1234567890abcdef1234567890abcd');
+const account = parsed.accounts[0];
+process.stdout.write(JSON.stringify({
+  count: parsed.accounts.length,
+  invalidCount: parsed.invalidLines.length,
+  email: account && account.email,
+  token: account && account.emailToken,
+  sourceType: account && account.sourceType,
+  sourceName: account && account.sourceName,
+  host: account && account.host,
+  apiUrl: account && account.apiUrl,
+  sourceUrl: account && account.sourceUrl,
+  displayUrl: account && account.displayUrl,
+}));
+""")
+
+        self.assertEqual(1, payload["count"])
+        self.assertEqual(0, payload["invalidCount"])
+        self.assertEqual("sample.user@example.test", payload["email"])
+        self.assertEqual("tok_test1234567890abcdef1234567890abcd", payload["token"])
+        self.assertEqual("luckmail_token", payload["sourceType"])
+        self.assertEqual("LuckMail Token", payload["sourceName"])
+        self.assertEqual("mails.luckyous.com", payload["host"])
+        self.assertEqual(
+            "https://mails.luckyous.com/api/v1/email/query/tok_test1234567890abcdef1234567890abcd",
+            payload["apiUrl"],
+        )
+        self.assertEqual(payload["apiUrl"], payload["sourceUrl"])
+        self.assertEqual("https://mails.luckyous.com/api/v1/email/query", payload["displayUrl"])
+
     def test_email_account_discovery_generates_json_api_from_login_link(self):
         payload = self._run_email_accounts_node("""
 const html = `
@@ -978,6 +1041,42 @@ process.stdout.write(JSON.stringify({
 
         self.assertEqual("333333", payload["copyText"])
         self.assertEqual("333333", payload["verificationCode"])
+
+    def test_email_inbox_parser_handles_luckmail_received_at_and_verification_code_field(self):
+        payload = self._run_email_accounts_node("""
+const inbox = sandbox.parseInboxContent(JSON.stringify({
+  code: 0,
+  message: 'success',
+  data: {
+    email_address: 'sample.user@example.test',
+    mails: [
+      {
+        from: 'old@example.test',
+        subject: 'older code',
+        verification_code: '111111',
+        received_at: '2026-05-16 09:20:00'
+      },
+      {
+        from: 'new@example.test',
+        subject: 'newer code',
+        verification_code: '222222',
+        received_at: '2026-05-16 09:26:22'
+      }
+    ]
+  }
+}), 'application/json');
+process.stdout.write(JSON.stringify({
+  copyText: inbox.copyText,
+  verificationCode: inbox.verificationCode,
+  statusText: inbox.statusText,
+  messageCount: inbox.messageCount,
+}));
+""")
+
+        self.assertEqual("222222", payload["copyText"])
+        self.assertEqual("222222", payload["verificationCode"])
+        self.assertEqual("已取验证码", payload["statusText"])
+        self.assertEqual(2, payload["messageCount"])
 
     def test_email_inbox_parser_does_not_show_non_code_mail_summary(self):
         payload = self._run_email_accounts_node("""
